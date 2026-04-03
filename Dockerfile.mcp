@@ -16,4 +16,4 @@ COPY src/uvo_mcp/ src/uvo_mcp/
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvo_mcp"]
+CMD ["uv", "run", "python", "-m", "uvo_mcp"]
