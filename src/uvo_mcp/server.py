@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from uvo_mcp.config import Settings
 
@@ -41,3 +43,9 @@ mcp = FastMCP(
 
 import uvo_mcp.tools.procurements  # noqa: F401, E402
 import uvo_mcp.tools.subjects  # noqa: F401, E402
+
+
+@mcp.custom_route("/health", methods=["GET"], name="health_check")
+async def health_check(request: Request) -> JSONResponse:
+    """Health check endpoint — returns 200 OK with status information."""
+    return JSONResponse({"status": "ok", "service": "uvo-mcp"})
