@@ -39,6 +39,8 @@ mcp = FastMCP(
     instructions="Search Slovak government procurement data from UVOstat.sk and related sources",
     lifespan=app_lifespan,
     json_response=True,
+    host="0.0.0.0",
+    port=8000,
 )
 
 import uvo_mcp.tools.procurements  # noqa: F401, E402
