@@ -33,6 +33,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "integration: marks tests that call real external APIs",
+    "e2e: end-to-end tests that require docker compose (deselect with '-m \"not e2e\"')",
 ]
 
 [tool.ruff]

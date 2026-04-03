@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Tests
+    name: Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,11 +24,11 @@ jobs:
       - name: Install dependencies (with dev extras)
         run: uv sync --frozen --extra dev
 
-      - name: Run pytest
+      - name: Run pytest (unit tests only)
         env:
           STORAGE_SECRET: test-secret
           UVOSTAT_API_TOKEN: test-token
-        run: uv run pytest tests/ -v --tb=short
+        run: uv run pytest tests/ -v --tb=short -m "not e2e and not integration"
 
   lint:
     name: Lint
@@ -79,3 +79,56 @@ jobs:
           push: false
           cache-from: type=gha,scope=gui
           cache-to: type=gha,mode=max,scope=gui
+
+  docker-compose:
+    name: Docker Compose Build & E2E
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env file for docker compose
+        run: |
+          cat > .env << 'EOF'
+          UVOSTAT_API_TOKEN=test-token-ci
+          STORAGE_SECRET=ci-test-secret
+          EOF
+
+      - name: Build and start services
+        run: docker compose up -d --build --wait --wait-timeout 120
+
+      - name: Verify MCP server health
+        run: |
+          curl -sf http://localhost:8000/health | jq .
+          echo "MCP server healthy"
+
+      - name: Verify GUI is serving
+        run: |
+          curl -sf http://localhost:8080/ -o /dev/null -w "%{http_code}"
+          echo ""
+          echo "GUI is serving"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install test dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Run E2E tests
+        env:
+          STORAGE_SECRET: test-secret
+          UVOSTAT_API_TOKEN: test-token
+        run: uv run pytest tests/e2e/ -v --tb=short -m e2e
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --tail=100
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
