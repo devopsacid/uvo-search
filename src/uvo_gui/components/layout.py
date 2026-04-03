@@ -44,5 +44,6 @@ def layout(current_path: str = "/") -> Generator[None, None, None]:
                 on_click=lambda p=path: ui.navigate.to(p),
             ).classes(classes).props("flat no-caps")
 
+    # ui.page_container does not exist in NiceGUI 3.9; use column as content wrapper
     with ui.column().classes("w-full h-full p-4"):
         yield
