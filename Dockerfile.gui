@@ -17,4 +17,4 @@ COPY src/uvo_gui/ src/uvo_gui/
 
 EXPOSE 8080
 
-CMD ["uv", "run", "python", "-m", "uvo_gui"]
+CMD ["uv", "run", "uvo-gui"]
