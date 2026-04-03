@@ -1,7 +1,9 @@
 """Tests for the MCP client wrapper used by the NiceGUI frontend."""
+
 import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 
@@ -39,9 +41,12 @@ class TestCallTool:
         mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cm.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("uvo_gui.mcp_client.streamablehttp_client", return_value=mock_http_cm), \
-             patch("uvo_gui.mcp_client.ClientSession", return_value=mock_session_cm):
+        with (
+            patch("uvo_gui.mcp_client.streamablehttp_client", return_value=mock_http_cm),
+            patch("uvo_gui.mcp_client.ClientSession", return_value=mock_session_cm),
+        ):
             from uvo_gui.mcp_client import call_tool
+
             result = await call_tool("search_completed_procurements", {"q": "test"})
 
         assert result == payload
@@ -71,8 +76,11 @@ class TestCallTool:
         mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cm.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("uvo_gui.mcp_client.streamablehttp_client", return_value=mock_http_cm), \
-             patch("uvo_gui.mcp_client.ClientSession", return_value=mock_session_cm):
+        with (
+            patch("uvo_gui.mcp_client.streamablehttp_client", return_value=mock_http_cm),
+            patch("uvo_gui.mcp_client.ClientSession", return_value=mock_session_cm),
+        ):
             from uvo_gui.mcp_client import call_tool
+
             with pytest.raises(ValueError, match="No text content"):
                 await call_tool("get_procurement_detail", {"id": "123"})

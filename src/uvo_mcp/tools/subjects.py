@@ -1,4 +1,5 @@
 """MCP tools for searching procurers (contracting authorities) and suppliers."""
+
 import logging
 
 import httpx

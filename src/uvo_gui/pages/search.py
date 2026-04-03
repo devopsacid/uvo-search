@@ -1,4 +1,5 @@
 """Main search page — lists completed procurements with filtering and pagination."""
+
 from __future__ import annotations
 
 import logging
@@ -7,16 +8,26 @@ from typing import Any
 
 from nicegui import ui
 
-from uvo_gui.components.nav_header import nav_header
 from uvo_gui import mcp_client
+from uvo_gui.components.nav_header import nav_header
 
 logger = logging.getLogger(__name__)
 
 COLUMNS = [
     {"name": "id", "label": "ID", "field": "id", "align": "left"},
     {"name": "nazov", "label": "Nazov", "field": "nazov", "align": "left"},
-    {"name": "obstaravatel_nazov", "label": "Obstaravatel", "field": "obstaravatel_nazov", "align": "left"},
-    {"name": "konecna_hodnota", "label": "Hodnota (EUR)", "field": "konecna_hodnota", "align": "right"},
+    {
+        "name": "obstaravatel_nazov",
+        "label": "Obstaravatel",
+        "field": "obstaravatel_nazov",
+        "align": "left",
+    },
+    {
+        "name": "konecna_hodnota",
+        "label": "Hodnota (EUR)",
+        "field": "konecna_hodnota",
+        "align": "right",
+    },
     {"name": "datum_zverejnenia", "label": "Datum", "field": "datum_zverejnenia", "align": "left"},
     {"name": "cpv_kod", "label": "CPV", "field": "cpv_kod", "align": "left"},
     {"name": "stav", "label": "Stav", "field": "stav", "align": "left"},
@@ -130,6 +141,7 @@ def results_view() -> None:
 def show_detail_dialog(procurement: dict) -> None:
     """Import lazily to avoid circular imports."""
     from uvo_gui.components.detail_dialog import show_detail_dialog as _show
+
     _show(procurement)
 
 
@@ -162,8 +174,6 @@ async def search_page() -> None:
                         _state, "date_to"
                     )
 
-                ui.button("Hladat", on_click=_state.search).classes(
-                    "bg-blue-700 text-white"
-                )
+                ui.button("Hladat", on_click=_state.search).classes("bg-blue-700 text-white")
 
         results_view()

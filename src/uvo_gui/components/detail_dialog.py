@@ -1,4 +1,5 @@
 """Procurement detail dialog component."""
+
 from nicegui import ui
 
 

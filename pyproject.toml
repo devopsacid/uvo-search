@@ -18,6 +18,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
     "respx>=0.22",
+    "ruff>=0.8",
 ]
 
 [build-system]
@@ -33,6 +34,16 @@ testpaths = ["tests"]
 markers = [
     "integration: marks tests that call real external APIs",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+# E501: line length enforced by formatter, not linter
+# UP046: Generic[T] subclass syntax — PEP 695 style is Python 3.13+, keep 3.12 compat
+ignore = ["E501", "UP046"]
 
 [project.scripts]
 uvo-mcp = "uvo_mcp.__main__:main"

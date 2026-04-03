@@ -1,4 +1,5 @@
 """Shared navigation header component for all pages."""
+
 from nicegui import ui
 
 

@@ -1,9 +1,10 @@
 """NiceGUI application setup."""
+
 from nicegui import ui
-from uvo_gui.config import GuiSettings
 
 # Import pages to register @ui.page decorators
 import uvo_gui.pages.search  # noqa: F401
+from uvo_gui.config import GuiSettings
 
 settings = GuiSettings()
 

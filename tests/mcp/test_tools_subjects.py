@@ -1,9 +1,9 @@
 """Tests for subject (procurer and supplier) MCP tools."""
+
 import httpx
 import pytest
 
 from uvo_mcp.tools.subjects import find_procurer, find_supplier
-
 
 SAMPLE_SUBJECT_RESPONSE = {
     "summary": {"total": 2, "limit": 20, "offset": 0},
@@ -79,9 +79,7 @@ class TestFindProcurer:
     async def test_empty_results(self, mock_context):
         ctx, mock = mock_context
         empty_response = {"summary": {"total": 0, "limit": 20, "offset": 0}, "data": []}
-        mock.get("/api/obstaravatelia").mock(
-            return_value=httpx.Response(200, json=empty_response)
-        )
+        mock.get("/api/obstaravatelia").mock(return_value=httpx.Response(200, json=empty_response))
 
         result = await find_procurer(ctx, name_query="nonexistent")
 
@@ -91,9 +89,7 @@ class TestFindProcurer:
     @pytest.mark.asyncio
     async def test_api_error_returns_error_dict(self, mock_context):
         ctx, mock = mock_context
-        mock.get("/api/obstaravatelia").mock(
-            return_value=httpx.Response(500)
-        )
+        mock.get("/api/obstaravatelia").mock(return_value=httpx.Response(500))
 
         result = await find_procurer(ctx)
 
@@ -134,9 +130,7 @@ class TestFindSupplier:
     async def test_empty_results(self, mock_context):
         ctx, mock = mock_context
         empty_response = {"summary": {"total": 0, "limit": 20, "offset": 0}, "data": []}
-        mock.get("/api/dodavatelia").mock(
-            return_value=httpx.Response(200, json=empty_response)
-        )
+        mock.get("/api/dodavatelia").mock(return_value=httpx.Response(200, json=empty_response))
 
         result = await find_supplier(ctx, name_query="nonexistent")
 
@@ -146,9 +140,7 @@ class TestFindSupplier:
     @pytest.mark.asyncio
     async def test_api_error_returns_error_dict(self, mock_context):
         ctx, mock = mock_context
-        mock.get("/api/dodavatelia").mock(
-            return_value=httpx.Response(503)
-        )
+        mock.get("/api/dodavatelia").mock(return_value=httpx.Response(503))
 
         result = await find_supplier(ctx)
 

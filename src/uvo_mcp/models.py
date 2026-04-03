@@ -32,7 +32,9 @@ class Procurement(BaseModel):
     currency: str = Field(default="EUR", description="Currency of the contract value")
     year: int | None = Field(default=None, description="Year of the procurement")
     cpv_code: str | None = Field(default=None, description="CPV code for procurement category")
-    contracting_authority: str | None = Field(default=None, description="Name of the contracting authority")
+    contracting_authority: str | None = Field(
+        default=None, description="Name of the contracting authority"
+    )
     suppliers: list[SupplierSummary] = Field(default=[], description="List of awarded suppliers")
 
 

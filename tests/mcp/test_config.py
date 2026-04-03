@@ -1,8 +1,9 @@
 """Tests for MCP server configuration via pydantic-settings."""
 
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 
 class TestSettings:
@@ -10,6 +11,7 @@ class TestSettings:
         env = {"UVOSTAT_API_TOKEN": "test-token-abc123", "STORAGE_SECRET": "test-secret"}
         with patch.dict(os.environ, env, clear=False):
             from uvo_mcp.config import Settings
+
             s = Settings()
             assert s.uvostat_api_token == "test-token-abc123"
 
@@ -17,6 +19,7 @@ class TestSettings:
         env = {"UVOSTAT_API_TOKEN": "test-token", "STORAGE_SECRET": "test-secret"}
         with patch.dict(os.environ, env, clear=False):
             from uvo_mcp.config import Settings
+
             s = Settings()
             assert s.uvostat_base_url == "https://www.uvostat.sk"
             assert s.cache_ttl_search == 300
@@ -27,11 +30,15 @@ class TestSettings:
 
     def test_settings_override_from_env(self):
         env = {
-            "UVOSTAT_API_TOKEN": "test-token", "STORAGE_SECRET": "test-secret",
-            "CACHE_TTL_SEARCH": "600", "REQUEST_TIMEOUT": "15.0", "MAX_PAGE_SIZE": "50",
+            "UVOSTAT_API_TOKEN": "test-token",
+            "STORAGE_SECRET": "test-secret",
+            "CACHE_TTL_SEARCH": "600",
+            "REQUEST_TIMEOUT": "15.0",
+            "MAX_PAGE_SIZE": "50",
         }
         with patch.dict(os.environ, env, clear=False):
             from uvo_mcp.config import Settings
+
             s = Settings()
             assert s.cache_ttl_search == 600
             assert s.request_timeout == 15.0
@@ -39,7 +46,9 @@ class TestSettings:
 
     def test_settings_missing_required_token_raises(self):
         from pydantic import ValidationError
+
         from uvo_mcp.config import Settings
+
         env_without_token = {k: v for k, v in os.environ.items() if k != "UVOSTAT_API_TOKEN"}
         with patch.dict(os.environ, env_without_token, clear=True):
             with pytest.raises(ValidationError):

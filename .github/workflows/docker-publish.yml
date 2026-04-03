@@ -1,0 +1,71 @@
+name: Publish Docker Images
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_MCP: ghcr.io/${{ github.repository }}/uvo-mcp
+  IMAGE_GUI: ghcr.io/${{ github.repository }}/uvo-gui
+
+jobs:
+  publish:
+    name: Build and push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata for MCP image
+        id: meta-mcp
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_MCP }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push MCP server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.mcp
+          push: true
+          tags: ${{ steps.meta-mcp.outputs.tags }}
+          labels: ${{ steps.meta-mcp.outputs.labels }}
+          cache-from: type=gha,scope=mcp
+          cache-to: type=gha,mode=max,scope=mcp
+
+      - name: Extract metadata for GUI image
+        id: meta-gui
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_GUI }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push GUI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.gui
+          push: true
+          tags: ${{ steps.meta-gui.outputs.tags }}
+          labels: ${{ steps.meta-gui.outputs.labels }}
+          cache-from: type=gha,scope=gui
+          cache-to: type=gha,mode=max,scope=gui

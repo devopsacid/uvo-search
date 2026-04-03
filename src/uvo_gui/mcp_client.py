@@ -1,4 +1,5 @@
 """MCP client wrapper for calling MCP server tools from the NiceGUI frontend."""
+
 import json
 import logging
 

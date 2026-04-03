@@ -1,7 +1,12 @@
 """Tests for Pydantic data models: PaginationSummary, PaginatedResponse, Procurement, SupplierSummary, Subject."""
 
-import pytest
-from uvo_mcp.models import PaginationSummary, PaginatedResponse, Procurement, SupplierSummary, Subject
+from uvo_mcp.models import (
+    PaginatedResponse,
+    PaginationSummary,
+    Procurement,
+    Subject,
+    SupplierSummary,
+)
 
 
 class TestPaginationSummary:

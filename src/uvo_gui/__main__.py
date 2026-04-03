@@ -1,4 +1,5 @@
 """Entry point for the UVO Search NiceGUI frontend."""
+
 from uvo_gui.app import start
 
 
