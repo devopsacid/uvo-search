@@ -38,3 +38,6 @@ mcp = FastMCP(
     lifespan=app_lifespan,
     json_response=True,
 )
+
+import uvo_mcp.tools.procurements  # noqa: F401, E402
+import uvo_mcp.tools.subjects  # noqa: F401, E402

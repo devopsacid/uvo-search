@@ -43,4 +43,5 @@ class TestSettings:
         env_without_token = {k: v for k, v in os.environ.items() if k != "UVOSTAT_API_TOKEN"}
         with patch.dict(os.environ, env_without_token, clear=True):
             with pytest.raises(ValidationError):
-                Settings()
+                # Pass _env_file=None to prevent reading from .env on disk
+                Settings(_env_file=None)

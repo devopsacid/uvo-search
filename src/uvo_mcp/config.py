@@ -15,4 +15,4 @@ class Settings(BaseSettings):
     request_timeout: float = 30.0
     max_page_size: int = 100
 
-    model_config = {"env_file": ".env", "env_prefix": ""}
+    model_config = {"env_file": ".env", "env_prefix": "", "extra": "ignore"}
