@@ -46,7 +46,7 @@ async function selectRow(row: ContractRow) {
   try {
     selected.value = await api.contracts.detail(row.id)
   } catch {
-    selected.value = { ...row, all_suppliers: [], publication_date: null, source_url: null }
+    selected.value = { ...row, all_suppliers: [], publication_date: null }
   }
 }
 

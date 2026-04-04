@@ -82,7 +82,6 @@ class ContractRow(BaseModel):
 class ContractDetail(ContractRow):
     all_suppliers: list[dict] = []
     publication_date: str | None = None
-    source_url: str | None = None
 
 
 class ContractListResponse(BaseModel):

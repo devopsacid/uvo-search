@@ -25,7 +25,7 @@ export interface CpvShare { cpv_code: string; label_sk: string; label_en: string
 export interface RecentContract { id: string; title: string; procurer_name: string; procurer_ico: string; value: number; year: number; status: string }
 
 export interface ContractRow { id: string; title: string; procurer_name: string; procurer_ico: string; supplier_name: string | null; supplier_ico: string | null; value: number; cpv_code: string | null; year: number; status: string }
-export interface ContractDetail extends ContractRow { all_suppliers: Record<string, string>[]; publication_date: string | null; source_url: string | null }
+export interface ContractDetail extends ContractRow { all_suppliers: Record<string, string>[]; publication_date: string | null }
 export interface Pagination { total: number; limit: number; offset: number }
 export interface ContractListResponse { data: ContractRow[]; pagination: Pagination }
 

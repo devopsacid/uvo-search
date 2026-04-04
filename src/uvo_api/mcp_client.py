@@ -10,15 +10,10 @@ from uvo_api.config import ApiSettings
 
 logger = logging.getLogger(__name__)
 
-_settings_cache = None
-
 
 def _get_settings() -> ApiSettings:
-    """Lazily load and cache API settings."""
-    global _settings_cache
-    if _settings_cache is None:
-        _settings_cache = ApiSettings()
-    return _settings_cache
+    """Return API settings, reading from environment each time for test isolation."""
+    return ApiSettings()
 
 
 async def call_tool(tool_name: str, arguments: dict) -> dict:
