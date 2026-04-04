@@ -143,6 +143,37 @@ The Vestnik publishes multiple types of notices per EU procurement directives:
 
 ---
 
+## 2b. data.gov.sk — CKAN Open Data Catalog
+
+**Portal:** https://data.gov.sk
+**API base:** https://data.gov.sk/api/3/action
+
+### Overview
+data.gov.sk is the Slovak national open data catalog (CKAN-based). The Vestník verejného obstarávania XML datasets are published here daily (on working days). Each issue gets its own dataset with a UUID-based URL — no predictable URL pattern — so programmatic discovery via the CKAN catalog API is required.
+
+### Dataset Discovery
+```
+GET https://data.gov.sk/api/3/action/package_search
+  ?q=vestnik+verejneho+obstaravania
+  &sort=metadata_modified+desc
+  &rows=50
+  &start=0
+```
+Returns paginated list of dataset records. Each record has `.resources[].url` pointing to ZIP download(s).
+
+### Authentication
+No authentication required for public dataset access.
+
+### Update Frequency
+Daily on working days. Each Vestník issue (numbered within the year) becomes one dataset.
+
+### XML Format
+eForms/UBL 2.3 standard. Key namespaces:
+- `cbc`: Common Basic Components
+- `cac`: Common Aggregate Components
+
+---
+
 ## 3. Open Source Projects
 
 ### 3.1 UVOstat API Documentation
@@ -570,3 +601,33 @@ Dodavatel --[financials in]--> FinStat
 - OpenSanctions RPVS: https://www.opensanctions.org/datasets/sk_rpvs/
 - RPVS via Open Ownership: https://bods-data.openownership.org/source/slovakia/
 - Ekosystem SQL dumps: https://ekosystem.slovensko.digital/otvorene-data
+
+---
+
+## 8. Technology Stack
+
+### Databases
+
+| Database | Role | Version | Connection |
+|---|---|---|---|
+| **MongoDB** | Primary document store — all notices, procurers, suppliers, pipeline state | 7.x | `MONGODB_URI` env var |
+| **Neo4j** | Graph store — entity relationships (Procurer→Notice→Supplier) | 5.x | `NEO4J_URI` env var |
+
+**MongoDB database name:** `uvo_search`
+
+**Collections:**
+| Collection | Purpose | Dedup key |
+|---|---|---|
+| `notices` | All procurement notices from all sources | `(source, source_id)` |
+| `procurers` | Contracting authorities | `ico` (sparse) + `name_slug` |
+| `suppliers` | Awarded suppliers | `ico` (sparse) + `name_slug` |
+| `cross_source_matches` | Links same real-world events across sources | `canonical_id` |
+| `pipeline_state` | ETL checkpoint state | `source` |
+| `ckan_packages` | CKAN package metadata cache | `package_id` |
+
+**Neo4j graph model:**
+```cypher
+(:Procurer)-[:ISSUED]->(:Notice)-[:AWARDED_TO]->(:Supplier)
+(:Notice)-[:CLASSIFIED_BY]->(:CPVCode)
+(:Notice)-[:SAME_AS]->(:Notice)  -- cross-source link
+```
