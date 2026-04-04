@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 
-const props = defineProps<{
+defineProps<{
   ico: string
   name: string
   contractCount: number
