@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from uvo_api.config import ApiSettings
-from uvo_api.routers import contracts, suppliers
+from uvo_api.routers import contracts, procurers, suppliers
 
 
 def create_app() -> FastAPI:
@@ -30,5 +30,6 @@ def create_app() -> FastAPI:
 
     app.include_router(contracts.router)
     app.include_router(suppliers.router)
+    app.include_router(procurers.router)
 
     return app
