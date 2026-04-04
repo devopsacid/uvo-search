@@ -1,4 +1,4 @@
-"""Main search page — lists completed procurements with filtering and pagination."""
+"""Search page — split panel: left result list, right detail view."""
 
 from __future__ import annotations
 
@@ -9,34 +9,14 @@ from typing import Any
 from nicegui import ui
 
 from uvo_gui import mcp_client
-from uvo_gui.components.nav_header import nav_header
+from uvo_gui.components.layout import layout
 
 logger = logging.getLogger(__name__)
-
-COLUMNS = [
-    {"name": "id", "label": "ID", "field": "id", "align": "left"},
-    {"name": "nazov", "label": "Nazov", "field": "nazov", "align": "left"},
-    {
-        "name": "obstaravatel_nazov",
-        "label": "Obstaravatel",
-        "field": "obstaravatel_nazov",
-        "align": "left",
-    },
-    {
-        "name": "konecna_hodnota",
-        "label": "Hodnota (EUR)",
-        "field": "konecna_hodnota",
-        "align": "right",
-    },
-    {"name": "datum_zverejnenia", "label": "Datum", "field": "datum_zverejnenia", "align": "left"},
-    {"name": "cpv_kod", "label": "CPV", "field": "cpv_kod", "align": "left"},
-    {"name": "stav", "label": "Stav", "field": "stav", "align": "left"},
-]
 
 
 @dataclass
 class SearchState:
-    """Holds the current search parameters, results, and pagination state."""
+    """Search parameters, results, pagination, and selected item."""
 
     query: str = ""
     date_from: str = ""
@@ -47,6 +27,7 @@ class SearchState:
     per_page: int = 20
     loading: bool = False
     error: str = ""
+    selected: dict[str, Any] | None = None
 
     @property
     def offset(self) -> int:
@@ -54,126 +35,180 @@ class SearchState:
 
     @property
     def total_pages(self) -> int:
-        if self.total == 0:
-            return 1
-        return max(1, -(-self.total // self.per_page))  # ceiling division
+        return max(1, -(-self.total // self.per_page))
 
     async def search(self) -> None:
-        """Reset to page 1 and fetch results."""
         self.page = 1
+        self.selected = None
         await self._fetch()
 
     async def goto_page(self, page: int) -> None:
-        """Navigate to a specific page and fetch results."""
         self.page = max(1, min(page, self.total_pages))
+        self.selected = None
         await self._fetch()
 
     async def _fetch(self) -> None:
-        """Fetch results from the MCP server and refresh the view."""
         self.loading = True
         self.error = ""
-        results_view.refresh()
+        list_view.refresh()
+        detail_view.refresh()
         try:
-            arguments: dict[str, Any] = {
-                "limit": self.per_page,
-                "offset": self.offset,
-            }
+            arguments: dict[str, Any] = {"limit": self.per_page, "offset": self.offset}
             if self.query:
                 arguments["q"] = self.query
             if self.date_from:
                 arguments["date_from"] = self.date_from
             if self.date_to:
                 arguments["date_to"] = self.date_to
-
             data = await mcp_client.call_tool("search_completed_procurements", arguments)
             self.results = data.get("items", [])
             self.total = data.get("total", 0)
         except Exception as exc:  # noqa: BLE001
             logger.error("Search failed: %s", exc)
-            self.error = f"Chyba pri vyhladavani: {exc}"
+            self.error = f"Chyba pri vyhľadávaní: {exc}"
             self.results = []
             self.total = 0
         finally:
             self.loading = False
-            results_view.refresh()
+            list_view.refresh()
+            detail_view.refresh()
+
+    def select(self, item: dict[str, Any]) -> None:
+        self.selected = item
+        detail_view.refresh()
 
 
 _state = SearchState()
 
 
 @ui.refreshable
-def results_view() -> None:
-    """Refreshable results area — shows spinner, error, empty state, or table."""
+def list_view() -> None:
+    """Left panel: search form + scrollable result list + pagination."""
+    with ui.card().classes("w-full h-full"):
+        # Search form
+        ui.label("Hľadať zákazku").classes("text-sm font-semibold text-slate-700 mb-2")
+        ui.input(placeholder="🔍 Kľúčové slovo...").classes("w-full mb-2").bind_value(
+            _state, "query"
+        )
+        with ui.row().classes("w-full gap-2 mb-2"):
+            ui.input(placeholder="Od dátumu").classes("flex-1").bind_value(_state, "date_from")
+            ui.input(placeholder="Do dátumu").classes("flex-1").bind_value(_state, "date_to")
+        ui.button("Hľadať", on_click=_state.search).classes(
+            "w-full bg-blue-700 text-white"
+        ).props("no-caps")
+
     if _state.loading:
-        with ui.row().classes("justify-center w-full py-8"):
-            ui.spinner(size="lg")
+        with ui.row().classes("justify-center py-6"):
+            ui.spinner(size="md")
         return
 
     if _state.error:
-        ui.label(_state.error).classes("text-red-600 py-4")
+        ui.label(_state.error).classes("text-red-600 text-sm py-2")
         return
 
     if not _state.results:
-        ui.label("Zadajte hladany vyraz a stlacte Hladat.").classes("text-gray-500 py-4")
         return
 
-    # Results table
-    table = ui.table(columns=COLUMNS, rows=_state.results, row_key="id").classes("w-full")
-    table.on("rowClick", lambda e: show_detail_dialog(e.args[1]))
+    ui.label(f"Výsledky: {_state.total}").classes("text-xs text-slate-500 mt-2 mb-1")
 
-    # Pagination controls
-    with ui.row().classes("items-center gap-4 py-2"):
+    with ui.scroll_area().classes("flex-1"):
+        for item in _state.results:
+            selected = _state.selected and _state.selected.get("id") == item.get("id")
+            card_classes = (
+                "w-full mb-1 cursor-pointer border-l-4 "
+                + ("border-blue-600 bg-blue-50" if selected else "border-transparent hover:bg-slate-50")
+            )
+            with ui.card().classes(card_classes).on("click", lambda i=item: _state.select(i)):
+                ui.label(item.get("nazov", "-")).classes(
+                    "text-sm font-semibold " + ("text-blue-700" if selected else "text-slate-800")
+                ).on("click", lambda i=item: _state.select(i))
+                with ui.row().classes("gap-3 flex-wrap"):
+                    ui.label(f"🏢 {item.get('obstaravatel_nazov', '-')}").classes(
+                        "text-xs text-slate-500"
+                    )
+                    ui.label(f"{item.get('konecna_hodnota', '-')} €").classes(
+                        "text-xs text-green-700 font-semibold"
+                    )
+                    ui.label(str(item.get("datum_zverejnenia", "-"))).classes(
+                        "text-xs text-slate-500"
+                    )
+
+    # Pagination
+    with ui.row().classes("items-center justify-between mt-2"):
         ui.button(
-            "Predchadzajuca",
+            "← Predch.",
             on_click=lambda: ui.timer(0, lambda: _state.goto_page(_state.page - 1), once=True),
-        ).props("flat").set_enabled(_state.page > 1)
-
-        ui.label(f"Strana {_state.page} z {_state.total_pages}").classes("text-sm")
-
+        ).props("flat no-caps").classes("text-xs").set_enabled(_state.page > 1)
+        ui.label(f"{_state.page} / {_state.total_pages}").classes("text-xs text-slate-500")
         ui.button(
-            "Nasledujuca",
+            "Ďalšia →",
             on_click=lambda: ui.timer(0, lambda: _state.goto_page(_state.page + 1), once=True),
-        ).props("flat").set_enabled(_state.page < _state.total_pages)
+        ).props("flat no-caps").classes("text-xs text-blue-600").set_enabled(
+            _state.page < _state.total_pages
+        )
 
-    ui.label(f"Celkovy pocet: {_state.total}").classes("text-sm text-gray-500")
 
+@ui.refreshable
+def detail_view() -> None:
+    """Right panel: detail of the selected procurement."""
+    if _state.selected is None:
+        with ui.column().classes("items-center justify-center h-full text-slate-400 gap-2"):
+            ui.label("Vyberte zákazku zo zoznamu").classes("text-sm")
+        return
 
-def show_detail_dialog(procurement: dict) -> None:
-    """Import lazily to avoid circular imports."""
-    from uvo_gui.components.detail_dialog import show_detail_dialog as _show
+    item = _state.selected
+    ui.label(item.get("nazov", "-")).classes("text-lg font-semibold text-slate-800 mb-2")
 
-    _show(procurement)
+    # Badges
+    with ui.row().classes("gap-2 mb-4 flex-wrap"):
+        if item.get("cpv_kod"):
+            ui.badge(item["cpv_kod"]).classes("bg-blue-100 text-blue-700 text-xs")
+        if item.get("stav"):
+            ui.badge(item["stav"]).classes("bg-green-100 text-green-700 text-xs")
+
+    # Info grid
+    with ui.grid(columns=2).classes("w-full gap-3 mb-4"):
+        for label, key, formatter in [
+            ("Obstarávateľ", "obstaravatel_nazov", str),
+            ("Hodnota", "konecna_hodnota", lambda v: f"{v} €"),
+            ("Dátum", "datum_zverejnenia", str),
+            ("CPV kód", "cpv_kod", str),
+        ]:
+            with ui.card().classes("bg-slate-50 border-0"):
+                ui.label(label).classes("text-xs text-slate-500 mb-1")
+                value = item.get(key, "-")
+                display = formatter(value) if value and value != "-" else "-"
+                extra = (
+                    "text-green-700 font-bold text-base"
+                    if key == "konecna_hodnota"
+                    else "text-sm font-semibold text-slate-800"
+                )
+                ui.label(display).classes(extra)
+
+    # Suppliers
+    dodavatelia = item.get("dodavatelia", [])
+    if dodavatelia:
+        ui.label("Dodávatelia").classes("text-sm font-semibold text-slate-700 mb-2")
+        for supplier in dodavatelia:
+            with ui.card().classes("w-full bg-slate-50 border-0 mb-1"):
+                with ui.row().classes("items-center justify-between"):
+                    with ui.column().classes("gap-0"):
+                        ui.label(supplier.get("nazov", "-")).classes(
+                            "text-sm font-semibold text-slate-800"
+                        )
+                        ui.label(f"IČO: {supplier.get('ico', '-')}").classes(
+                            "text-xs text-slate-500"
+                        )
+                    ui.badge("Víťaz").classes("bg-blue-100 text-blue-700 text-xs")
 
 
 @ui.page("/")
 async def search_page() -> None:
-    """Main search page with filter form and paginated results table."""
-    nav_header()
-
-    with ui.column().classes("w-full max-w-screen-xl mx-auto p-4 gap-4"):
-        ui.label("Vyhladavanie zakaziek").classes("text-2xl font-bold")
-
-        # Search form
-        with ui.card().classes("w-full"):
-            with ui.row().classes("w-full flex-wrap gap-4 items-end"):
-                with ui.column().classes("flex-1 min-w-48"):
-                    ui.label("Hladany vyraz").classes("text-sm font-medium")
-                    ui.input(placeholder="Napr. stavebne prace...").classes("w-full").bind_value(
-                        _state, "query"
-                    )
-
-                with ui.column().classes("min-w-36"):
-                    ui.label("Datum od").classes("text-sm font-medium")
-                    ui.input(placeholder="YYYY-MM-DD").classes("w-full").bind_value(
-                        _state, "date_from"
-                    )
-
-                with ui.column().classes("min-w-36"):
-                    ui.label("Datum do").classes("text-sm font-medium")
-                    ui.input(placeholder="YYYY-MM-DD").classes("w-full").bind_value(
-                        _state, "date_to"
-                    )
-
-                ui.button("Hladat", on_click=_state.search).classes("bg-blue-700 text-white")
-
-        results_view()
+    """Split-panel search page."""
+    with layout(current_path="/"):
+        with ui.row().classes("w-full h-full gap-4"):
+            with ui.column().classes("w-72 flex-shrink-0 h-full"):
+                list_view()
+            with ui.column().classes("flex-1 h-full"):
+                with ui.card().classes("w-full h-full p-4"):
+                    detail_view()
