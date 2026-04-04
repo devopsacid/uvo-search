@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SuppliersState:
+    """Search parameters and results for supplier search."""
+
     query: str = ""
     results: list[dict[str, Any]] = field(default_factory=list)
     total: int = 0
