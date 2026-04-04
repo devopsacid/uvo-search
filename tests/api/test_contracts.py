@@ -1,7 +1,8 @@
 # tests/api/test_contracts.py
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
 
 from uvo_api.app import create_app
 

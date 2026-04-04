@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from nicegui.testing import User
 
-
 MOCK_RESULTS = {
     "items": [
         {
