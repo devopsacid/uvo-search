@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from uvo_api.config import ApiSettings
+from uvo_api.routers import contracts
 
 
 def create_app() -> FastAPI:
@@ -27,5 +28,6 @@ def create_app() -> FastAPI:
     async def health() -> dict:
         return {"status": "ok", "service": "uvo-api"}
 
-    # Routers registered in later tasks
+    app.include_router(contracts.router)
+
     return app
