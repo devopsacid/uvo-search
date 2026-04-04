@@ -7,7 +7,8 @@ from uvo_api.app import create_app
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    monkeypatch.setenv("API_MCP_SERVER_URL", "http://localhost:8000/mcp")
     app = create_app()
     return TestClient(app)
 

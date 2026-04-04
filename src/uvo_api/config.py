@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 
 
 class ApiSettings(BaseSettings):
-    mcp_server_url: str = "http://localhost:8000/mcp"
+    mcp_server_url: str
     host: str = "0.0.0.0"
     port: int = 8001
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
