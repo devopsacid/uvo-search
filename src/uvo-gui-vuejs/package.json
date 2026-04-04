@@ -1,0 +1,32 @@
+{
+  "name": "uvo-gui-vuejs",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.12",
+    "vue-chartjs": "^5.3.3",
+    "vue-i18n": "^9.14.5",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@vue/test-utils": "^2.4.6",
+    "autoprefixer": "^10.4.27",
+    "happy-dom": "^20.8.9",
+    "jsdom": "^29.0.1",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.6.2",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.9",
+    "vue-tsc": "^2.1.8"
+  }
+}

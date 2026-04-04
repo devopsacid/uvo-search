@@ -1,9 +1,9 @@
 """Tests for the split-panel search page."""
+
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from nicegui.testing import User
-
 
 MOCK_RESULTS = {
     "items": [
@@ -25,6 +25,7 @@ MOCK_RESULTS = {
 @pytest.mark.asyncio
 async def test_search_page_shows_search_form(user: User) -> None:
     import uvo_gui.pages.search  # noqa: F401
+
     await user.open("/")
     await user.should_see("Hľadať zákazku")
     await user.should_see("Hľadať")
@@ -33,6 +34,7 @@ async def test_search_page_shows_search_form(user: User) -> None:
 @pytest.mark.asyncio
 async def test_search_page_shows_empty_state(user: User) -> None:
     import uvo_gui.pages.search  # noqa: F401
+
     await user.open("/")
     await user.should_see("Vyberte zákazku zo zoznamu")
 
@@ -40,6 +42,7 @@ async def test_search_page_shows_empty_state(user: User) -> None:
 @pytest.mark.asyncio
 async def test_search_page_shows_results_after_search(user: User) -> None:
     import uvo_gui.pages.search  # noqa: F401
+
     with patch(
         "uvo_gui.mcp_client.call_tool",
         new_callable=AsyncMock,
@@ -54,6 +57,7 @@ async def test_search_page_shows_results_after_search(user: User) -> None:
 @pytest.mark.asyncio
 async def test_search_page_shows_detail_on_click(user: User) -> None:
     import uvo_gui.pages.search  # noqa: F401
+
     with patch(
         "uvo_gui.mcp_client.call_tool",
         new_callable=AsyncMock,

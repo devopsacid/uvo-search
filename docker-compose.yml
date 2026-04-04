@@ -19,6 +19,43 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      API_MCP_SERVER_URL: http://mcp-server:8000/mcp
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  admin-gui:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin-gui
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
   gui:
     build:
       context: .

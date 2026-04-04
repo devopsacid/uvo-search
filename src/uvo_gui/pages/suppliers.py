@@ -69,7 +69,9 @@ def suppliers_view() -> None:
     with ui.grid(columns=3).classes("w-full gap-4"):
         for item in _state.results:
             with ui.card().classes("w-full"):
-                ui.label(item.get("nazov", "-")).classes("text-sm font-semibold text-slate-800 mb-1")
+                ui.label(item.get("nazov", "-")).classes(
+                    "text-sm font-semibold text-slate-800 mb-1"
+                )
                 ui.label(f"IČO: {item.get('ico', '-')}").classes("text-xs text-slate-400 mb-2")
                 ui.label(f"Zákazky: {item.get('zakazky_count', '-')}").classes(
                     "text-xs text-slate-500"

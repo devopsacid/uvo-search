@@ -94,9 +94,9 @@ def list_view() -> None:
         with ui.row().classes("w-full gap-2 mb-2"):
             ui.input(placeholder="Od dátumu").classes("flex-1").bind_value(_state, "date_from")
             ui.input(placeholder="Do dátumu").classes("flex-1").bind_value(_state, "date_to")
-        ui.button("Hľadať", on_click=_state.search).classes(
-            "w-full bg-blue-700 text-white"
-        ).props("no-caps")
+        ui.button("Hľadať", on_click=_state.search).classes("w-full bg-blue-700 text-white").props(
+            "no-caps"
+        )
 
     if _state.loading:
         with ui.row().classes("justify-center py-6"):
@@ -115,9 +115,8 @@ def list_view() -> None:
     with ui.scroll_area().classes("flex-1"):
         for item in _state.results:
             selected = _state.selected and _state.selected.get("id") == item.get("id")
-            card_classes = (
-                "w-full mb-1 cursor-pointer border-l-4 "
-                + ("border-blue-600 bg-blue-50" if selected else "border-transparent hover:bg-slate-50")
+            card_classes = "w-full mb-1 cursor-pointer border-l-4 " + (
+                "border-blue-600 bg-blue-50" if selected else "border-transparent hover:bg-slate-50"
             )
             with ui.card().classes(card_classes):
                 ui.label(item.get("nazov", "-")).classes(

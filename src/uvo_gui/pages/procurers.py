@@ -63,7 +63,9 @@ def procurers_view() -> None:
     with ui.grid(columns=3).classes("w-full gap-4"):
         for item in _state.results:
             with ui.card().classes("w-full"):
-                ui.label(item.get("nazov", "-")).classes("text-sm font-semibold text-slate-800 mb-2")
+                ui.label(item.get("nazov", "-")).classes(
+                    "text-sm font-semibold text-slate-800 mb-2"
+                )
                 ui.label(f"Zákazky: {item.get('zakazky_count', '-')}").classes(
                     "text-xs text-slate-500"
                 )
@@ -80,7 +82,9 @@ async def procurers_page() -> None:
         with ui.column().classes("w-full p-4 gap-4"):
             ui.label("Obstaravatelia").classes("text-xl font-semibold text-slate-800")
             with ui.card().classes("w-full max-w-lg"):
-                ui.label("Hľadať obstarávateľa").classes("text-sm font-semibold text-slate-700 mb-2")
+                ui.label("Hľadať obstarávateľa").classes(
+                    "text-sm font-semibold text-slate-700 mb-2"
+                )
                 with ui.row().classes("w-full gap-2"):
                     ui.input(placeholder="Názov organizácie...").classes("flex-1").bind_value(
                         _state, "query"
