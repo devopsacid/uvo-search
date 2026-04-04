@@ -16,8 +16,9 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
-    pool: {
-      threads: false,
+    pool: 'forks',
+    poolOptions: {
+      forks: { singleFork: true },
     },
   },
 })
