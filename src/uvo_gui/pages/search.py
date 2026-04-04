@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -118,7 +119,7 @@ def list_view() -> None:
                 "w-full mb-1 cursor-pointer border-l-4 "
                 + ("border-blue-600 bg-blue-50" if selected else "border-transparent hover:bg-slate-50")
             )
-            with ui.card().classes(card_classes).on("click", lambda i=item: _state.select(i)):
+            with ui.card().classes(card_classes):
                 ui.label(item.get("nazov", "-")).classes(
                     "text-sm font-semibold " + ("text-blue-700" if selected else "text-slate-800")
                 ).on("click", lambda i=item: _state.select(i))
@@ -137,12 +138,12 @@ def list_view() -> None:
     with ui.row().classes("items-center justify-between mt-2"):
         ui.button(
             "← Predch.",
-            on_click=lambda: ui.timer(0, lambda: _state.goto_page(_state.page - 1), once=True),
+            on_click=lambda: asyncio.ensure_future(_state.goto_page(_state.page - 1)),
         ).props("flat no-caps").classes("text-xs").set_enabled(_state.page > 1)
         ui.label(f"{_state.page} / {_state.total_pages}").classes("text-xs text-slate-500")
         ui.button(
             "Ďalšia →",
-            on_click=lambda: ui.timer(0, lambda: _state.goto_page(_state.page + 1), once=True),
+            on_click=lambda: asyncio.ensure_future(_state.goto_page(_state.page + 1)),
         ).props("flat no-caps").classes("text-xs text-blue-600").set_enabled(
             _state.page < _state.total_pages
         )
