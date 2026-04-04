@@ -1,0 +1,106 @@
+{
+  "03000000": {
+    "sk": "Poľnohospodárske, lesné, rybolovné produkty a súvisiace výrobky",
+    "en": "Agricultural, forestry, fishing products and related products"
+  },
+  "09000000": {
+    "sk": "Ropné výrobky, palivo, elektrina a iné zdroje energie",
+    "en": "Petroleum products, fuel, electricity and other sources of energy"
+  },
+  "30000000": {
+    "sk": "Pojazdné a машины",
+    "en": "Transport equipment and auxiliary products to transportation"
+  },
+  "30200000": {
+    "sk": "Pozemné vozidlá vrátane základných dielov a príslušenstva",
+    "en": "Land vehicles including component and spare parts"
+  },
+  "33000000": {
+    "sk": "Lekárske zariadenie, zdravotnícke potreby, farmaceutické produkty",
+    "en": "Medical equipments, pharmaceutical products"
+  },
+  "39150000": {
+    "sk": "Čistiace a hygienické služby",
+    "en": "Cleaning and hygiene services"
+  },
+  "45000000": {
+    "sk": "Stavebnictvo a stavebné práce",
+    "en": "Construction work"
+  },
+  "45100000": {
+    "sk": "Stavebné práce na budovách",
+    "en": "Building and related construction work"
+  },
+  "45200000": {
+    "sk": "Stavebné práce na stavbách mimo budov",
+    "en": "Civil engineering work"
+  },
+  "45300000": {
+    "sk": "Špecializované stavebné práce",
+    "en": "Specialized construction works"
+  },
+  "50000000": {
+    "sk": "Opravy a inštalácia strojov a zariadení",
+    "en": "Repair and installation services of machinery and equipment"
+  },
+  "55000000": {
+    "sk": "Hotelové a reštauračné služby a súvisiace služby",
+    "en": "Hotel and restaurant and catering services"
+  },
+  "60000000": {
+    "sk": "Dopravné služby",
+    "en": "Transport services by land, water, air"
+  },
+  "65000000": {
+    "sk": "Finančné a poisťovacie služby",
+    "en": "Financial and insurance services"
+  },
+  "66000000": {
+    "sk": "Nehnuteľnosti, prenájom a sprostredkovateľské služby",
+    "en": "Real estate services"
+  },
+  "70000000": {
+    "sk": "Profesionálne služby: právne a účtovné služby",
+    "en": "Professional services: legal services, management consultancy"
+  },
+  "71000000": {
+    "sk": "Architektonické, stavebné, inžinierske a podobné služby",
+    "en": "Architectural and engineering services"
+  },
+  "72000000": {
+    "sk": "Služby IT a súvisiace služby",
+    "en": "IT services: computer programming, consultancy and related services"
+  },
+  "79000000": {
+    "sk": "Pracovné agentúry, personalistické služby a iné služby",
+    "en": "Business and management consultancy services; related services"
+  },
+  "80000000": {
+    "sk": "Vzdelávanie a odborná príprava",
+    "en": "Education and training services"
+  },
+  "80100000": {
+    "sk": "Základné a stredné vzdelanie",
+    "en": "Primary and secondary education services"
+  },
+  "80200000": {
+    "sk": "Vysokoškolské vzdelanie a vzdelávanie dospelých",
+    "en": "Higher education services"
+  },
+  "85000000": {
+    "sk": "Zdravotná a veterinárna starostlivosť a sociálne služby",
+    "en": "Health and social services"
+  },
+  "85100000": {
+    "sk": "Zdravotné služby",
+    "en": "Health services"
+  },
+  "85200000": {
+    "sk": "Sociálne služby a pomoc",
+    "en": "Social services"
+  },
+  "90000000": {
+    "sk": "Kanalizácia, likvidácia odpadu, služby týkajúce sa čistoty a ochrany životného prostredia",
+    "en": "Sewage, waste, water and environmental services"
+  }
+}
