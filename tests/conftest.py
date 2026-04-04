@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+pytest_plugins = ["nicegui.testing.general_fixtures"]
+
 import httpx
 import pytest
 import respx

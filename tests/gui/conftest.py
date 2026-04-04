@@ -7,8 +7,6 @@ import pytest
 from nicegui.testing import User
 from nicegui.testing.user_simulation import user_simulation
 
-pytest_plugins = ["nicegui.testing.general_fixtures"]
-
 LAYOUT_TEST_APP = Path(__file__).parent / "layout_test_app.py"
 
 
