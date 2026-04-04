@@ -1,7 +1,7 @@
 """Shared Quasar layout shell — sidebar + page container."""
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from nicegui import ui
 

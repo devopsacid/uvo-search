@@ -3,7 +3,6 @@
 
 from pydantic import BaseModel
 
-
 # --- Shared ---
 
 class PaginationMeta(BaseModel):
