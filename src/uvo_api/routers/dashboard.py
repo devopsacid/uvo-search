@@ -172,13 +172,15 @@ async def by_cpv(
     shares = []
     for code, value in sorted(by_cpv.items(), key=lambda x: x[1], reverse=True):
         label = labels.get(code, {"sk": code, "en": code})
-        shares.append(CpvShare(
-            cpv_code=code,
-            label_sk=label.get("sk", code),
-            label_en=label.get("en", code),
-            total_value=value,
-            percentage=round(value / total * 100, 1),
-        ))
+        shares.append(
+            CpvShare(
+                cpv_code=code,
+                label_sk=label.get("sk", code),
+                label_en=label.get("en", code),
+                total_value=value,
+                percentage=round(value / total * 100, 1),
+            )
+        )
     return shares
 
 

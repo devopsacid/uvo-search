@@ -115,7 +115,9 @@ async def get_procurer_summary(ico: str) -> ProcurerSummary:
         contract_count=count,
         total_spend=total_spend,
         avg_value=total_spend / count if count else 0,
-        spend_by_year=[SpendByYear(year=y, total_value=v) for y, v in sorted(spend_by_year.items())],
+        spend_by_year=[
+            SpendByYear(year=y, total_value=v) for y, v in sorted(spend_by_year.items())
+        ],
     )
 
 
@@ -139,7 +141,9 @@ async def get_procurer_detail(ico: str) -> ProcurerDetail:
 
     top_suppliers = sorted(
         [
-            SupplierRelation(ico=k, name=v["name"], contract_count=v["count"], total_value=v["value"])
+            SupplierRelation(
+                ico=k, name=v["name"], contract_count=v["count"], total_value=v["value"]
+            )
             for k, v in supplier_totals.items()
         ],
         key=lambda x: x.total_value,

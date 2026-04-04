@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 # --- Shared ---
 
+
 class PaginationMeta(BaseModel):
     total: int
     limit: int
@@ -12,6 +13,7 @@ class PaginationMeta(BaseModel):
 
 
 # --- Dashboard ---
+
 
 class DashboardDelta(BaseModel):
     value: float
@@ -65,6 +67,7 @@ class RecentContract(BaseModel):
 
 # --- Contracts ---
 
+
 class ContractRow(BaseModel):
     id: str
     title: str
@@ -89,6 +92,7 @@ class ContractListResponse(BaseModel):
 
 
 # --- Suppliers ---
+
 
 class SupplierCard(BaseModel):
     ico: str
@@ -130,6 +134,7 @@ class SupplierSummary(BaseModel):
 
 
 # --- Procurers ---
+
 
 class ProcurerCard(BaseModel):
     ico: str

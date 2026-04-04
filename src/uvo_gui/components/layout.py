@@ -32,9 +32,7 @@ def layout(current_path: str = "/") -> Generator[None, None, None]:
         ui.label("Navigácia").classes("text-xs font-semibold text-slate-400 uppercase px-3 mb-2")
         for icon, label, path in NAV_ITEMS:
             active = current_path == path
-            classes = (
-                "flex items-center gap-2 px-3 py-2 rounded-md text-sm mb-1 cursor-pointer w-full text-left "
-            )
+            classes = "flex items-center gap-2 px-3 py-2 rounded-md text-sm mb-1 cursor-pointer w-full text-left "
             if active:
                 classes += "bg-blue-100 text-blue-700 font-medium"
             else:

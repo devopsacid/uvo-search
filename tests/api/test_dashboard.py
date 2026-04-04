@@ -32,7 +32,12 @@ SAMPLE_CONTRACTS = {
 
 SAMPLE_SUPPLIERS = {
     "data": [
-        {"ico": "87654321", "nazov": "Tech Corp", "pocet_zakaziek": 10, "celkova_hodnota": 5000000.0},
+        {
+            "ico": "87654321",
+            "nazov": "Tech Corp",
+            "pocet_zakaziek": 10,
+            "celkova_hodnota": 5000000.0,
+        },
         {"ico": "22222222", "nazov": "Build Co", "pocet_zakaziek": 5, "celkova_hodnota": 2000000.0},
     ],
     "total": 2,
@@ -40,7 +45,12 @@ SAMPLE_SUPPLIERS = {
 
 SAMPLE_PROCURERS = {
     "data": [
-        {"ico": "12345678", "nazov": "Ministry", "pocet_zakaziek": 15, "celkova_hodnota": 8000000.0},
+        {
+            "ico": "12345678",
+            "nazov": "Ministry",
+            "pocet_zakaziek": 15,
+            "celkova_hodnota": 8000000.0,
+        },
     ],
     "total": 1,
 }
@@ -54,9 +64,15 @@ def client(monkeypatch):
 
 
 def test_dashboard_summary(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(side_effect=[
-        SAMPLE_CONTRACTS, SAMPLE_SUPPLIERS,
-    ])):
+    with patch(
+        "uvo_api.routers.dashboard.call_tool",
+        new=AsyncMock(
+            side_effect=[
+                SAMPLE_CONTRACTS,
+                SAMPLE_SUPPLIERS,
+            ]
+        ),
+    ):
         response = client.get("/api/dashboard/summary")
     assert response.status_code == 200
     body = response.json()

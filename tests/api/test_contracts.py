@@ -32,7 +32,9 @@ def client(monkeypatch):
 
 
 def test_list_contracts_returns_paginated_response(client):
-    with patch("uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)):
+    with patch(
+        "uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)
+    ):
         response = client.get("/api/contracts")
     assert response.status_code == 200
     body = response.json()
@@ -44,7 +46,9 @@ def test_list_contracts_returns_paginated_response(client):
 
 
 def test_list_contracts_maps_fields_correctly(client):
-    with patch("uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)):
+    with patch(
+        "uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)
+    ):
         response = client.get("/api/contracts")
     row = response.json()["data"][0]
     assert row["title"] == "IT Infrastructure"
@@ -57,7 +61,9 @@ def test_list_contracts_maps_fields_correctly(client):
 
 
 def test_list_contracts_empty_result(client):
-    with patch("uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=EMPTY_MCP_RESPONSE)):
+    with patch(
+        "uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=EMPTY_MCP_RESPONSE)
+    ):
         response = client.get("/api/contracts")
     assert response.status_code == 200
     assert response.json()["data"] == []
@@ -82,6 +88,9 @@ def test_get_contract_detail_returns_detail(client):
 
 
 def test_get_contract_detail_not_found(client):
-    with patch("uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value={"error": "not found", "status_code": 404})):
+    with patch(
+        "uvo_api.routers.contracts.call_tool",
+        new=AsyncMock(return_value={"error": "not found", "status_code": 404}),
+    ):
         response = client.get("/api/contracts/9999")
     assert response.status_code == 404

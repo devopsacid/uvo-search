@@ -210,7 +210,7 @@ class TestAdminGuiService:
 
     def test_spa_index_html(self, docker_compose_up):
         resp = httpx.get(ADMIN_GUI_URL, timeout=10, follow_redirects=True)
-        assert "<div id=\"app\">" in resp.text
+        assert '<div id="app">' in resp.text
 
     def test_spa_fallback_routing(self, docker_compose_up):
         """Nginx SPA fallback: deep routes should return the index, not 404."""

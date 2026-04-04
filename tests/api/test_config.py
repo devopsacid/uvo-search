@@ -9,5 +9,6 @@ def test_default_port():
 def test_mcp_server_url_required():
     import pytest
     from pydantic import ValidationError
+
     with pytest.raises(ValidationError):
         ApiSettings()

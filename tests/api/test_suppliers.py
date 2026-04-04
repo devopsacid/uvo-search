@@ -8,7 +8,12 @@ from uvo_api.app import create_app
 
 SAMPLE_SUPPLIER_RESPONSE = {
     "data": [
-        {"ico": "87654321", "nazov": "Tech Corp", "pocet_zakaziek": 10, "celkova_hodnota": 5000000.0},
+        {
+            "ico": "87654321",
+            "nazov": "Tech Corp",
+            "pocet_zakaziek": 10,
+            "celkova_hodnota": 5000000.0,
+        },
         {"ico": "11111111", "nazov": "Build Co", "pocet_zakaziek": 5, "celkova_hodnota": 2000000.0},
     ],
     "total": 2,
@@ -38,7 +43,9 @@ def client(monkeypatch):
 
 
 def test_list_suppliers(client):
-    with patch("uvo_api.routers.suppliers.call_tool", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)):
+    with patch(
+        "uvo_api.routers.suppliers.call_tool", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)
+    ):
         response = client.get("/api/suppliers")
     assert response.status_code == 200
     body = response.json()
@@ -50,7 +57,9 @@ def test_list_suppliers(client):
 
 
 def test_list_suppliers_search_by_name(client):
-    with patch("uvo_api.routers.suppliers.call_tool", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)) as mock:
+    with patch(
+        "uvo_api.routers.suppliers.call_tool", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)
+    ) as mock:
         client.get("/api/suppliers?q=Tech")
     mock.assert_called_once()
     args = mock.call_args[0][1]
@@ -58,17 +67,34 @@ def test_list_suppliers_search_by_name(client):
 
 
 def test_list_suppliers_search_by_ico(client):
-    with patch("uvo_api.routers.suppliers.call_tool", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)) as mock:
+    with patch(
+        "uvo_api.routers.suppliers.call_tool", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)
+    ) as mock:
         client.get("/api/suppliers?ico=87654321")
     args = mock.call_args[0][1]
     assert args.get("ico") == "87654321"
 
 
 def test_get_supplier_detail(client):
-    with patch("uvo_api.routers.suppliers.call_tool", new=AsyncMock(side_effect=[
-        {"data": [{"ico": "87654321", "nazov": "Tech Corp", "pocet_zakaziek": 1, "celkova_hodnota": 500000.0}], "total": 1},
-        SAMPLE_CONTRACTS_FOR_SUPPLIER,
-    ])):
+    with patch(
+        "uvo_api.routers.suppliers.call_tool",
+        new=AsyncMock(
+            side_effect=[
+                {
+                    "data": [
+                        {
+                            "ico": "87654321",
+                            "nazov": "Tech Corp",
+                            "pocet_zakaziek": 1,
+                            "celkova_hodnota": 500000.0,
+                        }
+                    ],
+                    "total": 1,
+                },
+                SAMPLE_CONTRACTS_FOR_SUPPLIER,
+            ]
+        ),
+    ):
         response = client.get("/api/suppliers/87654321")
     assert response.status_code == 200
     body = response.json()
@@ -79,10 +105,25 @@ def test_get_supplier_detail(client):
 
 
 def test_get_supplier_summary(client):
-    with patch("uvo_api.routers.suppliers.call_tool", new=AsyncMock(side_effect=[
-        {"data": [{"ico": "87654321", "nazov": "Tech Corp", "pocet_zakaziek": 1, "celkova_hodnota": 500000.0}], "total": 1},
-        SAMPLE_CONTRACTS_FOR_SUPPLIER,
-    ])):
+    with patch(
+        "uvo_api.routers.suppliers.call_tool",
+        new=AsyncMock(
+            side_effect=[
+                {
+                    "data": [
+                        {
+                            "ico": "87654321",
+                            "nazov": "Tech Corp",
+                            "pocet_zakaziek": 1,
+                            "celkova_hodnota": 500000.0,
+                        }
+                    ],
+                    "total": 1,
+                },
+                SAMPLE_CONTRACTS_FOR_SUPPLIER,
+            ]
+        ),
+    ):
         response = client.get("/api/suppliers/87654321/summary")
     assert response.status_code == 200
     body = response.json()
@@ -92,6 +133,8 @@ def test_get_supplier_summary(client):
 
 
 def test_get_supplier_not_found(client):
-    with patch("uvo_api.routers.suppliers.call_tool", new=AsyncMock(return_value={"data": [], "total": 0})):
+    with patch(
+        "uvo_api.routers.suppliers.call_tool", new=AsyncMock(return_value={"data": [], "total": 0})
+    ):
         response = client.get("/api/suppliers/00000000")
     assert response.status_code == 404
