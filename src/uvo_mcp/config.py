@@ -15,4 +15,11 @@ class Settings(BaseSettings):
     request_timeout: float = 30.0
     max_page_size: int = 100
 
+    # Database connections (optional — enables DB query path when set)
+    mongodb_uri: str | None = None
+    mongodb_database: str = "uvo_search"
+    neo4j_uri: str | None = None
+    neo4j_user: str = "neo4j"
+    neo4j_password: str | None = None
+
     model_config = {"env_file": ".env", "env_prefix": "", "extra": "ignore"}

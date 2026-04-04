@@ -16,3 +16,4 @@ htmlcov/
 .coverage
 .python-version
 .ruff_cache/
+.worktrees/

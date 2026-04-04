@@ -3,7 +3,8 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -19,19 +20,49 @@ logger = logging.getLogger(__name__)
 class AppContext:
     http_client: httpx.AsyncClient
     settings: Settings
+    mongo_db: Any | None = field(default=None)      # AsyncIOMotorDatabase when connected
+    neo4j_driver: Any | None = field(default=None)  # neo4j.AsyncDriver when connected
 
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     settings = Settings()
+
+    mongo_db = None
+    mongo_client = None
+    if settings.mongodb_uri:
+        from motor.motor_asyncio import AsyncIOMotorClient
+        mongo_client = AsyncIOMotorClient(settings.mongodb_uri)
+        mongo_db = mongo_client[settings.mongodb_database]
+        logger.info("MongoDB connected: %s", settings.mongodb_database)
+
+    neo4j_driver = None
+    if settings.neo4j_uri and settings.neo4j_password:
+        from neo4j import AsyncGraphDatabase
+        neo4j_driver = AsyncGraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+        )
+        logger.info("Neo4j connected: %s", settings.neo4j_uri)
+
     async with httpx.AsyncClient(
         base_url=settings.uvostat_base_url,
         headers={"ApiToken": settings.uvostat_api_token},
         timeout=settings.request_timeout,
     ) as client:
         logger.info("MCP server starting, httpx client ready")
-        yield AppContext(http_client=client, settings=settings)
+        yield AppContext(
+            http_client=client,
+            settings=settings,
+            mongo_db=mongo_db,
+            neo4j_driver=neo4j_driver,
+        )
         logger.info("MCP server shutting down")
+
+    if mongo_client:
+        mongo_client.close()
+    if neo4j_driver:
+        await neo4j_driver.close()
 
 
 mcp = FastMCP(
@@ -45,6 +76,7 @@ mcp = FastMCP(
 
 import uvo_mcp.tools.procurements  # noqa: F401, E402
 import uvo_mcp.tools.subjects  # noqa: F401, E402
+import uvo_mcp.tools.graph  # noqa: F401, E402
 
 
 @mcp.custom_route("/health", methods=["GET"], name="health_check")
