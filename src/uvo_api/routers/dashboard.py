@@ -68,7 +68,7 @@ async def dashboard_summary(
     total = contracts_result.get("total", len(contracts))
 
     total_value = sum(float(c.get("hodnota_zmluvy") or 0) for c in contracts)
-    avg_value = total_value / total if total else 0
+    avg_value = total_value / len(contracts) if contracts else 0
 
     suppliers_result = await call_tool("find_supplier", {"limit": 1})
     active_suppliers = suppliers_result.get("total", 0)

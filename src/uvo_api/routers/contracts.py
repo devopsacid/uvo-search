@@ -74,6 +74,9 @@ async def list_contracts(
         rows = [r for r in rows if r.value >= value_min]
     if value_max is not None:
         rows = [r for r in rows if r.value <= value_max]
+    # When client-side filtering was applied, total reflects the filtered count
+    if value_min is not None or value_max is not None:
+        total = len(rows)
 
     return ContractListResponse(
         data=rows,
