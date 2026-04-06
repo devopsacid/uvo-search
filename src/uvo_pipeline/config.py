@@ -11,7 +11,7 @@ class PipelineSettings(BaseSettings):
     ekosystem_base_url: str = "https://datahub.ekosystem.slovensko.digital"
     ekosystem_api_token: str = ""
     ted_base_url: str = "https://api.ted.europa.eu"
-    ckan_base_url: str = "https://data.gov.sk"
+    ckan_base_url: str = "https://data.slovensko.sk"  # NOTE: CKAN API no longer available here
 
     # Databases (required for pipeline)
     mongodb_uri: str = "mongodb://uvo:changeme@mongo:27017"

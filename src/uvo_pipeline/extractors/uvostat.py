@@ -86,7 +86,7 @@ async def _paginate(
         payload = response.json()
         items: list[dict] = payload.get("data", [])
         if total is None:
-            total = payload.get("total", 0)
+            total = payload.get("summary", {}).get("total_records", 0)
 
         logger.info(
             "Fetched %s offset=%d limit=%d — got %d items (total=%d)",

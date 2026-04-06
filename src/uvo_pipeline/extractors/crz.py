@@ -1,11 +1,15 @@
 """CRZ (Central Register of Contracts) extractor.
 
 Fetches contracts from the Ekosystem CRZ API:
-  - Sync endpoint:    GET /api/datahub/crz/sync?since=<ISO>  → list of modified IDs
-  - Contract detail:  GET /api/data/crz/contracts/:id        → one contract dict
+  - Sync endpoint:    GET /api/data/crz/contracts/sync?since=<ISO>  → paginated contract objects
+  - Contract detail:  GET /api/data/crz/contracts/:id               → one contract dict
+
+The sync endpoint returns full contract objects directly (not just IDs).
+Pagination is cursor-based via the Link header (rel='next') or last_id param.
 """
 
 import logging
+import re
 from datetime import date
 from typing import AsyncIterator
 
@@ -15,8 +19,9 @@ from uvo_pipeline.utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
-_SYNC_PATH = "/api/datahub/crz/sync"
-_CONTRACT_PATH = "/api/data/crz/contracts/{id}"
+_SYNC_PATH = "/api/data/crz/contracts/sync"
+
+_LINK_NEXT_RE = re.compile(r'<([^>]+)>;\s*rel=["\']next["\']')
 
 
 async def fetch_contracts_since(
@@ -29,65 +34,52 @@ async def fetch_contracts_since(
 ) -> AsyncIterator[dict]:
     """Yield CRZ contract dicts for all contracts modified since *since*.
 
-    Steps:
-      1. GET /api/datahub/crz/sync?since=<ISO> to obtain a list of modified IDs.
-      2. For each ID, call GET /api/data/crz/contracts/:id (rate-limited).
-      3. Yield the raw contract dict.
-
-    If the sync endpoint fails, log the error and stop iteration.
-    If a single contract fetch fails, log a warning and continue.
+    Paginates the sync endpoint using Link header cursor.
+    If the sync endpoint fails, logs the error and stops iteration.
     """
-    # --- Build sync request params ---
     params: dict = {}
     if since is not None:
         params["since"] = since.isoformat()
     if api_token:
         params["access_token"] = api_token
 
-    try:
-        response = await client.get(_SYNC_PATH, params=params)
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        logger.error(
-            "CRZ sync endpoint returned HTTP %s: %s",
-            exc.response.status_code,
-            exc.response.text[:200],
-        )
-        return
-    except httpx.RequestError as exc:
-        logger.error("CRZ sync request failed: %s", exc)
-        return
+    url: str | None = _SYNC_PATH
+    page = 0
 
-    data = response.json()
-    # The API returns either {"ids": [...]} or a plain list
-    if isinstance(data, dict):
-        ids: list = data.get("ids", [])
-    else:
-        ids = list(data)
-
-    logger.info("CRZ sync returned %d contract IDs", len(ids))
-
-    for contract_id in ids:
-        detail_params: dict = {}
-        if api_token:
-            detail_params["access_token"] = api_token
-
+    while url is not None:
         await rate_limiter.acquire()
         try:
-            detail_response = await client.get(
-                _CONTRACT_PATH.format(id=contract_id),
-                params=detail_params if detail_params else None,
-            )
-            detail_response.raise_for_status()
+            if page == 0:
+                response = await client.get(url, params=params)
+            else:
+                # Subsequent pages: url is already the full next URL from Link header
+                response = await client.get(url)
+            response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            logger.warning(
-                "CRZ contract %s returned HTTP %s — skipping",
-                contract_id,
+            logger.error(
+                "CRZ sync endpoint returned HTTP %s: %s",
                 exc.response.status_code,
+                exc.response.text[:200],
             )
-            continue
+            return
         except httpx.RequestError as exc:
-            logger.warning("CRZ contract %s request failed: %s — skipping", contract_id, exc)
-            continue
+            logger.error("CRZ sync request failed: %s", exc)
+            return
 
-        yield detail_response.json()
+        contracts = response.json()
+        if not isinstance(contracts, list):
+            contracts = contracts.get("data", []) if isinstance(contracts, dict) else []
+
+        logger.info("CRZ sync page %d: %d contracts", page, len(contracts))
+
+        for contract in contracts:
+            yield contract
+
+        # Follow Link: <url>; rel='next' for pagination
+        link_header = response.headers.get("Link", "")
+        match = _LINK_NEXT_RE.search(link_header)
+        url = match.group(1) if match else None
+        page += 1
+
+        if not contracts:
+            break

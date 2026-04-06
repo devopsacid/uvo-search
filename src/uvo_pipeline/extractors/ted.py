@@ -2,6 +2,11 @@
 
 Fetches Slovak procurement notices from the TED API v3:
   POST https://api.ted.europa.eu/v3/notices/search
+
+API v3 changes from v2:
+  - Query syntax: use `buyer-country = SVK` (not `CY=[SVK]`)
+  - Fields: use descriptive kebab-case names (not old abbreviated codes like ND, PD, CY)
+  - Response: `totalNoticeCount` (not `total`)
 """
 
 import logging
@@ -13,17 +18,29 @@ import httpx
 logger = logging.getLogger(__name__)
 
 _SEARCH_PATH = "/v3/notices/search"
-_FIELDS = ["ND", "PD", "TI", "CY", "OC", "AC", "TV", "ON", "WIN", "ND_OJ"]
+_FIELDS = [
+    "publication-number",
+    "publication-date",
+    "notice-title",
+    "buyer-country",
+    "buyer-name",
+    "classification-cpv",
+    "contract-nature",
+    "tender-value",
+    "tender-value-cur",
+    "notice-type",
+    "winner-name",
+    "ojs-number",
+]
 
 
 def _build_query(date_from: date | None, date_to: date | None) -> str:
-    """Build TED search query string for Slovak notices."""
-    base = "ND=[24,25] AND CY=[SVK]"
+    """Build TED v3 search query string for Slovak notices."""
+    base = "buyer-country = SVK"
     if date_from is not None:
-        # TED date format is YYYYMMDD
-        base += f" AND PD>=[{date_from.strftime('%Y%m%d')}]"
+        base += f" AND publication-date >= {date_from.strftime('%Y%m%d')}"
     if date_to is not None:
-        base += f" AND PD<=[{date_to.strftime('%Y%m%d')}]"
+        base += f" AND publication-date <= {date_to.strftime('%Y%m%d')}"
     return base
 
 
@@ -66,7 +83,7 @@ async def search_sk_notices(
 
         data = response.json()
         notices: list[dict] = data.get("notices", [])
-        total: int = data.get("total", 0)
+        total: int = data.get("totalNoticeCount", 0)
 
         logger.debug("TED page %d: %d notices (total=%d)", page, len(notices), total)
 

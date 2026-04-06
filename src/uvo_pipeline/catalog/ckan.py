@@ -1,4 +1,10 @@
-"""CKAN catalog discovery — finds Vestník XML packages on data.gov.sk."""
+"""CKAN catalog discovery — finds Vestník XML packages on the Slovak open data portal.
+
+NOTE: data.gov.sk has been replaced by a React SPA at data.slovensko.sk that no longer
+exposes a CKAN API. All requests to the CKAN endpoint will return HTML, so this module
+currently yields nothing and logs a warning. The extractor is kept in place for when
+an alternative API is identified.
+"""
 
 import logging
 from collections.abc import AsyncIterator
@@ -19,67 +25,18 @@ async def discover_vestnik_packages(
     from_date: date | None = None,
     max_packages: int = 500,
 ) -> AsyncIterator[dict]:
-    """Yield CKAN dataset dicts for Vestník packages from data.gov.sk.
+    """Yield CKAN dataset dicts for Vestník packages.
 
-    Paginates using start/rows. Filters by metadata_modified >= from_date if given.
-    Stops when results are exhausted or max_packages is reached.
+    Currently disabled: data.gov.sk has been replaced by a React SPA that no longer
+    exposes a CKAN API. Logs a warning and yields nothing until a replacement is found.
     """
-    yielded = 0
-    start = 0
-
-    while yielded < max_packages:
-        params = {
-            "q": _QUERY,
-            "sort": "metadata_modified desc",
-            "rows": _PAGE_SIZE,
-            "start": start,
-        }
-
-        try:
-            response = await client.get(_SEARCH_PATH, params=params)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            logger.error("CKAN API error at start=%d: %s", start, exc)
-            return
-
-        data = response.json()
-        if not data.get("success"):
-            logger.error("CKAN API returned success=false: %s", data)
-            return
-
-        results = data.get("result", {}).get("results", [])
-        if not results:
-            logger.debug("CKAN: no more results at start=%d", start)
-            return
-
-        for package in results:
-            if yielded >= max_packages:
-                return
-
-            if from_date is not None:
-                modified_str = package.get("metadata_modified", "")
-                if modified_str:
-                    try:
-                        modified_date = date.fromisoformat(modified_str[:10])
-                        if modified_date < from_date:
-                            logger.debug(
-                                "CKAN: package %s modified %s before from_date %s, stopping",
-                                package.get("name"),
-                                modified_date,
-                                from_date,
-                            )
-                            return
-                    except (ValueError, TypeError):
-                        pass
-
-            yield package
-            yielded += 1
-
-        start += _PAGE_SIZE
-
-        # If we got fewer results than a full page, we've exhausted the catalog
-        if len(results) < _PAGE_SIZE:
-            return
+    logger.warning(
+        "CKAN Vestník source is unavailable: data.gov.sk has been replaced by "
+        "data.slovensko.sk which no longer exposes a CKAN API endpoint. "
+        "Skipping Vestník XML extraction."
+    )
+    return
+    yield  # make this an async generator
 
 
 async def extract_zip_urls(ckan_dataset: dict) -> list[str]:

@@ -143,7 +143,11 @@ async def run(
 
         # Step 3: UVOstat extraction
         logger.info("Extracting from UVOstat (from=%s)...", from_date)
-        uvostat_headers = {"ApiToken": settings.uvostat_api_token}
+        uvostat_headers = {
+            "ApiToken": settings.uvostat_api_token,
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+        }
         async with httpx.AsyncClient(
             base_url=settings.uvostat_base_url,
             headers=uvostat_headers,
