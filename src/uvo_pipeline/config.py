@@ -6,8 +6,6 @@ from pydantic_settings import BaseSettings
 
 class PipelineSettings(BaseSettings):
     # Source APIs
-    uvostat_api_token: str
-    uvostat_base_url: str = "https://www.uvostat.sk"
     ekosystem_base_url: str = "https://datahub.ekosystem.slovensko.digital"
     ekosystem_api_token: str = ""
     ted_base_url: str = "https://api.ted.europa.eu"

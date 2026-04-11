@@ -34,7 +34,7 @@ async def _search_mongo_procurements(
     if cpv_codes:
         filter_["cpv_code"] = {"$in": cpv_codes}
     if procurer_id:
-        filter_["procurer.uvostat_id"] = procurer_id
+        filter_["procurer.ico"] = procurer_id
     if supplier_ico:
         filter_["awards.supplier.ico"] = supplier_ico
     if date_from:

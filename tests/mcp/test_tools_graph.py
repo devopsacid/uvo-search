@@ -15,7 +15,7 @@ def make_ctx(neo4j_driver=None):
     from uvo_mcp.config import Settings
     from uvo_mcp.server import AppContext
 
-    settings = Settings(uvostat_api_token="test", storage_secret="test")
+    settings = Settings(storage_secret="test")
     ctx = MagicMock()
     ctx.request_context.lifespan_context = AppContext(
         http_client=MagicMock(),

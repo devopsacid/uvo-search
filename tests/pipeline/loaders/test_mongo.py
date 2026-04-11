@@ -13,7 +13,7 @@ from uvo_pipeline.models import (
 
 def _notice(source_id: str = "test-1", title: str = "Test notice") -> CanonicalNotice:
     return CanonicalNotice(
-        source="uvostat",
+        source="vestnik",
         source_id=source_id,
         notice_type="contract_award",
         title=title,
@@ -41,7 +41,7 @@ async def test_upsert_notice_inserts_new(mock_mongo_db):
     assert doc_id is not None
     stored = await mock_mongo_db.notices.find_one({"source_id": "new-1"})
     assert stored["title"] == "Brand new notice"
-    assert stored["source"] == "uvostat"
+    assert stored["source"] == "vestnik"
 
 
 @pytest.mark.asyncio

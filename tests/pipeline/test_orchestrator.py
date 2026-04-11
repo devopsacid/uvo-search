@@ -14,9 +14,9 @@ async def test_cross_source_dedup_finds_matches(mock_mongo_db):
 
     procurer = CanonicalProcurer(ico="12345678", name="Ministry", name_slug="ministry")
 
-    notice_uvostat = CanonicalNotice(
-        source="uvostat",
-        source_id="uvo-1",
+    notice_crz = CanonicalNotice(
+        source="crz",
+        source_id="crz-1",
         notice_type="contract_award",
         title="IT procurement",
         procurer=procurer,
@@ -35,7 +35,7 @@ async def test_cross_source_dedup_finds_matches(mock_mongo_db):
         pipeline_run_id=run_id,
     )
 
-    await upsert_notice(mock_mongo_db, notice_uvostat)
+    await upsert_notice(mock_mongo_db, notice_crz)
     await upsert_notice(mock_mongo_db, notice_vestnik)
 
     match_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
@@ -56,8 +56,8 @@ async def test_cross_source_dedup_ignores_same_source(mock_mongo_db):
 
     for i in range(2):
         notice = CanonicalNotice(
-            source="uvostat",
-            source_id=f"uvo-same-{i}",
+            source="vestnik",
+            source_id=f"vest-same-{i}",
             notice_type="contract_award",
             title=f"Procurement {i}",
             procurer=procurer,

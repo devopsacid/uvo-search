@@ -1,6 +1,6 @@
 """Canonical intermediate data schema for the ETL pipeline.
 
-All four data sources (Vestník XML, UVOstat, CRZ, TED) normalize their
+All data sources (Vestník XML, CRZ, TED) normalize their
 raw data to these models before writing to MongoDB or Neo4j.
 """
 
@@ -29,12 +29,11 @@ class CanonicalOrganisation(BaseModel):
 
 
 class CanonicalProcurer(CanonicalOrganisation):
-    uvostat_id: str | None = None
     organisation_type: str | None = None
 
 
 class CanonicalSupplier(CanonicalOrganisation):
-    uvostat_id: str | None = None
+    pass
 
 
 class CanonicalAward(BaseModel):
@@ -49,7 +48,7 @@ class CanonicalNotice(BaseModel):
     """One procurement notice/contract award, source-independent."""
 
     # Deduplication: (source, source_id) is the primary unique key
-    source: Literal["vestnik", "uvostat", "crz", "ted"]
+    source: Literal["vestnik", "crz", "ted"]
     source_id: str
 
     notice_type: Literal[

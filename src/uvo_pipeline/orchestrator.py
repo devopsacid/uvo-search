@@ -13,12 +13,10 @@ from neo4j import AsyncGraphDatabase
 
 from uvo_pipeline.catalog.ckan import discover_vestnik_packages, extract_zip_urls
 from uvo_pipeline.config import PipelineSettings
-from uvo_pipeline.extractors.uvostat import fetch_all_procurements, fetch_announced_procurements
 from uvo_pipeline.extractors.vestnik_xml import parse_xml_file
 from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
 from uvo_pipeline.models import PipelineReport
-from uvo_pipeline.transformers.uvostat import transform_announced, transform_procurement
 from uvo_pipeline.transformers.vestnik import transform_notice as transform_vestnik_notice
 from uvo_pipeline.utils.checkpoint import get_checkpoint, save_checkpoint
 from uvo_pipeline.utils.zip_handler import download_zip, extract_xml_files
@@ -140,40 +138,6 @@ async def run(
 
         # Collect notices from all active sources
         all_notices = []
-
-        # Step 3: UVOstat extraction
-        logger.info("Extracting from UVOstat (from=%s)...", from_date)
-        uvostat_headers = {
-            "ApiToken": settings.uvostat_api_token,
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "application/json",
-        }
-        async with httpx.AsyncClient(
-            base_url=settings.uvostat_base_url,
-            headers=uvostat_headers,
-            timeout=settings.request_timeout,
-        ) as uvostat_client:
-            uvostat_count = 0
-            async for raw in fetch_all_procurements(uvostat_client, date_from=from_date):
-                try:
-                    notice = transform_procurement(raw)
-                    notice.pipeline_run_id = run_id
-                    all_notices.append(notice)
-                    uvostat_count += 1
-                except Exception as exc:
-                    logger.warning("UVOstat transform error: %s — raw id=%s", exc, raw.get("id"))
-
-            async for raw in fetch_announced_procurements(uvostat_client, date_from=from_date):
-                try:
-                    notice = transform_announced(raw)
-                    notice.pipeline_run_id = run_id
-                    all_notices.append(notice)
-                    uvostat_count += 1
-                except Exception as exc:
-                    logger.warning("UVOstat announced transform error: %s", exc)
-
-            report.source_counts["uvostat"] = uvostat_count
-            logger.info("UVOstat: %d notices extracted", uvostat_count)
 
         # Step 6: Vestník XML extractor
         logger.info("Extracting from Vestník XML via CKAN catalog...")
