@@ -76,3 +76,17 @@ def test_pipeline_report_has_notices_skipped():
     from uvo_pipeline.models import PipelineReport
     r = PipelineReport(run_id="x", mode="recent", started_at=datetime.utcnow())
     assert r.notices_skipped == 0
+
+
+@pytest.mark.asyncio
+async def test_ensure_indexes_creates_ingested_docs_indexes(mock_mongo_db):
+    """ensure_indexes must create required indexes on ingested_docs collection."""
+    from uvo_pipeline.loaders.mongo import ensure_indexes
+
+    await ensure_indexes(mock_mongo_db)
+
+    index_names = await mock_mongo_db.ingested_docs.index_information()
+    assert "source_source_id_unique" in index_names
+    assert index_names["source_source_id_unique"]["unique"] is True
+    assert "pipeline_run_id" in index_names
+    assert "source_ingested_at_desc" in index_names
