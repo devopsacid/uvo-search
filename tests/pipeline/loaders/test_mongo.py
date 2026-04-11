@@ -73,7 +73,7 @@ async def test_upsert_batch_idempotent(mock_mongo_db):
     await upsert_batch(mock_mongo_db, notices)
     result2 = await upsert_batch(mock_mongo_db, notices)
     assert result2["inserted"] == 0
-    assert result2["updated"] == 3
+    assert result2["skipped"] == 3
 
     count = await mock_mongo_db.notices.count_documents({})
     assert count == 3
