@@ -70,6 +70,7 @@ class CanonicalNotice(BaseModel):
 
     cpv_code: str | None = None
     cpv_codes_additional: list[str] = []
+    title_slug: str | None = None
     nuts_code: str | None = None
 
     estimated_value: float | None = None
@@ -86,6 +87,7 @@ class CanonicalNotice(BaseModel):
 
     ingested_at: datetime = Field(default_factory=datetime.utcnow)
     pipeline_run_id: str | None = None
+    content_hash: str | None = None
 
 
 class PipelineReport(BaseModel):
@@ -96,5 +98,6 @@ class PipelineReport(BaseModel):
     finished_at: datetime | None = None
     notices_inserted: int = 0
     notices_updated: int = 0
+    notices_skipped: int = 0
     errors: list[str] = []
     source_counts: dict[str, int] = {}

@@ -1,6 +1,7 @@
 """Pipeline orchestrator — coordinates all ETL steps."""
 
 import logging
+import math
 import uuid
 from datetime import datetime, timedelta, date
 from pathlib import Path
@@ -28,49 +29,45 @@ async def _run_cross_source_dedup(db: AsyncIOMotorDatabase, run_id: str) -> int:
     """
     Find notices from different sources that likely refer to the same real-world event.
 
-    Match criteria: same procurer ico + same CPV code + publication_date within 14 days.
+    Pass 1: Match by (procurer.ico, cpv_code) across sources.
+    Pass 2: For notices without ICO, match by (title_slug, publication_date ±7 days) across sources.
 
     For each group of matches:
-    1. Assign a shared canonical_id (the MongoDB _id of the oldest notice in the group as string)
-    2. Update all notices in the group with that canonical_id
+    1. Assign a shared canonical_id (MongoDB _id of oldest notice as string)
+    2. Update all notices with that canonical_id
     3. Write a record to cross_source_matches collection
 
-    Returns number of cross-source match groups found.
+    Returns total number of cross-source match groups found.
     """
-    pipeline = [
-        # Only notices that have both procurer ico and cpv_code set
+    match_count = 0
+
+    # --- Pass 1: procurer.ico + cpv_code ---
+    pipeline_pass1 = [
         {"$match": {
             "procurer.ico": {"$ne": None, "$exists": True},
             "cpv_code": {"$ne": None, "$exists": True},
             "pipeline_run_id": run_id,
         }},
-        # Group by procurer ico + cpv_code
         {"$group": {
             "_id": {"procurer_ico": "$procurer.ico", "cpv_code": "$cpv_code"},
             "notices": {"$push": {"id": "$_id", "source": "$source", "pub_date": "$publication_date"}},
             "sources": {"$addToSet": "$source"},
         }},
-        # Only keep groups with notices from more than one source
         {"$match": {"sources.1": {"$exists": True}}},
     ]
 
-    groups = await db.notices.aggregate(pipeline).to_list(length=None)
-    match_count = 0
+    groups = await db.notices.aggregate(pipeline_pass1).to_list(length=None)
 
     for group in groups:
         notices_in_group = group["notices"]
-        # Sort by publication_date to find anchor (oldest)
         notices_in_group.sort(key=lambda x: x.get("pub_date") or "")
         canonical_id = str(notices_in_group[0]["id"])
         notice_ids = [str(n["id"]) for n in notices_in_group]
 
-        # Update all notices with canonical_id
         await db.notices.update_many(
             {"_id": {"$in": [ObjectId(nid) for nid in notice_ids]}},
             {"$set": {"canonical_id": canonical_id}},
         )
-
-        # Record the match
         await db.cross_source_matches.update_one(
             {"canonical_id": canonical_id},
             {"$set": {
@@ -79,10 +76,98 @@ async def _run_cross_source_dedup(db: AsyncIOMotorDatabase, run_id: str) -> int:
                 "sources": group["sources"],
                 "procurer_ico": group["_id"]["procurer_ico"],
                 "cpv_code": group["_id"]["cpv_code"],
+                "match_type": "ico_cpv",
             }},
             upsert=True,
         )
         match_count += 1
+
+    # --- Pass 2: title_slug + publication_date ±7 days (for notices without ICO) ---
+    # Fetch ICO-less notices from this run that have a title_slug and no canonical_id yet
+    ico_less = await db.notices.find({
+        "pipeline_run_id": run_id,
+        "title_slug": {"$ne": None, "$exists": True},
+        "canonical_id": None,
+        "$or": [
+            {"procurer.ico": None},
+            {"procurer.ico": {"$exists": False}},
+        ],
+    }).to_list(length=None)
+
+    # Group by title_slug
+    from collections import defaultdict
+    by_slug: dict[str, list] = defaultdict(list)
+    for n in ico_less:
+        slug = n.get("title_slug")
+        if slug:
+            by_slug[slug].append(n)
+
+    for slug, slug_notices in by_slug.items():
+        if len(slug_notices) < 2:
+            continue
+
+        # Find clusters within ±7 days of each other, across different sources
+        slug_notices.sort(key=lambda x: x.get("publication_date") or "")
+
+        processed: set[str] = set()
+        for i, anchor in enumerate(slug_notices):
+            if str(anchor["_id"]) in processed:
+                continue
+
+            anchor_date_str = anchor.get("publication_date")
+            if not anchor_date_str:
+                continue
+
+            try:
+                from datetime import date as date_type
+                anchor_date = date_type.fromisoformat(str(anchor_date_str))
+            except (ValueError, TypeError):
+                continue
+
+            cluster = [anchor]
+            cluster_sources = {anchor["source"]}
+
+            for other in slug_notices[i + 1:]:
+                if str(other["_id"]) in processed:
+                    continue
+                if other["source"] == anchor["source"]:
+                    continue
+                other_date_str = other.get("publication_date")
+                if not other_date_str:
+                    continue
+                try:
+                    other_date = date_type.fromisoformat(str(other_date_str))
+                except (ValueError, TypeError):
+                    continue
+                if abs((other_date - anchor_date).days) <= 7:
+                    cluster.append(other)
+                    cluster_sources.add(other["source"])
+
+            if len(cluster_sources) < 2:
+                continue  # Same source duplicates — not cross-source
+
+            cluster.sort(key=lambda x: x.get("publication_date") or "")
+            canonical_id = str(cluster[0]["_id"])
+            notice_ids = [str(n["_id"]) for n in cluster]
+
+            await db.notices.update_many(
+                {"_id": {"$in": [ObjectId(nid) for nid in notice_ids]}},
+                {"$set": {"canonical_id": canonical_id}},
+            )
+            await db.cross_source_matches.update_one(
+                {"canonical_id": canonical_id},
+                {"$set": {
+                    "canonical_id": canonical_id,
+                    "notice_ids": notice_ids,
+                    "sources": list(cluster_sources),
+                    "title_slug": slug,
+                    "match_type": "title_slug_date",
+                }},
+                upsert=True,
+            )
+            for n in cluster:
+                processed.add(str(n["_id"]))
+            match_count += 1
 
     return match_count
 
@@ -226,7 +311,7 @@ async def run(
         from uvo_pipeline.transformers.uvo import transform_notice as transform_uvo_notice
 
         logger.info("Extracting from UVO.gov.sk (from=%s)...", from_date)
-        uvo_rate_limiter = RateLimiter(rate=settings.uvo_rate_limit, per=1.0)
+        uvo_rate_limiter = RateLimiter(rate=max(1, math.ceil(settings.uvo_rate_limit)), per=1.0)
         uvo_count = 0
         uvo_to_date = datetime.utcnow().date()
 
@@ -303,10 +388,16 @@ async def run(
         logger.info("ITMS: %d procurements extracted", itms_count)
 
         if all_notices:
+            # Compute content hashes before writing
+            from uvo_pipeline.utils.hashing import compute_notice_hash
+            for notice in all_notices:
+                notice.content_hash = compute_notice_hash(notice)
+
             # Write to MongoDB
             mongo_result = await upsert_batch(db, all_notices, batch_size=settings.batch_size)
             report.notices_inserted = mongo_result["inserted"]
             report.notices_updated = mongo_result["updated"]
+            report.notices_skipped = mongo_result["skipped"]
             if mongo_result["errors"]:
                 report.errors.append(f"MongoDB: {mongo_result['errors']} upsert errors")
 
@@ -331,8 +422,8 @@ async def run(
             report.source_counts["cross_source_matches"] = match_groups
 
         logger.info(
-            "Pipeline run %s complete: %d inserted, %d updated",
-            run_id, report.notices_inserted, report.notices_updated,
+            "Pipeline run %s complete: %d inserted, %d updated, %d skipped",
+            run_id, report.notices_inserted, report.notices_updated, report.notices_skipped,
         )
 
     except Exception as exc:
