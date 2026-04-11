@@ -115,7 +115,6 @@ def _parse_listing_row(row: Tag) -> dict | None:
             "status": status,
             "estimated_value": estimated_value,
             "detail_url": detail_url,
-            "notice_type_raw": None,  # refined from detail page if available
         }
     except Exception as exc:
         logger.warning("UVO: failed to parse listing row: %s", exc)
@@ -133,7 +132,6 @@ def _parse_detail_page(html: str) -> dict:
         "final_value": None,
         "award_date": None,
         "currency": None,
-        "notice_type_raw": None,
     }
     try:
         soup = BeautifulSoup(html, "lxml")
@@ -193,26 +191,41 @@ async def fetch_notices(
             params["date_to"] = to_date.strftime("%d.%m.%Y")
         params["date_from"] = from_date.strftime("%d.%m.%Y")
 
-        await rate_limiter.acquire()
-        try:
-            response = await client.get(
-                _LISTING_PATH,
-                params=params,
-                headers={"User-Agent": _USER_AGENT},
-            )
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in (429, 503):
-                logger.warning(
-                    "UVO: HTTP %s on page %d, backing off",
-                    exc.response.status_code, page,
+        # Bounded retry with exponential backoff
+        max_retries = 3
+        last_exc = None
+        response = None
+        for attempt in range(max_retries):
+            await rate_limiter.acquire()
+            try:
+                response = await client.get(
+                    _LISTING_PATH,
+                    params=params,
+                    headers={"User-Agent": _USER_AGENT},
                 )
-                await asyncio.sleep(30)
-                continue
-            logger.error("UVO: HTTP %s on listing page %d", exc.response.status_code, page)
-            return
-        except httpx.RequestError as exc:
-            logger.error("UVO: request error on listing page %d: %s", page, exc)
+                response.raise_for_status()
+                last_exc = None
+                break
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (429, 503):
+                    backoff = 10 * (2 ** attempt)
+                    logger.warning(
+                        "UVO: HTTP %s on page %d (attempt %d/%d), backing off %ds",
+                        exc.response.status_code, page, attempt + 1, max_retries, backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    last_exc = exc
+                else:
+                    logger.error("UVO: HTTP %s on listing page %d", exc.response.status_code, page)
+                    return
+            except httpx.RequestError as exc:
+                logger.error("UVO: request error on listing page %d: %s", page, exc)
+                return
+
+        if last_exc is not None:
+            logger.error(
+                "UVO: page %d still failing after %d retries, aborting", page, max_retries
+            )
             return
 
         soup = BeautifulSoup(response.text, "lxml")

@@ -2,7 +2,6 @@
 
 import logging
 
-import httpx
 from mcp.server.fastmcp import Context
 
 from uvo_mcp.server import AppContext, mcp
@@ -70,36 +69,15 @@ async def find_procurer(
 ) -> dict:
     """Search for contracting authorities (procurers) in the Slovak UVO registry."""
     app_ctx = _get_app_context(ctx)
-
-    if app_ctx.mongo_db is not None:
-        return await _search_mongo_procurers(
-            app_ctx.mongo_db,
-            name_query=name_query,
-            ico=ico,
-            limit=min(limit, app_ctx.settings.max_page_size),
-            offset=max(offset, 0),
-        )
-
-    params: dict = {
-        "limit": min(limit, app_ctx.settings.max_page_size),
-        "offset": max(offset, 0),
-    }
-    if name_query:
-        params["text"] = name_query
-    if ico:
-        params["ico"] = ico
-
-    try:
-        response = await app_ctx.http_client.get("/api/obstaravatelia", params=params)
-        response.raise_for_status()
-        return response.json()
-    except httpx.HTTPStatusError as exc:
-        return {
-            "error": f"API returned HTTP {exc.response.status_code}",
-            "status_code": exc.response.status_code,
-        }
-    except httpx.HTTPError as exc:
-        return {"error": f"Connection error: {exc}", "status_code": 0}
+    if app_ctx.mongo_db is None:
+        return {"error": "MongoDB not configured", "status_code": 503}
+    return await _search_mongo_procurers(
+        app_ctx.mongo_db,
+        name_query=name_query,
+        ico=ico,
+        limit=min(limit, app_ctx.settings.max_page_size),
+        offset=max(offset, 0),
+    )
 
 
 @mcp.tool()
@@ -112,33 +90,12 @@ async def find_supplier(
 ) -> dict:
     """Search for suppliers (awarded contractors) in the Slovak UVO registry."""
     app_ctx = _get_app_context(ctx)
-
-    if app_ctx.mongo_db is not None:
-        return await _search_mongo_suppliers(
-            app_ctx.mongo_db,
-            name_query=name_query,
-            ico=ico,
-            limit=min(limit, app_ctx.settings.max_page_size),
-            offset=max(offset, 0),
-        )
-
-    params: dict = {
-        "limit": min(limit, app_ctx.settings.max_page_size),
-        "offset": max(offset, 0),
-    }
-    if name_query:
-        params["text"] = name_query
-    if ico:
-        params["ico"] = ico
-
-    try:
-        response = await app_ctx.http_client.get("/api/dodavatelia", params=params)
-        response.raise_for_status()
-        return response.json()
-    except httpx.HTTPStatusError as exc:
-        return {
-            "error": f"API returned HTTP {exc.response.status_code}",
-            "status_code": exc.response.status_code,
-        }
-    except httpx.HTTPError as exc:
-        return {"error": f"Connection error: {exc}", "status_code": 0}
+    if app_ctx.mongo_db is None:
+        return {"error": "MongoDB not configured", "status_code": 503}
+    return await _search_mongo_suppliers(
+        app_ctx.mongo_db,
+        name_query=name_query,
+        ico=ico,
+        limit=min(limit, app_ctx.settings.max_page_size),
+        offset=max(offset, 0),
+    )

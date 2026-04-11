@@ -1,7 +1,3 @@
-I cannot write files — I'm in read-only planning mode. I'll output the plan directly as my response, per the instructions.
-
----
-
 # UVO.gov.sk Scraper Integration Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

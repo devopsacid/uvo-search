@@ -143,7 +143,7 @@ def transform_notice(raw: dict) -> CanonicalNotice
 | `"uvo"` | `source` | Literal |
 | `title` | `title` | Stripped |
 | `published_date` | `published_date` | ISO date |
-| `cpv` | `cpv_codes[0]` | First code only |
+| `cpv` | `cpv_code` | First code only |
 | `estimated_value` | `estimated_value` | Float or None |
 | `status` | `status` | Mapped (see below) |
 | `notice_type_raw` | `notice_type` | Mapped (see below) |
@@ -158,7 +158,7 @@ def transform_notice(raw: dict) -> CanonicalNotice
 |---|---|
 | Ukončené / Zmluvne ukončené | `awarded` |
 | Zrušené | `cancelled` |
-| Prebiehajúce / Vyhlásené | `active` |
+| Prebiehajúce / Vyhlásené | `announced` |
 | anything else | `unknown` |
 
 ### Notice type mapping
@@ -168,7 +168,7 @@ def transform_notice(raw: dict) -> CanonicalNotice
 | Zákazka / Verejná zákazka | `contract_notice` |
 | Zmluva / Výsledok | `contract_award` |
 | Predbežné oznámenie | `prior_information` |
-| Oprava | `corrigendum` |
+| Oprava | `other` |
 | anything else | `other` |
 
 ### Missing data
