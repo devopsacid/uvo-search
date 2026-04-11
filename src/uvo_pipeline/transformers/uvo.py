@@ -85,12 +85,14 @@ def _build_awards(raw: dict) -> list[CanonicalAward]:
 def transform_notice(raw: dict) -> CanonicalNotice:
     """Map a raw UVO dict → CanonicalNotice."""
     status = _map_status(raw.get("status"))
+    title = raw.get("title") or "Unnamed notice"
     return CanonicalNotice(
         source="uvo",
         source_id=str(raw["id"]),
         notice_type=_derive_notice_type(status),  # type: ignore[arg-type]
         status=status,  # type: ignore[arg-type]
-        title=raw.get("title") or "Unnamed notice",
+        title=title,
+        title_slug=slugify(title),
         procurer=_build_procurer(raw),
         awards=_build_awards(raw),
         cpv_code=raw.get("cpv"),
