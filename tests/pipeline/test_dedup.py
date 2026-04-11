@@ -160,3 +160,91 @@ def test_pipeline_report_accumulates_skipped():
     r = PipelineReport(run_id="x", mode="recent", started_at=datetime.utcnow())
     r.notices_skipped += 10
     assert r.notices_skipped == 10
+
+
+@pytest.mark.asyncio
+async def test_cross_source_dedup_pass2_matches_by_title_slug(motor_db):
+    """Pass 2 must match notices without ICO by title_slug + pub_date within 7 days."""
+    from datetime import datetime
+    from uvo_pipeline.loaders.mongo import ensure_indexes
+    from uvo_pipeline.orchestrator import _run_cross_source_dedup
+
+    await ensure_indexes(motor_db)
+
+    run_id = "test-run-1"
+    # Two notices from different sources, no ICO, same title, dates 3 days apart
+    await motor_db.notices.insert_many([
+        {
+            "source": "uvo",
+            "source_id": "U-100",
+            "title": "Rekonštrukcia cesty",
+            "title_slug": "rekonstrukcia-cesty",
+            "procurer": {"ico": None, "name": "Obec Test", "name_slug": "obec-test"},
+            "cpv_code": None,
+            "publication_date": "2026-01-10",
+            "pipeline_run_id": run_id,
+            "canonical_id": None,
+        },
+        {
+            "source": "vestnik",
+            "source_id": "V-200",
+            "title": "Rekonštrukcia cesty",
+            "title_slug": "rekonstrukcia-cesty",
+            "procurer": {"ico": None, "name": "Obec Test", "name_slug": "obec-test"},
+            "cpv_code": None,
+            "publication_date": "2026-01-13",
+            "pipeline_run_id": run_id,
+            "canonical_id": None,
+        },
+    ])
+
+    match_count = await _run_cross_source_dedup(motor_db, run_id)
+    assert match_count >= 1
+
+    matched = await motor_db.notices.find(
+        {"pipeline_run_id": run_id, "canonical_id": {"$ne": None}}
+    ).to_list(length=None)
+    assert len(matched) == 2
+    assert matched[0]["canonical_id"] == matched[1]["canonical_id"]
+
+
+@pytest.mark.asyncio
+async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(motor_db):
+    """Pass 2 must NOT match notices with pub_date more than 7 days apart."""
+    from uvo_pipeline.loaders.mongo import ensure_indexes
+    from uvo_pipeline.orchestrator import _run_cross_source_dedup
+
+    await ensure_indexes(motor_db)
+
+    run_id = "test-run-2"
+    await motor_db.notices.insert_many([
+        {
+            "source": "uvo",
+            "source_id": "U-300",
+            "title": "Stavebné práce",
+            "title_slug": "stavebne-prace",
+            "procurer": {"ico": None, "name": "Obec B", "name_slug": "obec-b"},
+            "cpv_code": None,
+            "publication_date": "2026-01-01",
+            "pipeline_run_id": run_id,
+            "canonical_id": None,
+        },
+        {
+            "source": "vestnik",
+            "source_id": "V-400",
+            "title": "Stavebné práce",
+            "title_slug": "stavebne-prace",
+            "procurer": {"ico": None, "name": "Obec B", "name_slug": "obec-b"},
+            "cpv_code": None,
+            "publication_date": "2026-01-20",
+            "pipeline_run_id": run_id,
+            "canonical_id": None,
+        },
+    ])
+
+    await _run_cross_source_dedup(motor_db, run_id)
+
+    unmatched = await motor_db.notices.find(
+        {"pipeline_run_id": run_id, "canonical_id": None}
+    ).to_list(length=None)
+    assert len(unmatched) == 2
