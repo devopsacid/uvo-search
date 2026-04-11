@@ -156,7 +156,7 @@ async def upsert_batch(
                 if reg_entry is None:
                     # New notice — upsert into notices, insert registry entry
                     doc = notice.model_dump(mode="json")
-                    await db.notices.update_one(
+                    result = await db.notices.update_one(
                         {"source": notice.source, "source_id": notice.source_id},
                         {
                             "$set": {k: v for k, v in doc.items() if k != "ingested_at"},
@@ -173,7 +173,10 @@ async def upsert_batch(
                         "pipeline_run_id": notice.pipeline_run_id,
                         "skipped_count": 0,
                     })
-                    inserted += 1
+                    if result.upserted_id is not None:
+                        inserted += 1
+                    else:
+                        updated += 1
 
                 elif reg_entry["content_hash"] == notice.content_hash:
                     # Unchanged — skip upsert, update registry metadata

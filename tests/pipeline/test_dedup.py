@@ -93,61 +93,61 @@ async def test_ensure_indexes_creates_ingested_docs_indexes(mock_mongo_db):
 
 
 @pytest.mark.asyncio
-async def test_upsert_batch_inserts_new_notices(motor_db):
+async def test_upsert_batch_inserts_new_notices(mock_mongo_db):
     from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 
-    await ensure_indexes(motor_db)
+    await ensure_indexes(mock_mongo_db)
     notices = [_make_notice(source_id="N-001"), _make_notice(source_id="N-002")]
-    result = await upsert_batch(motor_db, notices)
+    result = await upsert_batch(mock_mongo_db, notices)
 
     assert result["inserted"] == 2
     assert result["updated"] == 0
     assert result["skipped"] == 0
     assert result["errors"] == 0
 
-    registry_count = await motor_db.ingested_docs.count_documents({})
+    registry_count = await mock_mongo_db.ingested_docs.count_documents({})
     assert registry_count == 2
 
 
 @pytest.mark.asyncio
-async def test_upsert_batch_skips_unchanged_notices(motor_db):
+async def test_upsert_batch_skips_unchanged_notices(mock_mongo_db):
     from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 
-    await ensure_indexes(motor_db)
+    await ensure_indexes(mock_mongo_db)
     notices = [_make_notice(source_id="N-001")]
 
     # First run — insert
-    r1 = await upsert_batch(motor_db, notices)
+    r1 = await upsert_batch(mock_mongo_db, notices)
     assert r1["inserted"] == 1
 
     # Second run — same content, should be skipped
-    r2 = await upsert_batch(motor_db, notices)
+    r2 = await upsert_batch(mock_mongo_db, notices)
     assert r2["inserted"] == 0
     assert r2["updated"] == 0
     assert r2["skipped"] == 1
 
     # skipped_count incremented in registry
-    reg = await motor_db.ingested_docs.find_one({"source": "uvo", "source_id": "N-001"})
+    reg = await mock_mongo_db.ingested_docs.find_one({"source": "uvo", "source_id": "N-001"})
     assert reg["skipped_count"] == 1
 
 
 @pytest.mark.asyncio
-async def test_upsert_batch_updates_changed_notices(motor_db):
+async def test_upsert_batch_updates_changed_notices(mock_mongo_db):
     from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 
-    await ensure_indexes(motor_db)
+    await ensure_indexes(mock_mongo_db)
     n1 = _make_notice(source_id="N-001", title="Original")
-    await upsert_batch(motor_db, [n1])
+    await upsert_batch(mock_mongo_db, [n1])
 
     n2 = _make_notice(source_id="N-001", title="Updated Title")
-    r = await upsert_batch(motor_db, [n2])
+    r = await upsert_batch(mock_mongo_db, [n2])
     assert r["updated"] == 1
     assert r["skipped"] == 0
 
-    doc = await motor_db.notices.find_one({"source": "uvo", "source_id": "N-001"})
+    doc = await mock_mongo_db.notices.find_one({"source": "uvo", "source_id": "N-001"})
     assert doc["title"] == "Updated Title"
 
-    reg = await motor_db.ingested_docs.find_one({"source": "uvo", "source_id": "N-001"})
+    reg = await mock_mongo_db.ingested_docs.find_one({"source": "uvo", "source_id": "N-001"})
     assert reg["content_hash"] != compute_notice_hash(n1)
     assert reg["content_hash"] == compute_notice_hash(n2)
 
@@ -163,17 +163,17 @@ def test_pipeline_report_accumulates_skipped():
 
 
 @pytest.mark.asyncio
-async def test_cross_source_dedup_pass2_matches_by_title_slug(motor_db):
+async def test_cross_source_dedup_pass2_matches_by_title_slug(mock_mongo_db):
     """Pass 2 must match notices without ICO by title_slug + pub_date within 7 days."""
     from datetime import datetime
     from uvo_pipeline.loaders.mongo import ensure_indexes
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
-    await ensure_indexes(motor_db)
+    await ensure_indexes(mock_mongo_db)
 
     run_id = "test-run-1"
     # Two notices from different sources, no ICO, same title, dates 3 days apart
-    await motor_db.notices.insert_many([
+    await mock_mongo_db.notices.insert_many([
         {
             "source": "uvo",
             "source_id": "U-100",
@@ -198,10 +198,10 @@ async def test_cross_source_dedup_pass2_matches_by_title_slug(motor_db):
         },
     ])
 
-    match_count = await _run_cross_source_dedup(motor_db, run_id)
+    match_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
     assert match_count >= 1
 
-    matched = await motor_db.notices.find(
+    matched = await mock_mongo_db.notices.find(
         {"pipeline_run_id": run_id, "canonical_id": {"$ne": None}}
     ).to_list(length=None)
     assert len(matched) == 2
@@ -209,15 +209,15 @@ async def test_cross_source_dedup_pass2_matches_by_title_slug(motor_db):
 
 
 @pytest.mark.asyncio
-async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(motor_db):
+async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(mock_mongo_db):
     """Pass 2 must NOT match notices with pub_date more than 7 days apart."""
     from uvo_pipeline.loaders.mongo import ensure_indexes
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
-    await ensure_indexes(motor_db)
+    await ensure_indexes(mock_mongo_db)
 
     run_id = "test-run-2"
-    await motor_db.notices.insert_many([
+    await mock_mongo_db.notices.insert_many([
         {
             "source": "uvo",
             "source_id": "U-300",
@@ -242,9 +242,9 @@ async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(motor_db):
         },
     ])
 
-    await _run_cross_source_dedup(motor_db, run_id)
+    await _run_cross_source_dedup(mock_mongo_db, run_id)
 
-    unmatched = await motor_db.notices.find(
+    unmatched = await mock_mongo_db.notices.find(
         {"pipeline_run_id": run_id, "canonical_id": None}
     ).to_list(length=None)
     assert len(unmatched) == 2
