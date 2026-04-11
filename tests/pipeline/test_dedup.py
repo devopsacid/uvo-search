@@ -150,3 +150,13 @@ async def test_upsert_batch_updates_changed_notices(motor_db):
     reg = await motor_db.ingested_docs.find_one({"source": "uvo", "source_id": "N-001"})
     assert reg["content_hash"] != compute_notice_hash(n1)
     assert reg["content_hash"] == compute_notice_hash(n2)
+
+
+def test_pipeline_report_accumulates_skipped():
+    """PipelineReport.notices_skipped must be settable and default to 0."""
+    from datetime import datetime
+    from uvo_pipeline.models import PipelineReport
+
+    r = PipelineReport(run_id="x", mode="recent", started_at=datetime.utcnow())
+    r.notices_skipped += 10
+    assert r.notices_skipped == 10
