@@ -3,6 +3,7 @@
 import logging
 import uuid
 from datetime import datetime, timedelta, date
+from itertools import combinations
 from pathlib import Path
 from typing import Literal
 
@@ -282,6 +283,7 @@ async def run(
             mongo_result = await upsert_batch(db, all_notices, batch_size=settings.batch_size)
             report.notices_inserted = mongo_result["inserted"]
             report.notices_updated = mongo_result["updated"]
+            report.notices_skipped = mongo_result["skipped"]
             if mongo_result["errors"]:
                 report.errors.append(f"MongoDB: {mongo_result['errors']} upsert errors")
 
@@ -305,8 +307,8 @@ async def run(
             report.source_counts["cross_source_matches"] = match_groups
 
         logger.info(
-            "Pipeline run %s complete: %d inserted, %d updated",
-            run_id, report.notices_inserted, report.notices_updated,
+            "Pipeline run %s complete: %d inserted, %d updated, %d skipped",
+            run_id, report.notices_inserted, report.notices_updated, report.notices_skipped,
         )
 
     except Exception as exc:
