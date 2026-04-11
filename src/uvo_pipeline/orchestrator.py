@@ -363,6 +363,11 @@ async def run(
         logger.info("UVO: %d notices extracted", uvo_count)
 
         if all_notices:
+            # Compute content hashes before writing
+            from uvo_pipeline.utils.hashing import compute_notice_hash
+            for notice in all_notices:
+                notice.content_hash = compute_notice_hash(notice)
+
             # Write to MongoDB
             mongo_result = await upsert_batch(db, all_notices, batch_size=settings.batch_size)
             report.notices_inserted = mongo_result["inserted"]
