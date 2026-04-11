@@ -44,7 +44,7 @@ async def test_merge_supplier_with_ico(mock_session):
 @pytest.mark.asyncio
 async def test_merge_notice_node(mock_session):
     notice = CanonicalNotice(
-        source="uvostat",
+        source="vestnik",
         source_id="test-123",
         notice_type="contract_award",
         title="Test Notice",

@@ -10,16 +10,17 @@ from uvo_pipeline.extractors.ted import search_sk_notices
 TED_RESPONSE = {
     "notices": [
         {
-            "ND": "25",
-            "PD": "20240615",
-            "TI": {"EN": "IT services"},
-            "OC": ["72000000"],
-            "AC": {"ON": "Ministry"},
-            "TV": {"VALUE": 50000, "CURR": "EUR"},
+            "publication-number": "25",
+            "publication-date": "20240615",
+            "notice-title": "IT services",
+            "classification-cpv": ["72000000"],
+            "buyer-name": "Ministry",
+            "tender-value": 50000,
+            "tender-value-cur": "EUR",
         },
     ],
     "page": 1,
-    "total": 1,
+    "totalNoticeCount": 1,
 }
 
 
@@ -33,7 +34,7 @@ async def test_search_sk_notices_yields_items():
             results = [r async for r in search_sk_notices(client)]
 
     assert len(results) == 1
-    assert results[0]["TI"]["EN"] == "IT services"
+    assert results[0]["notice-title"] == "IT services"
 
 
 @pytest.mark.asyncio
@@ -50,14 +51,14 @@ async def test_search_handles_error():
 async def test_search_paginates():
     """With total > page_size, a second request should be made."""
     page1 = {
-        "notices": [{"ND": "24", "PD": "20240101", "TI": {"EN": "Notice 1"}}],
+        "notices": [{"publication-number": "24", "publication-date": "20240101", "notice-title": "Notice 1"}],
         "page": 1,
-        "total": 2,
+        "totalNoticeCount": 2,
     }
     page2 = {
-        "notices": [{"ND": "24", "PD": "20240102", "TI": {"EN": "Notice 2"}}],
+        "notices": [{"publication-number": "24", "publication-date": "20240102", "notice-title": "Notice 2"}],
         "page": 2,
-        "total": 2,
+        "totalNoticeCount": 2,
     }
     with respx.mock(base_url="https://api.ted.europa.eu") as mock:
         mock.post("/v3/notices/search").mock(
@@ -70,8 +71,8 @@ async def test_search_paginates():
             results = [r async for r in search_sk_notices(client, page_size=1)]
 
     assert len(results) == 2
-    assert results[0]["TI"]["EN"] == "Notice 1"
-    assert results[1]["TI"]["EN"] == "Notice 2"
+    assert results[0]["notice-title"] == "Notice 1"
+    assert results[1]["notice-title"] == "Notice 2"
 
 
 @pytest.mark.asyncio

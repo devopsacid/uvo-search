@@ -46,8 +46,6 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         logger.info("Neo4j connected: %s", settings.neo4j_uri)
 
     async with httpx.AsyncClient(
-        base_url=settings.uvostat_base_url,
-        headers={"ApiToken": settings.uvostat_api_token},
         timeout=settings.request_timeout,
     ) as client:
         logger.info("MCP server starting, httpx client ready")
