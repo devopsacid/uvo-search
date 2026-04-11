@@ -26,6 +26,10 @@ class PipelineSettings(BaseSettings):
     batch_size: int = 500
     neo4j_batch_size: int = 100
     crz_rate_limit: int = 55
+    uvo_base_url: str = "https://www.uvo.gov.sk"
+    uvo_rate_limit: float = 1.0
+    uvo_request_delay: float = 0.5
+    uvo_fetch_details: bool = True
     request_timeout: float = 60.0
 
     model_config = {"env_file": ".env", "extra": "ignore"}
