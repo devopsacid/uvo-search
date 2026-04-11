@@ -1,4 +1,4 @@
-"""Tests for the TED transformer."""
+"""Tests for the TED transformer (API v3 field names)."""
 
 from datetime import date
 

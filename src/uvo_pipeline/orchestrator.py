@@ -277,6 +277,31 @@ async def run(
         report.source_counts["uvo"] = uvo_count
         logger.info("UVO: %d notices extracted", uvo_count)
 
+        # Step N: ITMS2014+
+        from uvo_pipeline.extractors.itms import fetch_procurements as fetch_itms_procurements
+        from uvo_pipeline.transformers.itms import transform_procurement as transform_itms
+
+        itms_min_id = int(checkpoint.get("itms_min_id") or 0)
+        logger.info("Extracting from ITMS2014+ (min_id=%d)...", itms_min_id)
+        itms_rate_limiter = RateLimiter(rate=int(settings.itms_rate_limit), per=1.0)
+        itms_count = 0
+        itms_max_seen = itms_min_id - 1  # track highest id yielded for checkpoint
+        async with httpx.AsyncClient(
+            base_url=settings.itms_base_url,
+            timeout=settings.request_timeout,
+        ) as itms_client:
+            async for raw in fetch_itms_procurements(itms_client, itms_rate_limiter, min_id=itms_min_id):
+                try:
+                    notice = transform_itms(raw)
+                    notice.pipeline_run_id = run_id
+                    all_notices.append(notice)
+                    itms_count += 1
+                    itms_max_seen = max(itms_max_seen, int(raw["id"]))
+                except Exception as exc:
+                    logger.warning("ITMS transform error: %s", exc)
+        report.source_counts["itms"] = itms_count
+        logger.info("ITMS: %d procurements extracted", itms_count)
+
         if all_notices:
             # Write to MongoDB
             mongo_result = await upsert_batch(db, all_notices, batch_size=settings.batch_size)
@@ -296,6 +321,7 @@ async def run(
                 "last_mode": mode,
                 "from_date": from_date.isoformat(),
                 "notices_processed": len(all_notices),
+                "itms_min_id": str(itms_max_seen + 1),
             })
 
             # Cross-source deduplication
