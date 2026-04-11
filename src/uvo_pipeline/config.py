@@ -30,6 +30,8 @@ class PipelineSettings(BaseSettings):
     uvo_rate_limit: float = 1.0
     uvo_request_delay: float = 0.5
     uvo_fetch_details: bool = True
+    itms_base_url: str = "https://opendata.itms2014.sk"
+    itms_rate_limit: float = 5.0
     request_timeout: float = 60.0
 
     model_config = {"env_file": ".env", "extra": "ignore"}
