@@ -69,3 +69,18 @@ async def test_cross_source_dedup_ignores_same_source(mock_mongo_db):
 
     match_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
     assert match_count == 0
+
+
+@pytest.mark.asyncio
+async def test_dry_run_completes_without_uvo_error():
+    """dry_run=True should return a report without touching any DB or HTTP."""
+    from uvo_pipeline.orchestrator import run
+    from uvo_pipeline.config import PipelineSettings
+
+    settings = PipelineSettings(
+        uvo_base_url="https://www.uvo.gov.sk",
+        uvo_fetch_details=False,
+    )
+    report = await run("recent", settings=settings, dry_run=True)
+    assert report.finished_at is not None
+    assert report.errors == []
