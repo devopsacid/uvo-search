@@ -248,3 +248,15 @@ async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(motor_db):
         {"pipeline_run_id": run_id, "canonical_id": None}
     ).to_list(length=None)
     assert len(unmatched) == 2
+
+
+def test_notice_hash_set_before_upsert():
+    """Notices must have content_hash set before reaching upsert_batch."""
+    from uvo_pipeline.utils.hashing import compute_notice_hash
+
+    n = _make_notice()
+    assert n.content_hash is None  # default — not set by model
+
+    n.content_hash = compute_notice_hash(n)
+    assert n.content_hash is not None
+    assert n.content_hash.startswith("sha256:")
