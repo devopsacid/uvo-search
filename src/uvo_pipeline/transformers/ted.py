@@ -1,4 +1,14 @@
-"""TED transformer — map raw TED notice dicts to CanonicalNotice."""
+"""TED transformer — map raw TED API v3 notice dicts to CanonicalNotice.
+
+TED API v3 uses kebab-case field names:
+  publication-number  — notice type code (24=contract_notice, 25=contract_award)
+  publication-date    — YYYYMMDD string
+  notice-title        — plain string
+  classification-cpv  — list of CPV code strings
+  buyer-name          — procurer name string
+  tender-value        — numeric value
+  tender-value-cur    — ISO 4217 currency string
+"""
 
 import logging
 from datetime import date
@@ -6,10 +16,8 @@ from datetime import date
 from slugify import slugify
 
 from uvo_pipeline.models import (
-    CanonicalAward,
     CanonicalNotice,
     CanonicalProcurer,
-    CanonicalSupplier,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,40 +44,32 @@ def _parse_ted_date(value: str | None) -> date | None:
 
 
 def transform_ted_notice(raw: dict) -> CanonicalNotice:
-    """Map a raw TED v3 notice dict → CanonicalNotice."""
+    """Map a raw TED API v3 notice dict → CanonicalNotice."""
     nd = str(raw.get("publication-number", ""))
     notice_type = _ND_TO_NOTICE_TYPE.get(nd, "other")
     status = _ND_TO_STATUS.get(nd, "unknown")
 
-    # v3: publication-number is used as the source_id basis
     pub_date_str = raw.get("publication-date", "")
-    ted_id = f"ted-{pub_date_str}-{nd}"
+    ted_id = raw.get("ND_OJ") or f"ted-{pub_date_str}-{nd}"
     source_id = ted_id
 
-    # v3: notice-title is a plain string
     title = raw.get("notice-title") or source_id
 
-    # v3: tender-value / tender-value-cur
     final_value = raw.get("tender-value")
     currency = raw.get("tender-value-cur") or "EUR"
 
-    # v3: classification-cpv is a list
-    cpv_codes = raw.get("classification-cpv") or []
+    cpv_codes: list[str] = raw.get("classification-cpv") or []
     cpv_code = cpv_codes[0] if cpv_codes else None
 
-    # v3: buyer-name is a plain string
     buyer_name = raw.get("buyer-name")
     if buyer_name:
-        procurer = CanonicalProcurer(
+        procurer: CanonicalProcurer | None = CanonicalProcurer(
             name=buyer_name,
             name_slug=slugify(buyer_name),
             sources=["ted"],
         )
     else:
         procurer = None
-
-    # v3: no explicit winner field in basic search results — awards empty for now
-    awards: list[CanonicalAward] = []
 
     return CanonicalNotice(
         source="ted",
@@ -78,7 +78,7 @@ def transform_ted_notice(raw: dict) -> CanonicalNotice:
         status=status,  # type: ignore[arg-type]
         title=title,
         procurer=procurer,
-        awards=awards,
+        awards=[],  # v3 basic search response has no winner field
         final_value=final_value,
         currency=currency,
         cpv_code=cpv_code,
