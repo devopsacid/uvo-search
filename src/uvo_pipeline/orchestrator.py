@@ -226,7 +226,7 @@ async def run(
         from uvo_pipeline.transformers.uvo import transform_notice as transform_uvo_notice
 
         logger.info("Extracting from UVO.gov.sk (from=%s)...", from_date)
-        uvo_rate_limiter = RateLimiter(rate=int(settings.uvo_rate_limit), per=1.0)
+        uvo_rate_limiter = RateLimiter(rate=settings.uvo_rate_limit, per=1.0)
         uvo_count = 0
         uvo_to_date = datetime.utcnow().date()
 

@@ -109,8 +109,8 @@ async def test_uvo_smoke_extractor_to_transformer():
     assert n1.source_id == "11111"
     assert n1.title == "Rekonštrukcia budovy"
     assert n1.status == "awarded"
-    # notice_type_raw is not set in listing HTML; transformer defaults to "other"
-    assert n1.notice_type in ("contract_notice", "other")
+    # notice_type is derived from status: "awarded" → "contract_award"
+    assert n1.notice_type == "contract_award"
     assert n1.procurer is not None
     assert n1.procurer.ico == "00165565"
     assert len(n1.awards) == 1

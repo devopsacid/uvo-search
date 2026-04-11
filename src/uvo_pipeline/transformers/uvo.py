@@ -22,13 +22,6 @@ _STATUS_MAP: dict[str, str] = {
     "vyhlásené": "announced",
 }
 
-_NOTICE_TYPE_MAP: dict[str, str] = {
-    "zákazka": "contract_notice",
-    "verejná zákazka": "contract_notice",
-    "zmluva": "contract_award",
-    "výsledok": "contract_award",
-    "predbežné oznámenie": "prior_information",
-}
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -48,10 +41,13 @@ def _map_status(raw_status: str | None) -> str:
     return _STATUS_MAP.get(raw_status.strip().lower(), "unknown")
 
 
-def _map_notice_type(raw_type: str | None) -> str:
-    if not raw_type:
-        return "other"
-    return _NOTICE_TYPE_MAP.get(raw_type.strip().lower(), "other")
+def _derive_notice_type(status: str | None) -> str:
+    """Infer notice type from status when no explicit type field is available."""
+    if status in ("awarded",):
+        return "contract_award"
+    if status in ("cancelled",):
+        return "cancellation"
+    return "contract_notice"
 
 
 def _build_procurer(raw: dict) -> CanonicalProcurer | None:
@@ -88,11 +84,12 @@ def _build_awards(raw: dict) -> list[CanonicalAward]:
 
 def transform_notice(raw: dict) -> CanonicalNotice:
     """Map a raw UVO dict → CanonicalNotice."""
+    status = _map_status(raw.get("status"))
     return CanonicalNotice(
         source="uvo",
         source_id=str(raw["id"]),
-        notice_type=_map_notice_type(raw.get("notice_type_raw")),  # type: ignore[arg-type]
-        status=_map_status(raw.get("status")),  # type: ignore[arg-type]
+        notice_type=_derive_notice_type(status),  # type: ignore[arg-type]
+        status=status,  # type: ignore[arg-type]
         title=raw.get("title") or "Unnamed notice",
         procurer=_build_procurer(raw),
         awards=_build_awards(raw),

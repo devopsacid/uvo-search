@@ -4,13 +4,15 @@ from datetime import date
 
 from uvo_pipeline.transformers.ted import transform_ted_notice
 
+# v3 field names (kebab-case)
 RAW_CAN = {
-    "ND": "25",
-    "PD": "20240615",
-    "TI": {"EN": "IT services for government"},
-    "OC": ["72000000"],
-    "AC": {"ON": "Ministry of Finance"},
-    "TV": {"VALUE": 50000.0, "CURR": "EUR"},
+    "publication-number": "25",
+    "publication-date": "20240615",
+    "notice-title": "IT services for government",
+    "classification-cpv": ["72000000"],
+    "buyer-name": "Ministry of Finance",
+    "tender-value": 50000.0,
+    "tender-value-cur": "EUR",
 }
 
 
@@ -43,20 +45,20 @@ def test_transform_maps_cpv():
 
 
 def test_transform_cn_notice():
-    raw = {**RAW_CAN, "ND": "24"}
+    raw = {**RAW_CAN, "publication-number": "24"}
     r = transform_ted_notice(raw)
     assert r.notice_type == "contract_notice"
     assert r.status == "announced"
 
 
 def test_transform_handles_missing_title():
-    raw = {**RAW_CAN, "TI": {}}
+    raw = {k: v for k, v in RAW_CAN.items() if k != "notice-title"}
     r = transform_ted_notice(raw)
-    assert r.title is not None  # fallback to source_id
+    assert r.title is not None  # fallback to ted_id
 
 
 def test_transform_unknown_nd():
-    raw = {**RAW_CAN, "ND": "99"}
+    raw = {**RAW_CAN, "publication-number": "99"}
     r = transform_ted_notice(raw)
     assert r.notice_type == "other"
     assert r.status == "unknown"
@@ -68,32 +70,30 @@ def test_transform_maps_procurer():
     assert r.procurer.name == "Ministry of Finance"
 
 
-def test_transform_no_procurer_when_ac_missing():
-    raw = {k: v for k, v in RAW_CAN.items() if k != "AC"}
+def test_transform_no_procurer_when_buyer_name_missing():
+    raw = {k: v for k, v in RAW_CAN.items() if k != "buyer-name"}
     r = transform_ted_notice(raw)
     assert r.procurer is None
 
 
-def test_transform_no_cpv_when_oc_missing():
-    raw = {k: v for k, v in RAW_CAN.items() if k != "OC"}
+def test_transform_no_cpv_when_classification_missing():
+    raw = {k: v for k, v in RAW_CAN.items() if k != "classification-cpv"}
     r = transform_ted_notice(raw)
     assert r.cpv_code is None
 
 
-def test_transform_nd_oj_used_as_source_id():
-    raw = {**RAW_CAN, "ND_OJ": "2024/S 123-456789"}
-    r = transform_ted_notice(raw)
-    assert r.source_id == "2024/S 123-456789"
-    assert r.ted_notice_id == "2024/S 123-456789"
+def test_transform_source_id_constructed_from_date_and_nd():
+    r = transform_ted_notice(RAW_CAN)
+    assert r.source_id == "ted-20240615-25"
+    assert r.ted_notice_id == "ted-20240615-25"
 
 
 def test_transform_missing_date_gives_none():
-    raw = {k: v for k, v in RAW_CAN.items() if k != "PD"}
+    raw = {k: v for k, v in RAW_CAN.items() if k != "publication-date"}
     r = transform_ted_notice(raw)
     assert r.publication_date is None
 
 
-def test_transform_fallback_title_from_other_language():
-    raw = {**RAW_CAN, "TI": {"SK": "IT služby"}}
-    r = transform_ted_notice(raw)
-    assert r.title == "IT služby"
+def test_transform_awards_empty():
+    r = transform_ted_notice(RAW_CAN)
+    assert r.awards == []

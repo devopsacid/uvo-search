@@ -13,7 +13,6 @@ FULL_RAW = {
     "status": "Ukončené",
     "estimated_value": 500000.0,
     "detail_url": "/vestnik-a-registre/vestnik/oznamenie/detail/12345?cHash=abc123",
-    "notice_type_raw": "Zákazka",
     "supplier_name": "Stavby s.r.o.",
     "supplier_ico": "44556677",
     "final_value": 480000.0,
@@ -31,7 +30,7 @@ def test_transform_maps_required_fields():
     assert notice.cpv_code == "45221000-2"
     assert notice.estimated_value == 500000.0
     assert notice.status == "awarded"
-    assert notice.notice_type == "contract_notice"
+    assert notice.notice_type == "contract_award"
 
 
 def test_transform_maps_procurer():
@@ -87,20 +86,19 @@ def test_transform_status_mapping(uvo_status, expected):
     assert notice.status == expected
 
 
-@pytest.mark.parametrize("type_raw,expected", [
-    ("Zákazka", "contract_notice"),
-    ("Verejná zákazka", "contract_notice"),
-    ("Zmluva", "contract_award"),
-    ("Výsledok", "contract_award"),
-    ("Predbežné oznámenie", "prior_information"),
-    ("Oprava", "other"),
-    ("Niečo iné", "other"),
-    (None, "other"),
+@pytest.mark.parametrize("uvo_status,expected_type", [
+    ("Ukončené", "contract_award"),
+    ("Zmluvne ukončené", "contract_award"),
+    ("Zrušené", "cancellation"),
+    ("Prebiehajúce", "contract_notice"),
+    ("Vyhlásené", "contract_notice"),
+    ("Neznámy stav", "contract_notice"),
+    (None, "contract_notice"),
 ])
-def test_transform_notice_type_mapping(type_raw, expected):
-    raw = {**FULL_RAW, "notice_type_raw": type_raw}
+def test_transform_notice_type_mapping(uvo_status, expected_type):
+    raw = {**FULL_RAW, "status": uvo_status}
     notice = transform_notice(raw)
-    assert notice.notice_type == expected
+    assert notice.notice_type == expected_type
 
 
 def test_transform_no_procurer_when_name_missing():

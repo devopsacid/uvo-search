@@ -1,6 +1,6 @@
 """Canonical intermediate data schema for the ETL pipeline.
 
-All data sources (Vestník XML, CRZ, TED) normalize their
+All data sources (Vestník XML, CRZ, TED, UVO) normalize their
 raw data to these models before writing to MongoDB or Neo4j.
 """
 
