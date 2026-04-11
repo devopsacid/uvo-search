@@ -63,3 +63,16 @@ def test_hash_returns_sha256_prefix():
     h = compute_notice_hash(n)
     assert h.startswith("sha256:")
     assert len(h) == len("sha256:") + 64
+
+
+def test_canonical_notice_has_content_hash_field():
+    n = _make_notice()
+    assert hasattr(n, "content_hash")
+    assert n.content_hash is None  # default
+
+
+def test_pipeline_report_has_notices_skipped():
+    from datetime import datetime
+    from uvo_pipeline.models import PipelineReport
+    r = PipelineReport(run_id="x", mode="recent", started_at=datetime.utcnow())
+    assert r.notices_skipped == 0
