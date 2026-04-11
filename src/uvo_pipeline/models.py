@@ -48,7 +48,7 @@ class CanonicalNotice(BaseModel):
     """One procurement notice/contract award, source-independent."""
 
     # Deduplication: (source, source_id) is the primary unique key
-    source: Literal["vestnik", "crz", "ted"]
+    source: Literal["vestnik", "crz", "ted", "uvo"]
     source_id: str
 
     notice_type: Literal[
