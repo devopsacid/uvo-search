@@ -15,7 +15,8 @@ dependencies = [
     "neo4j>=5.0",
     "lxml>=5.0",
     "aiofiles>=23.0",
-    "python-slugify>=8.0"
+    "python-slugify>=8.0",
+    "beautifulsoup4>=4.12",
 ]
 
 [project.optional-dependencies]
