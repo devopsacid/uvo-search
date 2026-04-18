@@ -215,6 +215,21 @@ async def fetch_notices(
                     )
                     await asyncio.sleep(backoff)
                     last_exc = exc
+                elif exc.response.status_code in (301, 302, 303, 307, 308):
+                    location = exc.response.headers.get("location", "")
+                    if "am.uvo.gov.sk" in location or "/oam/" in location:
+                        logger.error(
+                            "UVO: listing endpoint is now behind Oracle Access Manager "
+                            "SSO (redirect to %s). Public scraping is not available; "
+                            "skipping source.",
+                            location[:120],
+                        )
+                    else:
+                        logger.error(
+                            "UVO: unexpected redirect on page %d to %s",
+                            page, location[:120],
+                        )
+                    return
                 else:
                     logger.error("UVO: HTTP %s on listing page %d", exc.response.status_code, page)
                     return
