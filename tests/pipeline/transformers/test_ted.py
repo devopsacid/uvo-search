@@ -97,3 +97,40 @@ def test_transform_missing_date_gives_none():
 def test_transform_awards_empty():
     r = transform_ted_notice(RAW_CAN)
     assert r.awards == []
+
+
+def test_transform_multilingual_title_prefers_slovak():
+    raw = {**RAW_CAN, "notice-title": {"hun": "Szlovákia…", "slk": "IT služby", "eng": "IT services"}}
+    r = transform_ted_notice(raw)
+    assert r.title == "IT služby"
+
+
+def test_transform_multilingual_title_falls_back_to_english():
+    raw = {**RAW_CAN, "notice-title": {"hun": "Szlovákia…", "eng": "IT services"}}
+    r = transform_ted_notice(raw)
+    assert r.title == "IT services"
+
+
+def test_transform_multilingual_title_falls_back_to_any():
+    raw = {**RAW_CAN, "notice-title": {"hun": "Szlovákia…"}}
+    r = transform_ted_notice(raw)
+    assert r.title == "Szlovákia…"
+
+
+def test_transform_multilingual_buyer_name():
+    raw = {**RAW_CAN, "buyer-name": {"slk": "Ministerstvo financií", "eng": "Ministry of Finance"}}
+    r = transform_ted_notice(raw)
+    assert r.procurer is not None
+    assert r.procurer.name == "Ministerstvo financií"
+
+
+def test_transform_iso_date_with_timezone():
+    raw = {**RAW_CAN, "publication-date": "2026-03-13+01:00"}
+    r = transform_ted_notice(raw)
+    assert r.publication_date == date(2026, 3, 13)
+
+
+def test_transform_iso_date_plain():
+    raw = {**RAW_CAN, "publication-date": "2026-03-13"}
+    r = transform_ted_notice(raw)
+    assert r.publication_date == date(2026, 3, 13)

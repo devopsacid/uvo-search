@@ -11,6 +11,7 @@ TED API v3 uses kebab-case field names:
 """
 
 import logging
+import re
 from datetime import date
 
 from slugify import slugify
@@ -31,16 +32,55 @@ _ND_TO_STATUS: dict[str, str] = {
     "25": "awarded",
 }
 
+# Preferred language order when TED returns a multilingual dict like {"slk": ..., "eng": ...}
+_LANG_PREFERENCE = ("slk", "eng", "ces", "deu", "fra")
+
+
+def _pick_lang(value: object) -> str | None:
+    """Collapse TED multilingual fields (dict or list-of-dict) to a single string.
+
+    TED v3 returns some text fields as {"<lang>": "text", ...}. Pick the best
+    available language; fall back to any value. Strings pass through unchanged.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        for item in value:
+            picked = _pick_lang(item)
+            if picked:
+                return picked
+        return None
+    if isinstance(value, dict):
+        for lang in _LANG_PREFERENCE:
+            v = value.get(lang)
+            if isinstance(v, str) and v:
+                return v
+        for v in value.values():
+            if isinstance(v, str) and v:
+                return v
+    return None
+
 
 def _parse_ted_date(value: str | None) -> date | None:
-    """Parse a YYYYMMDD string to a date, returning None on failure."""
+    """Parse a TED date to a Python date, returning None on failure.
+
+    Accepts either legacy compact form 'YYYYMMDD' or ISO 'YYYY-MM-DD' optionally
+    followed by a timezone suffix (e.g. '2026-03-13+01:00').
+    """
     if not value:
         return None
     try:
-        return date(int(value[:4]), int(value[4:6]), int(value[6:8]))
-    except (ValueError, TypeError, IndexError):
-        logger.warning("TED: could not parse date: %r", value)
-        return None
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", value)
+        if m:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        if len(value) >= 8 and value[:8].isdigit():
+            return date(int(value[:4]), int(value[4:6]), int(value[6:8]))
+    except (ValueError, TypeError):
+        pass
+    logger.warning("TED: could not parse date: %r", value)
+    return None
 
 
 def transform_ted_notice(raw: dict) -> CanonicalNotice:
@@ -53,7 +93,7 @@ def transform_ted_notice(raw: dict) -> CanonicalNotice:
     ted_id = raw.get("ND_OJ") or f"ted-{pub_date_str}-{nd}"
     source_id = ted_id
 
-    title = raw.get("notice-title") or source_id
+    title = _pick_lang(raw.get("notice-title")) or source_id
 
     final_value = raw.get("tender-value")
     currency = raw.get("tender-value-cur") or "EUR"
@@ -61,7 +101,7 @@ def transform_ted_notice(raw: dict) -> CanonicalNotice:
     cpv_codes: list[str] = raw.get("classification-cpv") or []
     cpv_code = cpv_codes[0] if cpv_codes else None
 
-    buyer_name = raw.get("buyer-name")
+    buyer_name = _pick_lang(raw.get("buyer-name"))
     if buyer_name:
         procurer: CanonicalProcurer | None = CanonicalProcurer(
             name=buyer_name,
