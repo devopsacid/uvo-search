@@ -17,4 +17,5 @@ htmlcov/
 .python-version
 .ruff_cache/
 .worktrees/
+worktree/
 .claude/
