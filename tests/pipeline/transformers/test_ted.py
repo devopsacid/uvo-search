@@ -134,3 +134,22 @@ def test_transform_iso_date_plain():
     raw = {**RAW_CAN, "publication-date": "2026-03-13"}
     r = transform_ted_notice(raw)
     assert r.publication_date == date(2026, 3, 13)
+
+
+def test_transform_tender_value_as_list_of_strings():
+    raw = {**RAW_CAN, "tender-value": ["12511.72"], "tender-value-cur": ["EUR"]}
+    r = transform_ted_notice(raw)
+    assert r.final_value == 12511.72
+    assert r.currency == "EUR"
+
+
+def test_transform_tender_value_as_scalar_string():
+    raw = {**RAW_CAN, "tender-value": "999.50"}
+    r = transform_ted_notice(raw)
+    assert r.final_value == 999.50
+
+
+def test_transform_publication_date_as_list():
+    raw = {**RAW_CAN, "publication-date": ["2026-03-13+01:00"]}
+    r = transform_ted_notice(raw)
+    assert r.publication_date == date(2026, 3, 13)
