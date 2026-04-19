@@ -46,6 +46,33 @@ UVO Search runs as a **two-process Python application** communicating over HTTP:
 3. **Multiple clients** — Claude Desktop/Code connect via stdio; the GUI connects via HTTP
 4. **Simpler debugging** — isolate data issues from UI issues
 
+### Search stack
+
+Search uses **MongoDB Atlas Local** (`mongodb/mongodb-atlas-local` image) which ships
+with `mongot`, Atlas Search's engine. A `sk_folding` custom analyzer (standard
+tokenizer + `lowercase` + `icuFolding`) is applied to text fields on procurers,
+suppliers, and notices, so queries are case- and diacritic-insensitive. Name
+fields also carry an `autocomplete` (edgeGram) subfield powering the live search
+dropdown.
+
+Supported query patterns in the GUI search box:
+
+- plain words — fuzzy match via autocomplete + full-text scoring
+- `"exact phrase"` — phrase match
+- `fak*`, `fak?lta` — wildcard match
+- empty — list all, paginated and sortable
+
+### Relationship graph
+
+The `/graph` page renders procurer–supplier networks pulled from Neo4j via
+`graph_ego_network` (pick an entity, choose hop depth) and `graph_cpv_network`
+(pick a CPV code + year) MCP tools. Rendering uses `vis-network` loaded from CDN.
+
+### Migrating legacy data
+
+After the image swap, run `scripts/migrate_to_atlas_local.sh` once to copy
+existing data. The MCP server creates Atlas Search indexes on startup.
+
 ## Quick Start
 
 ### Prerequisites

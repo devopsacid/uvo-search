@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from nicegui import ui
@@ -23,7 +23,7 @@ class GraphState:
     ico: str = ""
     max_hops: int = 2
     cpv_code: str = ""
-    year: int = field(default_factory=lambda: datetime.utcnow().year - 1)
+    year: int = field(default_factory=lambda: datetime.now(UTC).year - 1)
     payload: dict[str, Any] = field(default_factory=lambda: {"nodes": [], "edges": []})
     loading: bool = False
     error: str = ""
