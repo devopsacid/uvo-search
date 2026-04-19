@@ -41,22 +41,29 @@ def search_box(
     def dropdown() -> None:
         if not state["results"]:
             return
-        with ui.card().classes("absolute z-50 w-full mt-1 p-0 shadow-lg bg-white"):
+        with ui.card().classes("absolute z-50 w-full mt-1 p-0 uvo-autocomplete"):
             for item in state["results"]:
-                row = ui.row().classes(
-                    "w-full p-2 hover:bg-slate-50 cursor-pointer items-center gap-2"
-                )
+                type_labels = {
+                    "procurer": "OBST.",
+                    "supplier": "DOD.",
+                    "notice": "ZÁZNAM",
+                }
+                row = ui.row().classes("row w-full items-center no-wrap gap-3")
                 with row:
-                    icon = {"procurer": "🏢", "supplier": "🤝", "notice": "📄"}.get(
-                        item["type"], "•"
+                    ui.html(
+                        f'<span class="type">{type_labels.get(item["type"], "·")}</span>'
                     )
-                    ui.label(icon).classes("text-sm")
                     with ui.column().classes("gap-0"):
-                        ui.label(item["label"]).classes(
-                            "text-sm font-semibold text-slate-800"
+                        ui.html(
+                            f'<div style="font-family:\'Fraunces\',serif;font-size:15px;'
+                            f'color:var(--ink);letter-spacing:-0.01em;">'
+                            f'{(item["label"] or "").replace("<","&lt;")}</div>'
                         )
                         if item.get("sublabel"):
-                            ui.label(item["sublabel"]).classes("text-xs text-slate-400")
+                            ui.html(
+                                f'<div class="mono" style="font-size:10px;color:var(--ink-3);">'
+                                f'{(item["sublabel"] or "").replace("<","&lt;")}</div>'
+                            )
                 row.on("click", lambda i=item: asyncio.ensure_future(_handle_select(i)))
 
     async def _handle_select(item: dict) -> None:

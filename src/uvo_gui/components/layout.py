@@ -1,48 +1,59 @@
-"""Shared Quasar layout shell — sidebar + page container."""
+"""Shared editorial layout shell — header + numbered sidebar."""
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from datetime import datetime
 
 from nicegui import ui
 
+from uvo_gui.components.theme import apply_theme
+
 NAV_ITEMS = [
-    ("🔍", "Vyhľadávanie", "/"),
-    ("🏢", "Obstaravatelia", "/procurers"),
-    ("🤝", "Dodavatelia", "/suppliers"),
-    ("🕸️", "Sieť", "/graph"),
-    ("ℹ️", "O aplikácii", "/about"),
+    ("Vyhľadávanie",  "Records",      "/"),
+    ("Obstaravatelia", "Authorities", "/procurers"),
+    ("Dodavatelia",    "Suppliers",   "/suppliers"),
+    ("Sieť",           "Network",     "/graph"),
+    ("O aplikácii",    "Colophon",    "/about"),
 ]
 
 
 @contextmanager
 def layout(current_path: str = "/") -> Generator[None, None, None]:
-    """Render the Quasar app shell (header + sidebar + page container).
+    """Render the editorial app shell (header + sidebar + page container)."""
+    apply_theme()
 
-    Usage::
+    with ui.header().props("elevated=false").classes("uvo-header"):
+        with ui.row().classes("w-full items-center no-wrap px-6 h-full"):
+            with ui.column().classes("gap-0"):
+                ui.label("UVO Search").classes("uvo-wordmark")
+                ui.label("Vestník verejného obstarávania — SK").classes("uvo-kicker")
+            ui.element("div").classes("flex-1")
+            ui.html(
+                f'<span class="uvo-tally">EDITION · <b>{datetime.now():%Y.%m.%d}</b>'
+                f' &nbsp;·&nbsp; VOL. <b>XVII</b></span>'
+            )
 
-        @ui.page("/some-route")
-        async def my_page() -> None:
-            with layout(current_path="/some-route"):
-                ui.label("page content")
-    """
-    with ui.header().classes("bg-white border-b border-slate-200 px-4 h-12 flex items-center"):
-        ui.label("UVO Search").classes("text-blue-700 font-bold text-base")
-        ui.label("Vestník verejného obstarávania").classes("text-slate-400 text-xs ml-2")
+    with ui.left_drawer(value=True).props("bordered=false width=220").classes("uvo-drawer"):
+        ui.html('<div class="uvo-nav-label">Navigácia</div>')
+        for idx, (label, en, path) in enumerate(NAV_ITEMS, start=1):
+            active = "active" if current_path == path else ""
+            node = ui.html(
+                f'<div class="uvo-nav-item {active}">'
+                f'  <span class="num">{idx:02d}</span>'
+                f'  <span>{label}</span>'
+                f'  <span class="num" style="margin-left:auto">{en}</span>'
+                f'</div>'
+            )
+            node.on("click", lambda p=path: ui.navigate.to(p))
+            node.style("cursor: pointer")
 
-    with ui.left_drawer(value=True).classes("bg-white border-r border-slate-200 pt-4 w-48"):
-        ui.label("Navigácia").classes("text-xs font-semibold text-slate-400 uppercase px-3 mb-2")
-        for icon, label, path in NAV_ITEMS:
-            active = current_path == path
-            classes = "flex items-center gap-2 px-3 py-2 rounded-md text-sm mb-1 cursor-pointer w-full text-left "
-            if active:
-                classes += "bg-blue-100 text-blue-700 font-medium"
-            else:
-                classes += "text-slate-500 hover:bg-slate-100"
-            ui.button(
-                f"{icon} {label}",
-                on_click=lambda p=path: ui.navigate.to(p),
-            ).classes(classes).props("flat no-caps")
+        ui.html(
+            '<div class="uvo-drawer-footer">'
+            '  Open archive · maxian.sk'
+            '</div>'
+        )
 
-    # ui.page_container does not exist in NiceGUI 3.9; use column as content wrapper
-    with ui.column().classes("w-full h-full p-4"):
+    with ui.column().classes("w-full h-full").style(
+        "padding: 24px 40px 24px 32px; position: relative; z-index: 1;"
+    ):
         yield
