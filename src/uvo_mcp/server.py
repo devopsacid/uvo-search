@@ -32,9 +32,16 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     mongo_client = None
     if settings.mongodb_uri:
         from motor.motor_asyncio import AsyncIOMotorClient
+
+        from uvo_mcp.search_indexes import ensure_indexes
+
         mongo_client = AsyncIOMotorClient(settings.mongodb_uri)
         mongo_db = mongo_client[settings.mongodb_database]
         logger.info("MongoDB connected: %s", settings.mongodb_database)
+        try:
+            await ensure_indexes(mongo_db)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ensure_indexes failed: %s", exc)
 
     neo4j_driver = None
     if settings.neo4j_uri and settings.neo4j_password:
