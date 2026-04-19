@@ -2,7 +2,14 @@
 
 import pytest
 
-from uvo_mcp.tools.procurements import get_procurement_detail, search_completed_procurements
+from uvo_mcp.tools.procurements import _search_mongo_procurements, get_procurement_detail, search_completed_procurements
+
+
+@pytest.fixture(autouse=True)
+def clear_procurements_cache():
+    _search_mongo_procurements.cache_clear()
+    yield
+    _search_mongo_procurements.cache_clear()
 
 
 class TestSearchCompletedProcurements:
@@ -30,6 +37,26 @@ class TestSearchCompletedProcurements:
 
         assert "error" in result
         assert result["status_code"] == 503
+
+
+from unittest.mock import AsyncMock, MagicMock
+
+
+async def test_pipeline_has_search_match_and_facet():
+    agg = MagicMock()
+    agg.to_list = AsyncMock(
+        return_value=[{"items": [{"_id": "n1", "title": "X"}], "total": [{"count": 1}]}]
+    )
+    db = MagicMock()
+    db.notices.aggregate = MagicMock(return_value=agg)
+
+    out = await _search_mongo_procurements(db, text_query="fakulta", date_from="2024-01-01")
+    assert out["total"] == 1
+    (pipeline,) = db.notices.aggregate.call_args.args
+    assert "$search" in pipeline[0]
+    assert pipeline[1]["$match"]["notice_type"] == "contract_award"
+    assert pipeline[1]["$match"]["publication_date"] == {"$gte": "2024-01-01"}
+    assert "$facet" in pipeline[2]
 
 
 class TestGetProcurementDetail:

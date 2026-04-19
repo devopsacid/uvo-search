@@ -1,21 +1,22 @@
-"""Tests for the split-panel search page."""
+"""Tests for the search page (ui.table + search_box rework)."""
 
+from __future__ import annotations
+
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from nicegui import ui
 from nicegui.testing import User
 
 MOCK_RESULTS = {
     "items": [
         {
-            "id": "1",
-            "nazov": "Stavebné práce",
-            "obstaravatel_nazov": "MV SR",
-            "konecna_hodnota": 120000,
-            "datum_zverejnenia": "2024-01-15",
-            "cpv_kod": "45100000-8",
-            "stav": "Zadaná zákazka",
-            "dodavatelia": [{"nazov": "ACME s.r.o.", "ico": "12345678"}],
+            "_id": "1",
+            "title": "Stavebné práce",
+            "procurer": {"name": "MV SR"},
+            "final_value": 120000,
+            "publication_date": "2024-01-15",
         }
     ],
     "total": 1,
@@ -23,49 +24,39 @@ MOCK_RESULTS = {
 
 
 @pytest.mark.asyncio
-async def test_search_page_shows_search_form(user: User) -> None:
-    import uvo_gui.pages.search  # noqa: F401
+async def test_search_page_lists_all_on_open(user: User) -> None:
+    with patch.dict(os.environ, {"STORAGE_SECRET": "x", "UVOSTAT_API_TOKEN": "dummy"}):
+        with patch(
+            "uvo_gui.mcp_client.call_tool",
+            new_callable=AsyncMock,
+            return_value=MOCK_RESULTS,
+        ):
+            import uvo_gui.pages.search  # noqa: F401
 
-    await user.open("/")
-    await user.should_see("Hľadať zákazku")
-    await user.should_see("Hľadať")
-
-
-@pytest.mark.asyncio
-async def test_search_page_shows_empty_state(user: User) -> None:
-    import uvo_gui.pages.search  # noqa: F401
-
-    await user.open("/")
-    await user.should_see("Vyberte zákazku zo zoznamu")
-
-
-@pytest.mark.asyncio
-async def test_search_page_shows_results_after_search(user: User) -> None:
-    import uvo_gui.pages.search  # noqa: F401
-
-    with patch(
-        "uvo_gui.mcp_client.call_tool",
-        new_callable=AsyncMock,
-        return_value=MOCK_RESULTS,
-    ):
-        await user.open("/")
-        await user.should_see("Hľadať")
-        user.find("Hľadať").click()
-        await user.should_see("Stavebné práce")
+            await user.open("/")
+            # Table should be rendered and have the mocked row
+            table = user.find(kind=ui.table).elements.pop()
+            assert any(r.get("title") == "Stavebné práce" for r in table.rows)
+            # Detail panel placeholder is still shown (no row clicked yet)
+            await user.should_see("Vyberte zákazku zo zoznamu")
 
 
 @pytest.mark.asyncio
-async def test_search_page_shows_detail_on_click(user: User) -> None:
-    import uvo_gui.pages.search  # noqa: F401
+async def test_search_page_shows_error_on_failure(
+    user: User, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
 
-    with patch(
-        "uvo_gui.mcp_client.call_tool",
-        new_callable=AsyncMock,
-        return_value=MOCK_RESULTS,
-    ):
-        await user.open("/")
-        user.find("Hľadať").click()
-        await user.should_see("Stavebné práce")
-        user.find("Stavebné práce").click()
-        await user.should_see("MV SR")
-        await user.should_see("ACME s.r.o.")
+    with patch.dict(os.environ, {"STORAGE_SECRET": "x", "UVOSTAT_API_TOKEN": "dummy"}):
+        with patch(
+            "uvo_gui.mcp_client.call_tool",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("backend down"),
+        ):
+            import uvo_gui.pages.search  # noqa: F401
+
+            with caplog.at_level(logging.ERROR, logger="uvo_gui.pages.search"):
+                await user.open("/")
+            await user.should_see("Chyba pri vyhľadávaní")
+    # Clear captured error records so the fixture teardown check doesn't fail
+    caplog.records.clear()

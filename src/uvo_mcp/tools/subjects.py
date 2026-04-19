@@ -1,62 +1,112 @@
-"""MCP tools for searching procurers (contracting authorities) and suppliers."""
+"""MCP tools for searching procurers and suppliers via Atlas $search."""
 
 import logging
+from typing import Literal
 
 from mcp.server.fastmcp import Context
 
+from uvo_mcp.cache import async_ttl_cache, _make_key
+from uvo_mcp.config import Settings
+from uvo_mcp.search_query import build_search_stage
 from uvo_mcp.server import AppContext, mcp
 
+_settings = Settings()
+
 logger = logging.getLogger(__name__)
+
+SortBy = Literal["name", "contract_count", "total_value"]
 
 
 def _get_app_context(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context
 
 
-async def _search_mongo_procurers(
+def _sort_spec(sort_by: SortBy) -> dict:
+    return {
+        "name": {"name": 1},
+        "contract_count": {"contract_count": -1},
+        "total_value": {"total_value": -1},
+    }[sort_by]
+
+
+@async_ttl_cache(
+    maxsize=256,
+    ttl=_settings.cache_ttl_entity,
+    key_from=lambda db, collection, lookup_match_field, *, name_query, ico, sort_by, limit, offset: _make_key(
+        (collection, lookup_match_field),
+        {"name_query": name_query, "ico": ico, "sort_by": sort_by, "limit": limit, "offset": offset},
+    ),
+)
+async def _run_entity_search(
     db,
+    collection: str,
+    lookup_match_field: str,
     *,
-    name_query: str | None = None,
-    ico: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
+    name_query: str | None,
+    ico: str | None,
+    sort_by: SortBy,
+    limit: int,
+    offset: int,
 ) -> dict:
-    """Query MongoDB procurers collection."""
-    filter_: dict = {}
-    if name_query:
-        filter_["$text"] = {"$search": name_query}
     if ico:
-        filter_["ico"] = ico
+        filter_ = {"ico": ico}
+        total = await db[collection].count_documents(filter_)
+        docs = await db[collection].find(filter_).skip(offset).limit(limit).to_list(limit)
+        for d in docs:
+            d["_id"] = str(d["_id"])
+        return {"items": docs, "total": total, "limit": limit, "offset": offset}
 
-    total = await db.procurers.count_documents(filter_)
-    cursor = db.procurers.find(filter_).skip(offset).limit(limit)
-    docs = await cursor.to_list(length=limit)
-    for doc in docs:
-        doc["_id"] = str(doc["_id"])
-    return {"data": docs, "total": total, "limit": limit, "offset": offset}
+    search_stage = {
+        "$search": {"index": "default", **build_search_stage(name_query or "", ["name"])}
+    }
 
+    pipeline: list[dict] = [search_stage]
+    pipeline += [
+        {
+            "$lookup": {
+                "from": "notices",
+                "localField": "ico",
+                "foreignField": lookup_match_field,
+                "as": "_notices",
+            }
+        },
+        {
+            "$addFields": {
+                "contract_count": {"$size": "$_notices"},
+                "total_value": {
+                    "$sum": {
+                        "$map": {
+                            "input": "$_notices",
+                            "as": "n",
+                            "in": {"$ifNull": ["$$n.final_value", 0]},
+                        }
+                    }
+                },
+            }
+        },
+        {"$project": {"_notices": 0}},
+    ]
+    pipeline += [
+        {
+            "$facet": {
+                "items": [
+                    {"$sort": _sort_spec(sort_by)},
+                    {"$skip": offset},
+                    {"$limit": limit},
+                ],
+                "total": [{"$count": "count"}],
+            }
+        }
+    ]
 
-async def _search_mongo_suppliers(
-    db,
-    *,
-    name_query: str | None = None,
-    ico: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> dict:
-    """Query MongoDB suppliers collection."""
-    filter_: dict = {}
-    if name_query:
-        filter_["$text"] = {"$search": name_query}
-    if ico:
-        filter_["ico"] = ico
-
-    total = await db.suppliers.count_documents(filter_)
-    cursor = db.suppliers.find(filter_).skip(offset).limit(limit)
-    docs = await cursor.to_list(length=limit)
-    for doc in docs:
-        doc["_id"] = str(doc["_id"])
-    return {"data": docs, "total": total, "limit": limit, "offset": offset}
+    cursor = db[collection].aggregate(pipeline)
+    result_list = await cursor.to_list(1)
+    result = result_list[0] if result_list else {"items": [], "total": []}
+    items = result.get("items", [])
+    for d in items:
+        d["_id"] = str(d["_id"])
+    total = (result.get("total") or [{"count": 0}])[0].get("count", 0)
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @mcp.tool()
@@ -64,17 +114,21 @@ async def find_procurer(
     ctx: Context,
     name_query: str | None = None,
     ico: str | None = None,
+    sort_by: SortBy = "name",
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
-    """Search for contracting authorities (procurers) in the Slovak UVO registry."""
+    """Search procurers by name substring, wildcard, or phrase."""
     app_ctx = _get_app_context(ctx)
     if app_ctx.mongo_db is None:
         return {"error": "MongoDB not configured", "status_code": 503}
-    return await _search_mongo_procurers(
+    return await _run_entity_search(
         app_ctx.mongo_db,
+        "procurers",
+        "procurer.ico",
         name_query=name_query,
         ico=ico,
+        sort_by=sort_by,
         limit=min(limit, app_ctx.settings.max_page_size),
         offset=max(offset, 0),
     )
@@ -85,17 +139,21 @@ async def find_supplier(
     ctx: Context,
     name_query: str | None = None,
     ico: str | None = None,
+    sort_by: SortBy = "name",
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
-    """Search for suppliers (awarded contractors) in the Slovak UVO registry."""
+    """Search suppliers by name substring, wildcard, or phrase."""
     app_ctx = _get_app_context(ctx)
     if app_ctx.mongo_db is None:
         return {"error": "MongoDB not configured", "status_code": 503}
-    return await _search_mongo_suppliers(
+    return await _run_entity_search(
         app_ctx.mongo_db,
+        "suppliers",
+        "awards.supplier.ico",
         name_query=name_query,
         ico=ico,
+        sort_by=sort_by,
         limit=min(limit, app_ctx.settings.max_page_size),
         offset=max(offset, 0),
     )
