@@ -63,6 +63,29 @@ def _pick_lang(value: object) -> str | None:
     return None
 
 
+def _first_float(value: object) -> float | None:
+    """Coerce TED numeric fields (which may arrive as list[str] for multi-lot notices) to a float."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _first_str(value: object) -> str | None:
+    """Unwrap TED string fields that may arrive wrapped in a list."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        value = value[0] if value else None
+    return value if isinstance(value, str) else None
+
+
 def _parse_ted_date(value: str | None) -> date | None:
     """Parse a TED date to a Python date, returning None on failure.
 
@@ -89,14 +112,14 @@ def transform_ted_notice(raw: dict) -> CanonicalNotice:
     notice_type = _ND_TO_NOTICE_TYPE.get(nd, "other")
     status = _ND_TO_STATUS.get(nd, "unknown")
 
-    pub_date_str = raw.get("publication-date", "")
+    pub_date_str = _first_str(raw.get("publication-date")) or ""
     ted_id = raw.get("ND_OJ") or f"ted-{pub_date_str}-{nd}"
     source_id = ted_id
 
     title = _pick_lang(raw.get("notice-title")) or source_id
 
-    final_value = raw.get("tender-value")
-    currency = raw.get("tender-value-cur") or "EUR"
+    final_value = _first_float(raw.get("tender-value"))
+    currency = _first_str(raw.get("tender-value-cur")) or "EUR"
 
     cpv_codes: list[str] = raw.get("classification-cpv") or []
     cpv_code = cpv_codes[0] if cpv_codes else None
