@@ -39,6 +39,7 @@ packages = ["src/uvo_mcp", "src/uvo_gui", "src/uvo_pipeline", "src/uvo_api"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["src"]
 markers = [
     "integration: marks tests that call real external APIs",
     "e2e: end-to-end tests that require docker compose (deselect with '-m \"not e2e\"')",
