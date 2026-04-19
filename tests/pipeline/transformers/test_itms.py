@@ -139,3 +139,64 @@ def test_transform_award_missing_mena_defaults_to_eur():
     }
     r = transform_procurement(_raw(_contracts=[contract_no_mena]))
     assert r.awards[0].currency == "EUR"
+
+
+# --- New-shape tests: detail endpoint with reference-only obstaravatelSubjekt + _subject enrichment ---
+
+def _raw_new_shape(**overrides):
+    """Realistic payload: detail endpoint shape, no inline procurer fields, _subject enrichment."""
+    base = {
+        "id": 2,
+        "kod": "VO66152197",
+        "nazov": "Rozšírenie kapacity ČOV Lozorno",
+        "predpokladanaHodnotaZakazky": 328405,
+        "stav": "Ukončené",
+        "datumZverejneniaVoVestniku": "2014-02-25T00:00:00Z",
+        "obstaravatelSubjekt": {"subjekt": {"href": "/v2/subjekty/100184", "id": 100184}},
+        "zadavatel": {"subjekt": {"id": 100184, "ico": "00304905", "dic": "2020643669"}},
+        "_subject": {"id": 100184, "nazov": "Obec Lozorno", "ico": "00304905"},
+        "_contracts": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_new_shape_title_comes_from_detail():
+    r = transform_procurement(_raw_new_shape())
+    assert r.title == "Rozšírenie kapacity ČOV Lozorno"
+
+
+def test_new_shape_procurer_from_resolved_subject():
+    r = transform_procurement(_raw_new_shape())
+    assert r.procurer is not None
+    assert r.procurer.name == "Obec Lozorno"
+    assert r.procurer.ico == "00304905"
+    assert r.procurer.name_slug == "obec-lozorno"
+
+
+def test_new_shape_procurer_falls_back_to_zadavatel_ico_when_subject_missing():
+    raw = _raw_new_shape()
+    del raw["_subject"]
+    r = transform_procurement(raw)
+    assert r.procurer is not None
+    assert r.procurer.name == ""
+    assert r.procurer.ico == "00304905"  # from zadavatel.subjekt
+
+
+def test_new_shape_procurer_none_when_no_subject_and_no_zadavatel_ico():
+    raw = _raw_new_shape()
+    del raw["_subject"]
+    del raw["zadavatel"]
+    del raw["obstaravatelSubjekt"]
+    r = transform_procurement(raw)
+    assert r.procurer is None
+
+
+def test_new_shape_ukoncene_accented_status():
+    r = transform_procurement(_raw_new_shape(stav="Ukončené"))
+    assert r.status == "awarded"
+
+
+def test_new_shape_publication_date_with_z_suffix():
+    r = transform_procurement(_raw_new_shape())
+    assert r.publication_date == date(2014, 2, 25)

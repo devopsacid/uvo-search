@@ -1,11 +1,53 @@
-"""ITMS2014+ extractor — cursor-paginated async generator."""
+"""ITMS2014+ extractor — cursor-paginated async generator.
+
+The list endpoint /v2/verejneObstaravania returns only reference stubs — it
+does NOT include title (nazov), publication date, CPV code, or resolved
+procurer name/ICO. To get those fields we fetch the singular procurement
+detail /v2/verejneObstaravania/{id} (which carries title, date, and inline
+zadavatel.subjekt ICO), plus the contracts list, plus the subject detail
+/v2/subjekty/{id} for the procurer name (cached across procurements since
+many share the same subject).
+"""
 import logging
 from typing import AsyncIterator
+
 import httpx
+
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 _LIST_PATH = "/v2/verejneObstaravania"
+_SUBJECT_PATH = "/v2/subjekty"
+
+
+async def _fetch_subject(
+    client: httpx.AsyncClient,
+    rate_limiter: RateLimiter,
+    subject_id: int,
+    cache: dict[int, dict],
+) -> dict | None:
+    """Resolve a subject by id, caching results across the run."""
+    if subject_id in cache:
+        return cache[subject_id]
+    await rate_limiter.acquire()
+    try:
+        resp = await client.get(f"{_SUBJECT_PATH}/{subject_id}")
+        if resp.status_code != 200:
+            cache[subject_id] = {}
+            return None
+        data = resp.json() or {}
+    except httpx.RequestError as exc:
+        logger.warning("ITMS subject %s fetch failed: %s", subject_id, exc)
+        cache[subject_id] = {}
+        return None
+    cache[subject_id] = data
+    return data
+
+
+def _extract_subject_id(item: dict) -> int | None:
+    ref = (item.get("obstaravatelSubjekt") or {}).get("subjekt") or {}
+    sid = ref.get("id")
+    return int(sid) if sid is not None else None
 
 
 async def fetch_procurements(
@@ -15,6 +57,8 @@ async def fetch_procurements(
     min_id: int = 0,
 ) -> AsyncIterator[dict]:
     cursor = min_id
+    subject_cache: dict[int, dict] = {}
+
     while True:
         await rate_limiter.acquire()
         try:
@@ -26,17 +70,36 @@ async def fetch_procurements(
         except httpx.RequestError as exc:
             logger.error("ITMS list request failed: %s", exc)
             return
+
         items = response.json()
         if not items:
             break
-        for item in items:
+
+        for stub in items:
+            pid = stub["id"]
+
             await rate_limiter.acquire()
-            detail_url = f"{_LIST_PATH}/{item['id']}/zmluvyVerejneObstaravanie"
             try:
-                contracts_resp = await client.get(detail_url)
+                detail_resp = await client.get(f"{_LIST_PATH}/{pid}")
+                item = detail_resp.json() if detail_resp.status_code == 200 else stub
+            except httpx.RequestError as exc:
+                logger.warning("ITMS detail failed id=%s: %s", pid, exc)
+                item = stub
+
+            await rate_limiter.acquire()
+            try:
+                contracts_resp = await client.get(f"{_LIST_PATH}/{pid}/zmluvyVerejneObstaravanie")
                 item["_contracts"] = contracts_resp.json() if contracts_resp.status_code == 200 else []
             except httpx.RequestError as exc:
-                logger.warning("ITMS contract detail failed id=%s: %s", item["id"], exc)
+                logger.warning("ITMS contracts failed id=%s: %s", pid, exc)
                 item["_contracts"] = []
+
+            sid = _extract_subject_id(item)
+            if sid is not None:
+                subject = await _fetch_subject(client, rate_limiter, sid, subject_cache)
+                if subject:
+                    item["_subject"] = subject
+
             yield item
+
         cursor = max(item["id"] for item in items) + 1
