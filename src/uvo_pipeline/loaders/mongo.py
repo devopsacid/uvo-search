@@ -89,13 +89,14 @@ async def upsert_notice(db: AsyncIOMotorDatabase, notice: CanonicalNotice) -> st
 async def upsert_procurer(db: AsyncIOMotorDatabase, procurer: CanonicalProcurer) -> str:
     """Upsert a procurer by ico (preferred) or name_slug fallback."""
     doc = procurer.model_dump(mode="json")
+    sources = doc.pop("sources", []) or []
     if procurer.ico:
         filter_: dict[str, Any] = {"ico": procurer.ico}
     else:
         filter_ = {"name_slug": procurer.name_slug}
     result = await db.procurers.find_one_and_update(
         filter_,
-        {"$set": doc, "$addToSet": {"sources": {"$each": procurer.sources}}},
+        {"$set": doc, "$addToSet": {"sources": {"$each": sources}}},
         upsert=True,
         return_document=True,
     )
@@ -105,13 +106,14 @@ async def upsert_procurer(db: AsyncIOMotorDatabase, procurer: CanonicalProcurer)
 async def upsert_supplier(db: AsyncIOMotorDatabase, supplier: CanonicalSupplier) -> str:
     """Upsert a supplier by ico (preferred) or name_slug fallback."""
     doc = supplier.model_dump(mode="json")
+    sources = doc.pop("sources", []) or []
     if supplier.ico:
         filter_: dict[str, Any] = {"ico": supplier.ico}
     else:
         filter_ = {"name_slug": supplier.name_slug}
     result = await db.suppliers.find_one_and_update(
         filter_,
-        {"$set": doc, "$addToSet": {"sources": {"$each": supplier.sources}}},
+        {"$set": doc, "$addToSet": {"sources": {"$each": sources}}},
         upsert=True,
         return_document=True,
     )
