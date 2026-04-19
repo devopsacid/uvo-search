@@ -82,6 +82,7 @@ mcp = FastMCP(
 import uvo_mcp.tools.procurements  # noqa: F401, E402
 import uvo_mcp.tools.subjects  # noqa: F401, E402
 import uvo_mcp.tools.graph  # noqa: F401, E402
+import uvo_mcp.tools.autocomplete  # noqa: F401, E402
 
 
 @mcp.custom_route("/health", methods=["GET"], name="health_check")
