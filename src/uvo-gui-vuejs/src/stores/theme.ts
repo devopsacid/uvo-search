@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watchEffect } from 'vue'
+import { ref, watch } from 'vue'
 
 type Mode = 'light' | 'dark'
 const KEY = 'uvo-admin-theme'
@@ -11,14 +11,17 @@ function initialMode(): Mode {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
+function apply(m: Mode) {
+  if (typeof document === 'undefined') return
+  document.documentElement.classList.toggle('dark', m === 'dark')
+  try { localStorage.setItem(KEY, m) } catch { /* ignore */ }
+}
+
 export const useThemeStore = defineStore('theme', () => {
   const mode = ref<Mode>(initialMode())
+  apply(mode.value)
 
-  watchEffect(() => {
-    if (typeof document === 'undefined') return
-    document.documentElement.classList.toggle('dark', mode.value === 'dark')
-    try { localStorage.setItem(KEY, mode.value) } catch { /* ignore */ }
-  })
+  watch(mode, (m) => apply(m), { flush: 'sync' })
 
   function toggle() {
     mode.value = mode.value === 'dark' ? 'light' : 'dark'

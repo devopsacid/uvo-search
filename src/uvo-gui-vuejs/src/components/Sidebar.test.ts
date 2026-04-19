@@ -39,7 +39,7 @@ describe('Sidebar', () => {
   it('renders theme toggle and palette button', () => {
     const w = mountSidebar()
     const text = w.text()
-    expect(text.toLowerCase()).toContain('mode')
+    expect(text.toLowerCase()).toContain('režim')
     expect(text).toContain('⌘K')
   })
 })
