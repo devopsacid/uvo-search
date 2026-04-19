@@ -77,12 +77,11 @@ services:
     restart: unless-stopped
 
   mongo:
-    image: mongo:7
+    image: mongodb/mongodb-atlas-local:latest
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: uvo
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
-      MONGO_INITDB_DATABASE: uvo_search
+      MONGODB_INITDB_ROOT_USERNAME: uvo
+      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
     volumes:
       - mongo_data:/data/db
     ports:
@@ -92,7 +91,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
 
   mongo-express:
     image: mongo-express:latest
