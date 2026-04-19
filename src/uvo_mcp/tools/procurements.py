@@ -25,31 +25,54 @@ async def _search_mongo_procurements(
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
-    """Query MongoDB notices collection."""
-    filter_: dict = {"notice_type": "contract_award"}
+    """Query MongoDB notices via Atlas $search."""
+    from uvo_mcp.search_query import build_search_stage
 
-    if text_query:
-        filter_["$text"] = {"$search": text_query}
+    match_extra: dict = {"notice_type": "contract_award"}
     if cpv_codes:
-        filter_["cpv_code"] = {"$in": cpv_codes}
+        match_extra["cpv_code"] = {"$in": cpv_codes}
     if procurer_id:
-        filter_["procurer.ico"] = procurer_id
+        match_extra["procurer.ico"] = procurer_id
     if supplier_ico:
-        filter_["awards.supplier.ico"] = supplier_ico
+        match_extra["awards.supplier.ico"] = supplier_ico
     if date_from:
-        filter_.setdefault("publication_date", {})["$gte"] = date_from
+        match_extra.setdefault("publication_date", {})["$gte"] = date_from
     if date_to:
-        filter_.setdefault("publication_date", {})["$lte"] = date_to
+        match_extra.setdefault("publication_date", {})["$lte"] = date_to
 
-    total = await db.notices.count_documents(filter_)
-    cursor = db.notices.find(filter_).sort("publication_date", -1).skip(offset).limit(limit)
-    docs = await cursor.to_list(length=limit)
+    search_stage = {
+        "$search": {
+            "index": "default",
+            **build_search_stage(
+                text_query or "",
+                ["title", "description", "procurer.name", "awards.supplier.name"],
+            ),
+        }
+    }
 
-    # Convert ObjectId to string for JSON serialization
-    for doc in docs:
-        doc["_id"] = str(doc["_id"])
+    pipeline = [
+        search_stage,
+        {"$match": match_extra},
+        {
+            "$facet": {
+                "items": [
+                    {"$sort": {"publication_date": -1}},
+                    {"$skip": offset},
+                    {"$limit": limit},
+                ],
+                "total": [{"$count": "count"}],
+            }
+        },
+    ]
 
-    return {"data": docs, "total": total, "limit": limit, "offset": offset}
+    cursor = db.notices.aggregate(pipeline)
+    result_list = await cursor.to_list(1)
+    result = result_list[0] if result_list else {"items": [], "total": []}
+    items = result.get("items", [])
+    for d in items:
+        d["_id"] = str(d["_id"])
+    total = (result.get("total") or [{"count": 0}])[0].get("count", 0)
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 async def _get_mongo_procurement_detail(db, procurement_id: str) -> dict:
