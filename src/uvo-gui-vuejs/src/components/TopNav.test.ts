@@ -7,7 +7,10 @@ import TopNav from './TopNav.vue'
 import sk from '../i18n/sk'
 import en from '../i18n/en'
 
-const router = createRouter({ history: createWebHistory(), routes: [{ path: '/', component: { template: '<div/>' } }] })
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/:p(.*)*', component: { template: '<div/>' } }],
+})
 const i18n = createI18n({ legacy: false, locale: 'sk', messages: { sk, en } })
 
 function mountNav() {
@@ -17,24 +20,19 @@ function mountNav() {
 }
 
 describe('TopNav', () => {
-  it('renders logo text', () => {
-    const w = mountNav()
-    expect(w.text()).toContain('UVO')
-    expect(w.text()).toContain('Admin')
-  })
-
-  it('renders all 6 nav items', () => {
+  it('renders all main nav items', () => {
     const w = mountNav()
     expect(w.text()).toContain('Dashboard')
     expect(w.text()).toContain('Zákazky')
     expect(w.text()).toContain('Dodávatelia')
+    expect(w.text()).toContain('Obstarávatelia')
   })
 
-  it('toggles language on SK/EN click', async () => {
+  it('renders hotkey hints', () => {
     const w = mountNav()
-    const btn = w.find('[data-testid="lang-toggle"]')
-    expect(btn.exists()).toBe(true)
-    await btn.trigger('click')
-    expect(w.text()).toContain('Contracts')
+    const hks = w.findAll('[data-testid="nav-hk"]').map(el => el.text())
+    expect(hks).toContain('D')
+    expect(hks).toContain('C')
+    expect(hks).toContain('S')
   })
 })

@@ -1,16 +1,18 @@
-<!-- src/uvo-gui-vuejs/src/pages/DashboardPage.vue -->
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useFilterStore } from '../stores/filter'
 import { api } from '../api/client'
 import type { DashboardSummary, SpendByYear, TopSupplier, TopProcurer, CpvShare, RecentContract } from '../api/client'
-import KpiCard from '../components/KpiCard.vue'
+import Panel from '../components/Panel.vue'
+import Kpi from '../components/Kpi.vue'
 import SpendBarChart from '../components/SpendBarChart.vue'
 import CpvDonutChart from '../components/CpvDonutChart.vue'
-import TopRankingList from '../components/TopRankingList.vue'
+import { fmtValue } from '../lib/format'
 
 const { t } = useI18n()
+const router = useRouter()
 const filter = useFilterStore()
 
 const loading = ref(false)
@@ -48,75 +50,128 @@ async function load() {
   }
 }
 
+function deltaOf(key: 'total_value' | 'contract_count' | 'avg_value' | 'active_suppliers') {
+  const d = summary.value?.deltas?.[key]
+  if (!d?.pct && d?.pct !== 0) return { text: undefined, dir: undefined as undefined | 'up' | 'down' }
+  const pct = d.pct
+  const sign = pct > 0 ? '+' : ''
+  return { text: `${sign}${pct.toFixed(1)}%`, dir: (pct > 0 ? 'up' : pct < 0 ? 'down' : undefined) as 'up' | 'down' | undefined }
+}
+
 onMounted(load)
 watch(() => filter.queryParams, load)
 
-function fmtValue(v: number) {
-  if (v >= 1_000_000_000) return `€ ${(v / 1_000_000_000).toFixed(2)}B`
-  if (v >= 1_000_000) return `€ ${(v / 1_000_000).toFixed(0)}M`
-  if (v >= 1_000) return `€ ${(v / 1_000).toFixed(0)}k`
-  return `€ ${v.toFixed(0)}`
-}
+const latestYear = computed(() => spendByYear.value[spendByYear.value.length - 1]?.year)
 </script>
 
 <template>
   <div>
-    <div class="mb-5">
-      <h1 class="text-xl font-bold text-slate-900 dark:text-slate-100">{{ t('dashboard.title') }}</h1>
-      <p class="text-xs text-slate-400 mt-0.5">{{ t('dashboard.subtitle') }}</p>
+    <div class="mb-3 flex items-baseline justify-between">
+      <h1 class="text-lg uppercase tracking-widest text-fg-primary">
+        &gt; {{ t('dashboard.title') }}
+      </h1>
+      <span class="text-2xs text-fg-dim">{{ t('dashboard.subtitle') }}</span>
     </div>
 
-    <div v-if="loading" class="text-slate-400 text-sm py-12 text-center">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="text-red-500 text-sm py-6">{{ error }}</div>
+    <div v-if="loading && !summary" class="text-fg-dim text-xs py-12 text-center">{{ t('common.loading') }}</div>
+    <div v-else-if="error" class="text-down text-xs py-6">{{ error }}</div>
 
     <template v-else-if="summary">
-      <!-- KPI cards -->
-      <div class="grid grid-cols-4 gap-4 mb-5">
-        <KpiCard :label="t('dashboard.totalValue')" :value="fmtValue(summary.total_value)" color="blue" delta="↑ +8.4%" />
-        <KpiCard :label="t('dashboard.contractCount')" :value="summary.contract_count.toLocaleString()" color="green" delta="↑ +312" />
-        <KpiCard :label="t('dashboard.avgValue')" :value="fmtValue(summary.avg_value)" color="red" delta="↓ −2.1%" :deltaDown="true" />
-        <KpiCard :label="t('dashboard.activeSuppliers')" :value="summary.active_suppliers.toLocaleString()" color="purple" delta="↑ +124" />
-      </div>
+      <div class="grid grid-cols-12 gap-2 mb-2">
+        <Panel :title="t('dashboard.keyMetrics')" class="col-span-4">
+          <div class="flex flex-col gap-0">
+            <Kpi
+              :label="t('dashboard.totalValue')"
+              :value="fmtValue(summary.total_value)"
+              :delta="deltaOf('total_value').text"
+              :deltaDir="deltaOf('total_value').dir"
+            />
+            <Kpi
+              :label="t('dashboard.contractCount')"
+              :value="summary.contract_count.toLocaleString()"
+              :delta="deltaOf('contract_count').text"
+              :deltaDir="deltaOf('contract_count').dir"
+            />
+            <Kpi
+              :label="t('dashboard.avgValue')"
+              :value="fmtValue(summary.avg_value)"
+              :delta="deltaOf('avg_value').text"
+              :deltaDir="deltaOf('avg_value').dir"
+            />
+            <Kpi
+              :label="t('dashboard.activeSuppliers')"
+              :value="summary.active_suppliers.toLocaleString()"
+              :delta="deltaOf('active_suppliers').text"
+              :deltaDir="deltaOf('active_suppliers').dir"
+            />
+          </div>
+        </Panel>
 
-      <!-- Charts row -->
-      <div class="grid grid-cols-3 gap-4 mb-5">
-        <div class="col-span-2 bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{{ t('dashboard.spendByYear') }}</p>
+        <Panel :title="`${t('dashboard.spendByYear')}${latestYear ? ' · ' + latestYear : ''}`" class="col-span-5">
           <SpendBarChart :data="spendByYear" />
-        </div>
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{{ t('dashboard.byCpv') }}</p>
+        </Panel>
+
+        <Panel :title="t('dashboard.byCpv')" class="col-span-3">
           <CpvDonutChart :data="byCpv" />
-        </div>
+        </Panel>
       </div>
 
-      <!-- Bottom row -->
-      <div class="grid grid-cols-2 gap-4">
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{{ t('dashboard.recentContracts') }}</p>
-          <div class="space-y-2">
+      <div class="grid grid-cols-12 gap-2 mb-2">
+        <Panel :title="t('dashboard.topSuppliers')" class="col-span-6">
+          <div class="flex flex-col">
             <div
-              v-for="c in recent"
-              :key="c.id"
-              class="flex items-center justify-between py-1.5 border-b border-slate-50 dark:border-slate-700 text-xs"
+              v-for="(s, i) in topSuppliers.slice(0, 8)"
+              :key="s.ico"
+              class="t-row grid cursor-pointer px-1"
+              style="grid-template-columns: 32px 1fr 80px 60px"
+              data-testid="top-supplier"
+              @click="router.push(`/suppliers/${s.ico}`)"
             >
-              <div class="truncate flex-1 mr-2">
-                <p class="text-slate-700 dark:text-slate-300 truncate">{{ c.title }}</p>
-                <p class="text-slate-400">{{ c.procurer_name }}</p>
-              </div>
-              <span class="font-bold text-blue-600 dark:text-sky-400 whitespace-nowrap">{{ fmtValue(c.value) }}</span>
+              <span class="text-accent num">{{ String(i + 1).padStart(2, '0') }}</span>
+              <span class="text-fg-primary truncate">{{ s.name }}</span>
+              <span class="text-right text-accent num">{{ fmtValue(s.total_value) }}</span>
+              <span class="text-right text-fg-dim num">{{ s.contract_count }}</span>
             </div>
           </div>
-        </div>
+        </Panel>
 
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{{ t('dashboard.topSuppliers') }}</p>
-          <TopRankingList
-            :items="topSuppliers.map(s => ({ ico: s.ico, name: s.name, value: s.total_value, count: s.contract_count }))"
-            link-prefix="/suppliers"
-          />
-        </div>
+        <Panel :title="t('dashboard.topProcurers')" class="col-span-6">
+          <div class="flex flex-col">
+            <div
+              v-for="(p, i) in topProcurers.slice(0, 8)"
+              :key="p.ico"
+              class="t-row grid cursor-pointer px-1"
+              style="grid-template-columns: 32px 1fr 80px 60px"
+              @click="router.push(`/procurers/${p.ico}`)"
+            >
+              <span class="text-accent num">{{ String(i + 1).padStart(2, '0') }}</span>
+              <span class="text-fg-primary truncate">{{ p.name }}</span>
+              <span class="text-right text-accent num">{{ fmtValue(p.total_spend) }}</span>
+              <span class="text-right text-fg-dim num">{{ p.contract_count }}</span>
+            </div>
+          </div>
+        </Panel>
       </div>
+
+      <Panel :title="t('dashboard.recentContracts')">
+        <div class="flex flex-col">
+          <div
+            v-for="c in recent"
+            :key="c.id"
+            class="t-row grid px-1"
+            style="grid-template-columns: 70px 1fr 180px 90px 60px"
+          >
+            <span class="text-fg-dim num">{{ c.year }}</span>
+            <span class="text-fg-primary truncate">{{ c.title }}</span>
+            <span class="text-fg-muted truncate">{{ c.procurer_name }}</span>
+            <span class="text-right text-accent num font-bold">{{ fmtValue(c.value) }}</span>
+            <span class="text-right text-2xs uppercase" :class="c.status === 'active' ? 'text-up' : 'text-fg-dim'">
+              {{ t(`contracts.status.${c.status}`) }}
+            </span>
+          </div>
+          <div v-if="recent.length === 0" class="text-fg-dim text-xs py-4 text-center">—</div>
+        </div>
+      </Panel>
     </template>
   </div>
 </template>

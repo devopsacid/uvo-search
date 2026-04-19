@@ -1,19 +1,23 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import TickerBar from './components/TickerBar.vue'
 import TopNav from './components/TopNav.vue'
-import { useThemeStore } from './stores/theme'
+import StatusBar from './components/StatusBar.vue'
+import CommandPalette from './components/CommandPalette.vue'
+import { useHotkeys } from './composables/useHotkeys'
 
-const theme = useThemeStore()
-watch(() => theme.isDark, (dark) => {
-  document.documentElement.classList.toggle('dark', dark)
-}, { immediate: true })
+useHotkeys()
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-colors">
+  <div class="flex flex-col h-screen bg-ink-950 text-fg-primary">
+    <TickerBar />
     <TopNav />
-    <main class="max-w-7xl mx-auto px-6 py-6">
-      <RouterView />
+    <main class="flex-1 overflow-y-auto">
+      <div class="px-4 py-4">
+        <RouterView />
+      </div>
     </main>
+    <StatusBar />
+    <CommandPalette />
   </div>
 </template>

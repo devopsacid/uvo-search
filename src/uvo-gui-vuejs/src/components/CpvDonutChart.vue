@@ -1,45 +1,34 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Doughnut } from 'vue-chartjs'
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { useI18n } from 'vue-i18n'
 import type { CpvShare } from '../api/client'
-
-ChartJS.register(ArcElement, Tooltip, Legend)
+import { fmtValue } from '../lib/format'
 
 const props = defineProps<{ data: CpvShare[] }>()
 const { locale } = useI18n()
 
-const COLORS = ['#2563eb', '#16a34a', '#dc2626', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
+const top = computed(() => props.data.slice(0, 6))
 
-const chartData = computed(() => ({
-  labels: props.data.map(d => locale.value === 'sk' ? d.label_sk : d.label_en),
-  datasets: [{
-    data: props.data.map(d => d.percentage),
-    backgroundColor: COLORS.slice(0, props.data.length),
-    borderWidth: 0,
-  }],
-}))
-
-const options = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: false } },
-  cutout: '65%',
-}
+const maxPct = computed(() => Math.max(...top.value.map(d => d.percentage), 1))
 </script>
 
 <template>
-  <div class="flex items-center gap-4">
-    <div class="w-24 h-24 flex-shrink-0">
-      <Doughnut :data="chartData" :options="options" />
+  <div class="flex flex-col gap-1">
+    <div
+      v-for="(item, i) in top"
+      :key="item.cpv_code"
+      class="flex items-center gap-2 text-xs"
+    >
+      <span class="w-8 text-fg-dim num">{{ String(i + 1).padStart(2, '0') }}</span>
+      <span class="flex-1 truncate text-fg-muted">
+        {{ locale === 'sk' ? item.label_sk : item.label_en }}
+      </span>
+      <span class="w-20 h-[4px] bg-ink-700 relative">
+        <span class="absolute inset-y-0 left-0 bg-accent" :style="{ width: `${(item.percentage / maxPct) * 100}%` }" />
+      </span>
+      <span class="w-16 text-right text-fg-primary num">{{ fmtValue(item.total_value) }}</span>
+      <span class="w-10 text-right text-fg-dim num">{{ item.percentage.toFixed(1) }}%</span>
     </div>
-    <div class="flex flex-col gap-1.5 overflow-hidden">
-      <div v-for="(item, i) in data.slice(0, 5)" :key="item.cpv_code" class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-        <span class="w-2 h-2 rounded-full flex-shrink-0" :style="{ background: COLORS[i] }" />
-        <span class="truncate">{{ locale === 'sk' ? item.label_sk : item.label_en }}</span>
-        <span class="ml-auto text-slate-500">{{ item.percentage }}%</span>
-      </div>
-    </div>
+    <div v-if="top.length === 0" class="text-fg-dim text-xs py-4 text-center">—</div>
   </div>
 </template>
