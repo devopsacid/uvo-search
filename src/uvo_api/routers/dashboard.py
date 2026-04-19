@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Query
 
+from uvo_api._schema import contract_date, contract_value, year_from_date
 from uvo_api.mcp_client import call_tool
 from uvo_api.models import (
     CpvShare,
@@ -20,6 +21,11 @@ from uvo_api.models import (
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
+# MCP search tools cap results at 100 per call; fetch a larger slice for
+# aggregations by paging through the cap.
+_AGG_PAGE = 100
+_AGG_PAGES = 5
+
 _CPV_LABELS: dict[str, dict[str, str]] = {}
 
 
@@ -31,25 +37,42 @@ def _load_cpv_labels() -> dict[str, dict[str, str]]:
     return _CPV_LABELS
 
 
-def _year_from_date(date_str: str | None) -> int:
-    if date_str and len(date_str) >= 4:
-        try:
-            return int(date_str[:4])
-        except ValueError:
-            pass
-    return 0
-
-
 def _status_from_year(year: int) -> str:
     return "active" if year >= 2024 else "closed"
 
 
 def _cpv_prefix(code: str | None) -> str:
-    """Normalize CPV code to 8-digit prefix for label lookup."""
     if not code:
         return "00000000"
     digits = code.replace("-", "").replace(" ", "")[:8]
     return digits.ljust(8, "0")
+
+
+async def _fetch_contracts_sample(ico_filter: dict) -> tuple[list[dict], int]:
+    """Fetch up to _AGG_PAGES * _AGG_PAGE contracts, plus the reported total."""
+    collected: list[dict] = []
+    total = 0
+    for page in range(_AGG_PAGES):
+        args = {"limit": _AGG_PAGE, "offset": page * _AGG_PAGE, **ico_filter}
+        result = await call_tool("search_completed_procurements", args)
+        items = result.get("items", [])
+        total = max(total, int(result.get("total") or 0))
+        if not items:
+            break
+        collected.extend(items)
+        if len(items) < _AGG_PAGE:
+            break
+    return collected, total or len(collected)
+
+
+def _ico_filter(ico: str | None, entity_type: str | None) -> dict:
+    if not ico:
+        return {}
+    if entity_type == "supplier":
+        return {"supplier_ico": ico}
+    if entity_type == "procurer":
+        return {"procurer_id": ico}
+    return {}
 
 
 @router.get("/summary", response_model=DashboardSummary)
@@ -57,31 +80,59 @@ async def dashboard_summary(
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
 ) -> DashboardSummary:
-    contract_args: dict = {"limit": 100}
-    if ico and entity_type == "supplier":
-        contract_args["supplier_ico"] = ico
-    elif ico and entity_type == "procurer":
-        contract_args["procurer_id"] = ico
+    flt = _ico_filter(ico, entity_type)
+    contracts, total = await _fetch_contracts_sample(flt)
 
-    contracts_result = await call_tool("search_completed_procurements", contract_args)
-    contracts = contracts_result.get("data", [])
-    total = contracts_result.get("total", len(contracts))
-
-    total_value = sum(float(c.get("hodnota_zmluvy") or 0) for c in contracts)
-    avg_value = total_value / len(contracts) if contracts else 0
+    values = [contract_value(c) for c in contracts]
+    total_value = sum(values)
+    avg_value = total_value / len(values) if values else 0.0
 
     suppliers_result = await call_tool("find_supplier", {"limit": 1})
-    active_suppliers = suppliers_result.get("total", 0)
+    active_suppliers = int(suppliers_result.get("total") or 0)
+    procurers_result = await call_tool("find_procurer", {"limit": 1})
+    active_procurers = int(procurers_result.get("total") or 0)
+
+    # Per-year comparison against the previous year (within the sampled slice).
+    by_year: dict[int, list[float]] = defaultdict(list)
+    for c, v in zip(contracts, values):
+        y = year_from_date(contract_date(c))
+        if y > 0:
+            by_year[y].append(v)
+
+    years_sorted = sorted(by_year.keys())
+    deltas: dict[str, DashboardDelta] = {
+        "total_value": DashboardDelta(value=0, pct=None),
+        "contract_count": DashboardDelta(value=0, pct=None),
+        "avg_value": DashboardDelta(value=0, pct=None),
+        "active_suppliers": DashboardDelta(value=0, pct=None),
+    }
+    if len(years_sorted) >= 2:
+        last, prev = years_sorted[-1], years_sorted[-2]
+        cur_vals, prev_vals = by_year[last], by_year[prev]
+        cur_sum, prev_sum = sum(cur_vals), sum(prev_vals)
+        if prev_sum:
+            deltas["total_value"] = DashboardDelta(
+                value=cur_sum - prev_sum, pct=round((cur_sum - prev_sum) / prev_sum * 100, 1)
+            )
+        if len(prev_vals):
+            deltas["contract_count"] = DashboardDelta(
+                value=len(cur_vals) - len(prev_vals),
+                pct=round((len(cur_vals) - len(prev_vals)) / len(prev_vals) * 100, 1),
+            )
+            cur_avg = cur_sum / len(cur_vals) if cur_vals else 0
+            prev_avg = prev_sum / len(prev_vals) if prev_vals else 0
+            if prev_avg:
+                deltas["avg_value"] = DashboardDelta(
+                    value=cur_avg - prev_avg,
+                    pct=round((cur_avg - prev_avg) / prev_avg * 100, 1),
+                )
 
     return DashboardSummary(
         total_value=total_value,
         contract_count=total,
         avg_value=avg_value,
-        active_suppliers=active_suppliers,
-        deltas={
-            "total_value": DashboardDelta(value=0),
-            "contract_count": DashboardDelta(value=0),
-        },
+        active_suppliers=active_suppliers or active_procurers,
+        deltas=deltas,
     )
 
 
@@ -90,62 +141,101 @@ async def spend_by_year(
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
 ) -> list[SpendByYear]:
-    args: dict = {"limit": 100}
-    if ico and entity_type == "supplier":
-        args["supplier_ico"] = ico
-    elif ico and entity_type == "procurer":
-        args["procurer_id"] = ico
-
-    result = await call_tool("search_completed_procurements", args)
-    contracts = result.get("data", [])
+    flt = _ico_filter(ico, entity_type)
+    contracts, _ = await _fetch_contracts_sample(flt)
 
     by_year: dict[int, float] = defaultdict(float)
     for c in contracts:
-        year = _year_from_date(c.get("datum_zverejnenia"))
+        year = year_from_date(contract_date(c))
         if year > 0:
-            by_year[year] += float(c.get("hodnota_zmluvy") or 0)
+            by_year[year] += contract_value(c)
 
     return [SpendByYear(year=y, total_value=v) for y, v in sorted(by_year.items())]
 
 
 @router.get("/top-suppliers", response_model=list[TopSupplier])
 async def top_suppliers(
-    n: int = Query(5, ge=1, le=20),
+    n: int = Query(10, ge=1, le=20),
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
 ) -> list[TopSupplier]:
+    # Prefer the entity tool when available; fall back to aggregation over contracts.
     result = await call_tool("find_supplier", {"limit": n * 2})
-    items = result.get("data", [])
+    items = result.get("items", [])
+    if items:
+        suppliers = [
+            TopSupplier(
+                ico=str(s.get("ico") or ""),
+                name=s.get("name") or "",
+                total_value=float(s.get("total_value") or 0),
+                contract_count=int(s.get("contract_count") or 0),
+            )
+            for s in items
+        ]
+        return sorted(suppliers, key=lambda x: x.total_value, reverse=True)[:n]
 
-    suppliers = [
-        TopSupplier(
-            ico=str(s.get("ico", "")),
-            name=s.get("nazov", ""),
-            total_value=float(s.get("celkova_hodnota") or 0),
-            contract_count=int(s.get("pocet_zakaziek") or 0),
-        )
-        for s in items
-    ]
-    return sorted(suppliers, key=lambda x: x.total_value, reverse=True)[:n]
+    # Fallback: aggregate by first supplier in awards from contract sample.
+    contracts, _ = await _fetch_contracts_sample(_ico_filter(ico, entity_type))
+    agg: dict[str, dict] = defaultdict(lambda: {"name": "", "value": 0.0, "count": 0})
+    for c in contracts:
+        awards = c.get("awards") or []
+        if not awards:
+            continue
+        a = awards[0]
+        key = str(a.get("supplier_ico") or a.get("ico") or "")
+        if not key:
+            continue
+        agg[key]["name"] = a.get("supplier_name") or a.get("name") or agg[key]["name"]
+        agg[key]["value"] += contract_value(c)
+        agg[key]["count"] += 1
+    items2 = sorted(
+        [
+            TopSupplier(ico=k, name=v["name"], total_value=v["value"], contract_count=v["count"])
+            for k, v in agg.items()
+        ],
+        key=lambda x: x.total_value,
+        reverse=True,
+    )[:n]
+    return items2
 
 
 @router.get("/top-procurers", response_model=list[TopProcurer])
 async def top_procurers(
-    n: int = Query(5, ge=1, le=20),
+    n: int = Query(10, ge=1, le=20),
 ) -> list[TopProcurer]:
     result = await call_tool("find_procurer", {"limit": n * 2})
-    items = result.get("data", [])
+    items = result.get("items", [])
+    if items:
+        procurers = [
+            TopProcurer(
+                ico=str(p.get("ico") or ""),
+                name=p.get("name") or "",
+                total_spend=float(p.get("total_value") or 0),
+                contract_count=int(p.get("contract_count") or 0),
+            )
+            for p in items
+        ]
+        return sorted(procurers, key=lambda x: x.total_spend, reverse=True)[:n]
 
-    procurers = [
-        TopProcurer(
-            ico=str(p.get("ico", "")),
-            name=p.get("nazov", ""),
-            total_spend=float(p.get("celkova_hodnota") or 0),
-            contract_count=int(p.get("pocet_zakaziek") or 0),
-        )
-        for p in items
-    ]
-    return sorted(procurers, key=lambda x: x.total_spend, reverse=True)[:n]
+    # Fallback: aggregate across contract sample by procurer ico.
+    contracts, _ = await _fetch_contracts_sample({})
+    agg: dict[str, dict] = defaultdict(lambda: {"name": "", "value": 0.0, "count": 0})
+    for c in contracts:
+        p = c.get("procurer") or {}
+        key = str(p.get("ico") or "")
+        if not key:
+            continue
+        agg[key]["name"] = p.get("name") or agg[key]["name"]
+        agg[key]["value"] += contract_value(c)
+        agg[key]["count"] += 1
+    return sorted(
+        [
+            TopProcurer(ico=k, name=v["name"], total_spend=v["value"], contract_count=v["count"])
+            for k, v in agg.items()
+        ],
+        key=lambda x: x.total_spend,
+        reverse=True,
+    )[:n]
 
 
 @router.get("/by-cpv", response_model=list[CpvShare])
@@ -153,24 +243,17 @@ async def by_cpv(
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
 ) -> list[CpvShare]:
-    args: dict = {"limit": 100}
-    if ico and entity_type == "supplier":
-        args["supplier_ico"] = ico
-    elif ico and entity_type == "procurer":
-        args["procurer_id"] = ico
-
-    result = await call_tool("search_completed_procurements", args)
-    contracts = result.get("data", [])
+    contracts, _ = await _fetch_contracts_sample(_ico_filter(ico, entity_type))
     labels = _load_cpv_labels()
 
-    by_cpv: dict[str, float] = defaultdict(float)
+    buckets: dict[str, float] = defaultdict(float)
     for c in contracts:
-        prefix = _cpv_prefix(c.get("cpv_kod"))
-        by_cpv[prefix] += float(c.get("hodnota_zmluvy") or 0)
+        prefix = _cpv_prefix(c.get("cpv_code"))
+        buckets[prefix] += contract_value(c)
 
-    total = sum(by_cpv.values()) or 1
+    total = sum(buckets.values()) or 1
     shares = []
-    for code, value in sorted(by_cpv.items(), key=lambda x: x[1], reverse=True):
+    for code, value in sorted(buckets.items(), key=lambda x: x[1], reverse=True):
         label = labels.get(code, {"sk": code, "en": code})
         shares.append(
             CpvShare(
@@ -190,24 +273,23 @@ async def recent_contracts(
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
 ) -> list[RecentContract]:
-    args: dict = {"limit": limit}
-    if ico and entity_type == "supplier":
-        args["supplier_ico"] = ico
-    elif ico and entity_type == "procurer":
-        args["procurer_id"] = ico
-
+    args: dict = {"limit": limit, **_ico_filter(ico, entity_type)}
     result = await call_tool("search_completed_procurements", args)
-    contracts = result.get("data", [])
+    contracts = result.get("items", [])
 
-    return [
-        RecentContract(
-            id=str(c.get("id", "")),
-            title=c.get("nazov", ""),
-            procurer_name=(c.get("obstaravatel") or {}).get("nazov", ""),
-            procurer_ico=(c.get("obstaravatel") or {}).get("ico", ""),
-            value=float(c.get("hodnota_zmluvy") or 0),
-            year=_year_from_date(c.get("datum_zverejnenia")),
-            status=_status_from_year(_year_from_date(c.get("datum_zverejnenia"))),
+    rows: list[RecentContract] = []
+    for c in contracts:
+        year = year_from_date(contract_date(c))
+        procurer = c.get("procurer") or {}
+        rows.append(
+            RecentContract(
+                id=str(c.get("_id") or c.get("id") or ""),
+                title=c.get("title") or "",
+                procurer_name=procurer.get("name") or "",
+                procurer_ico=procurer.get("ico") or "",
+                value=contract_value(c),
+                year=year,
+                status=c.get("status") or _status_from_year(year),
+            )
         )
-        for c in contracts
-    ]
+    return rows

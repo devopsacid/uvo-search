@@ -5,6 +5,7 @@ from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, Query
 
+from uvo_api._schema import contract_date, contract_value, map_contract_row, year_from_date
 from uvo_api.mcp_client import call_tool
 from uvo_api.models import (
     ContractRow,
@@ -18,37 +19,6 @@ from uvo_api.models import (
 )
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
-
-
-def _year_from_date(date_str: str | None) -> int:
-    if date_str and len(date_str) >= 4:
-        try:
-            return int(date_str[:4])
-        except ValueError:
-            pass
-    return 0
-
-
-def _status_from_year(year: int) -> str:
-    return "active" if year >= 2024 else "closed"
-
-
-def _map_contract_row(item: dict) -> ContractRow:
-    suppliers = item.get("dodavatelia") or []
-    first = suppliers[0] if suppliers else {}
-    year = _year_from_date(item.get("datum_zverejnenia"))
-    return ContractRow(
-        id=str(item.get("id", "")),
-        title=item.get("nazov", ""),
-        procurer_name=(item.get("obstaravatel") or {}).get("nazov", ""),
-        procurer_ico=(item.get("obstaravatel") or {}).get("ico", ""),
-        supplier_name=first.get("nazov"),
-        supplier_ico=first.get("ico"),
-        value=float(item.get("hodnota_zmluvy") or 0),
-        cpv_code=item.get("cpv_kod"),
-        year=year,
-        status=_status_from_year(year),
-    )
 
 
 @router.get("", response_model=SupplierListResponse)
@@ -65,15 +35,15 @@ async def list_suppliers(
         args["ico"] = ico
 
     result = await call_tool("find_supplier", args)
-    items = result.get("data", [])
-    total = result.get("total", len(items))
+    items = result.get("items", [])
+    total = int(result.get("total") or len(items))
 
     cards = [
         SupplierCard(
-            ico=str(s.get("ico", "")),
-            name=s.get("nazov", ""),
-            contract_count=int(s.get("pocet_zakaziek") or 0),
-            total_value=float(s.get("celkova_hodnota") or 0),
+            ico=str(s.get("ico") or ""),
+            name=s.get("name") or "",
+            contract_count=int(s.get("contract_count") or 0),
+            total_value=float(s.get("total_value") or 0),
         )
         for s in items
     ]
@@ -85,7 +55,7 @@ async def list_suppliers(
 
 async def _fetch_supplier_and_contracts(ico: str) -> tuple[dict, list[dict]]:
     supplier_result = await call_tool("find_supplier", {"ico": ico, "limit": 1})
-    suppliers = supplier_result.get("data", [])
+    suppliers = supplier_result.get("items", [])
     if not suppliers:
         raise HTTPException(status_code=404, detail=f"Supplier {ico} not found")
     supplier = suppliers[0]
@@ -93,7 +63,7 @@ async def _fetch_supplier_and_contracts(ico: str) -> tuple[dict, list[dict]]:
     contracts_result = await call_tool(
         "search_completed_procurements", {"supplier_ico": ico, "limit": 100}
     )
-    contracts = contracts_result.get("data", [])
+    contracts = contracts_result.get("items", [])
     return supplier, contracts
 
 
@@ -103,20 +73,20 @@ async def get_supplier_summary(ico: str) -> SupplierSummary:
 
     spend_by_year: dict[int, float] = defaultdict(float)
     for c in contracts:
-        year = _year_from_date(c.get("datum_zverejnenia"))
-        spend_by_year[year] += float(c.get("hodnota_zmluvy") or 0)
+        year = year_from_date(contract_date(c))
+        spend_by_year[year] += contract_value(c)
 
-    total_value = float(supplier.get("celkova_hodnota") or sum(spend_by_year.values()))
-    count = int(supplier.get("pocet_zakaziek") or len(contracts))
+    total_value = float(supplier.get("total_value") or sum(spend_by_year.values()))
+    count = int(supplier.get("contract_count") or len(contracts))
 
     return SupplierSummary(
-        ico=str(supplier.get("ico", ico)),
-        name=supplier.get("nazov", ""),
+        ico=str(supplier.get("ico") or ico),
+        name=supplier.get("name") or "",
         contract_count=count,
         total_value=total_value,
         avg_value=total_value / count if count else 0,
         spend_by_year=[
-            SpendByYear(year=y, total_value=v) for y, v in sorted(spend_by_year.items())
+            SpendByYear(year=y, total_value=v) for y, v in sorted(spend_by_year.items()) if y > 0
         ],
     )
 
@@ -130,7 +100,7 @@ async def get_supplier_detail(ico: str) -> SupplierDetail:
     rows: list[ContractRow] = []
 
     for c in contracts:
-        row = _map_contract_row(c)
+        row = map_contract_row(c)
         rows.append(row)
         years.add(row.year)
         if row.procurer_ico:
@@ -150,12 +120,12 @@ async def get_supplier_detail(ico: str) -> SupplierDetail:
         reverse=True,
     )[:10]
 
-    total_value = float(supplier.get("celkova_hodnota") or sum(r.value for r in rows))
-    count = int(supplier.get("pocet_zakaziek") or len(rows))
+    total_value = float(supplier.get("total_value") or sum(r.value for r in rows))
+    count = int(supplier.get("contract_count") or len(rows))
 
     return SupplierDetail(
-        ico=str(supplier.get("ico", ico)),
-        name=supplier.get("nazov", ""),
+        ico=str(supplier.get("ico") or ico),
+        name=supplier.get("name") or "",
         contract_count=count,
         total_value=total_value,
         avg_value=total_value / count if count else 0,

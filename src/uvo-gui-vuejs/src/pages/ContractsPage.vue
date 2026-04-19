@@ -57,39 +57,37 @@ onMounted(load)
 </script>
 
 <template>
-  <div>
-    <div class="mb-3 flex items-baseline justify-between">
-      <h1 class="text-lg uppercase tracking-widest">&gt; {{ t('contracts.title') }}</h1>
-      <span class="text-2xs text-fg-dim num">{{ total.toLocaleString() }} {{ t('contracts.total') }}</span>
-    </div>
-
-    <Panel :title="t('common.filter')" class="mb-2">
+  <div class="flex flex-col gap-3">
+    <Panel :title="t('common.filter')">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="text-accent">$</span>
         <input
           v-model="q"
           :placeholder="t('contracts.search')"
-          class="t-input flex-1 min-w-48"
+          class="g-input flex-1 min-w-[200px]"
           @keydown.enter="search"
         />
-        <input v-model="cpv" placeholder="CPV" class="t-input w-28" @keydown.enter="search" />
-        <input v-model="dateFrom" type="date" class="t-input w-36" />
-        <input v-model="dateTo" type="date" class="t-input w-36" />
-        <button class="t-button" @click="search">▸ exec</button>
+        <input v-model="cpv" placeholder="CPV" class="g-input w-28 mono" @keydown.enter="search" />
+        <input v-model="dateFrom" type="date" class="g-input w-36" />
+        <input v-model="dateTo" type="date" class="g-input w-36" />
+        <button class="g-btn g-btn-primary" @click="search">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          {{ t('contracts.searchBtn') }}
+        </button>
       </div>
     </Panel>
 
-    <div v-if="loading && rows.length === 0" class="text-fg-dim text-xs py-8 text-center">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="text-down text-xs py-4">{{ error }}</div>
-    <ContractTable
-      v-else
-      :rows="rows"
-      :total="total"
-      :offset="offset"
-      :limit="limit"
-      @select="selectRow"
-      @paginate="paginate"
-    />
+    <Panel :title="t('contracts.title')" :loading="loading" dense>
+      <div v-if="error" class="p-4 text-bad text-sm">{{ error }}</div>
+      <ContractTable
+        v-else
+        :rows="rows"
+        :total="total"
+        :offset="offset"
+        :limit="limit"
+        @select="selectRow"
+        @paginate="paginate"
+      />
+    </Panel>
 
     <ContractSlideOver :contract="selected" @close="selected = null" />
   </div>

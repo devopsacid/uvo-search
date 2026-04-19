@@ -9,6 +9,7 @@ import EntityTable from '../components/EntityTable.vue'
 const { t } = useI18n()
 const q = ref('')
 const items = ref<EntityCard[]>([])
+const total = ref(0)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -18,6 +19,7 @@ async function load() {
   try {
     const res = await api.procurers.list({ q: q.value || undefined })
     items.value = res.data
+    total.value = res.pagination.total
   } catch {
     error.value = t('common.error')
   } finally {
@@ -29,33 +31,23 @@ onMounted(load)
 </script>
 
 <template>
-  <div>
-    <div class="mb-3 flex items-baseline justify-between">
-      <h1 class="text-lg uppercase tracking-widest">&gt; {{ t('procurers.title') }}</h1>
-      <span class="text-2xs text-fg-dim num">{{ items.length.toLocaleString() }}</span>
-    </div>
-
-    <Panel :title="t('common.filter')" class="mb-2">
+  <div class="flex flex-col gap-3">
+    <Panel :title="t('common.filter')">
       <div class="flex items-center gap-2">
-        <span class="text-accent">$</span>
-        <input
-          v-model="q"
-          :placeholder="t('procurers.search')"
-          class="t-input flex-1"
-          @keydown.enter="load"
-        />
-        <button class="t-button" @click="load">▸ exec</button>
+        <input v-model="q" :placeholder="t('procurers.search')" class="g-input flex-1" @keydown.enter="load" />
+        <button class="g-btn g-btn-primary" @click="load">{{ t('contracts.searchBtn') }}</button>
       </div>
     </Panel>
 
-    <div v-if="loading && items.length === 0" class="text-fg-dim text-xs py-8 text-center">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="text-down text-xs">{{ error }}</div>
-    <EntityTable
-      v-else
-      :rows="items"
-      link-prefix="/procurers"
-      value-key="total_spend"
-      :value-label="t('procurers.totalSpend')"
-    />
+    <Panel :title="`${t('procurers.title')} · ${total.toLocaleString()}`" :loading="loading" dense>
+      <div v-if="error" class="p-4 text-bad text-sm">{{ error }}</div>
+      <EntityTable
+        v-else
+        :rows="items"
+        link-prefix="/procurers"
+        value-key="total_spend"
+        :value-label="t('procurers.totalSpend')"
+      />
+    </Panel>
   </div>
 </template>

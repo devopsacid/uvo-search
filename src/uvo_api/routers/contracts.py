@@ -3,41 +3,11 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
+from uvo_api._schema import map_contract_detail, map_contract_row
 from uvo_api.mcp_client import call_tool
-from uvo_api.models import ContractDetail, ContractListResponse, ContractRow, PaginationMeta
+from uvo_api.models import ContractDetail, ContractListResponse, PaginationMeta
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
-
-
-def _year_from_date(date_str: str | None) -> int:
-    if date_str and len(date_str) >= 4:
-        try:
-            return int(date_str[:4])
-        except ValueError:
-            pass
-    return 0
-
-
-def _status_from_year(year: int) -> str:
-    return "active" if year >= 2024 else "closed"
-
-
-def _map_row(item: dict) -> ContractRow:
-    suppliers = item.get("dodavatelia") or []
-    first = suppliers[0] if suppliers else {}
-    year = _year_from_date(item.get("datum_zverejnenia"))
-    return ContractRow(
-        id=str(item.get("id", "")),
-        title=item.get("nazov", ""),
-        procurer_name=(item.get("obstaravatel") or {}).get("nazov", ""),
-        procurer_ico=(item.get("obstaravatel") or {}).get("ico", ""),
-        supplier_name=first.get("nazov"),
-        supplier_ico=first.get("ico"),
-        value=float(item.get("hodnota_zmluvy") or 0),
-        cpv_code=item.get("cpv_kod"),
-        year=year,
-        status=_status_from_year(year),
-    )
 
 
 @router.get("", response_model=ContractListResponse)
@@ -66,15 +36,14 @@ async def list_contracts(
 
     result = await call_tool("search_completed_procurements", args)
 
-    items = result.get("data", [])
+    items = result.get("items", [])
     total = result.get("total", len(items))
 
-    rows = [_map_row(i) for i in items]
+    rows = [map_contract_row(i) for i in items]
     if value_min is not None:
         rows = [r for r in rows if r.value >= value_min]
     if value_max is not None:
         rows = [r for r in rows if r.value <= value_max]
-    # When client-side filtering was applied, total reflects the filtered count
     if value_min is not None or value_max is not None:
         total = len(rows)
 
@@ -90,21 +59,4 @@ async def get_contract(contract_id: str) -> ContractDetail:
     if "error" in result:
         raise HTTPException(status_code=result.get("status_code", 404), detail=result["error"])
 
-    suppliers = result.get("dodavatelia") or []
-    first = suppliers[0] if suppliers else {}
-    year = _year_from_date(result.get("datum_zverejnenia"))
-
-    return ContractDetail(
-        id=str(result.get("id", "")),
-        title=result.get("nazov", ""),
-        procurer_name=(result.get("obstaravatel") or {}).get("nazov", ""),
-        procurer_ico=(result.get("obstaravatel") or {}).get("ico", ""),
-        supplier_name=first.get("nazov"),
-        supplier_ico=first.get("ico"),
-        value=float(result.get("hodnota_zmluvy") or 0),
-        cpv_code=result.get("cpv_kod"),
-        year=year,
-        status=_status_from_year(year),
-        all_suppliers=suppliers,
-        publication_date=result.get("datum_zverejnenia"),
-    )
+    return map_contract_detail(result)
