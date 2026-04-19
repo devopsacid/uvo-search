@@ -75,7 +75,8 @@ class SearchState:
         await self.fetch()
 
     async def on_pagination(self, e) -> None:
-        pag = e.args if isinstance(e.args, dict) else (e.args[0] if e.args else {})
+        raw = e.args if isinstance(e.args, dict) else (e.args[0] if e.args else {})
+        pag = raw.get("pagination", raw) if isinstance(raw, dict) else {}
         self.page = pag.get("page", 1)
         self.per_page = pag.get("rowsPerPage", 20)
         self.sort_field = pag.get("sortBy") or self.sort_field
@@ -389,7 +390,7 @@ def view() -> None:
                         "descending": _state.sort_desc,
                     },
                 )
-                .props("flat square hide-bottom=false")
+                .props("flat")
                 .classes("uvo-table w-full")
             )
             # Custom cell rendering via Quasar slots for editorial typography
