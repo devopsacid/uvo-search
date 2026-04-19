@@ -9,6 +9,7 @@ NAV_ITEMS = [
     ("🔍", "Vyhľadávanie", "/"),
     ("🏢", "Obstaravatelia", "/procurers"),
     ("🤝", "Dodavatelia", "/suppliers"),
+    ("🕸️", "Sieť", "/graph"),
     ("ℹ️", "O aplikácii", "/about"),
 ]
 
