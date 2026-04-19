@@ -1,71 +1,78 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import type { ContractDetail } from '../api/client'
+import { fmtValue } from '../lib/format'
 
 defineProps<{ contract: ContractDetail | null }>()
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
-
-function fmt(v: number) {
-  if (v >= 1_000_000) return `€ ${(v / 1_000_000).toFixed(2)}M`
-  if (v >= 1_000) return `€ ${(v / 1_000).toFixed(0)}k`
-  return `€ ${v.toFixed(0)}`
-}
 </script>
 
 <template>
   <Transition name="slide">
-    <div
+    <aside
       v-if="contract"
-      class="fixed inset-y-0 right-0 w-96 bg-white dark:bg-slate-800 shadow-2xl z-40 overflow-y-auto"
+      class="fixed inset-y-0 right-0 w-[420px] max-w-full bg-ink-950 border-l border-ink-600 z-40 overflow-y-auto flex flex-col"
     >
-      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
-        <h3 class="font-semibold text-sm text-slate-800 dark:text-slate-200">Detail zákazky</h3>
-        <button @click="emit('close')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg leading-none">✕</button>
-      </div>
+      <header class="flex items-center justify-between px-3 py-2 bg-ink-800 border-b border-ink-600">
+        <span class="text-accent text-xs uppercase tracking-widest font-bold">&gt; {{ t('contracts.detail') }}</span>
+        <button class="text-fg-muted hover:text-accent text-sm" @click="emit('close')">✕ esc</button>
+      </header>
 
-      <div class="px-5 py-4 space-y-4 text-sm">
+      <div class="px-3 py-3 space-y-4 text-xs">
         <div>
-          <p class="text-xs text-slate-400 uppercase tracking-wider mb-1">Zákazka</p>
-          <p class="font-medium text-slate-800 dark:text-slate-200">{{ contract.title }}</p>
+          <p class="label mb-1">{{ t('contracts.columns.title') }}</p>
+          <p class="text-fg-primary text-sm leading-tight">{{ contract.title }}</p>
+          <p class="text-fg-dim mt-1">ID: <span class="num">{{ contract.id }}</span></p>
         </div>
+
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <p class="text-xs text-slate-400 mb-0.5">{{ t('contracts.columns.value') }}</p>
-            <p class="font-bold text-blue-600 dark:text-sky-400">{{ fmt(contract.value) }}</p>
+            <p class="label mb-1">{{ t('contracts.columns.value') }}</p>
+            <p class="text-accent font-bold text-base num">{{ fmtValue(contract.value) }}</p>
           </div>
           <div>
-            <p class="text-xs text-slate-400 mb-0.5">{{ t('contracts.columns.year') }}</p>
-            <p class="font-medium">{{ contract.year }}</p>
+            <p class="label mb-1">{{ t('contracts.columns.year') }}</p>
+            <p class="text-fg-primary num">{{ contract.year }}</p>
           </div>
           <div>
-            <p class="text-xs text-slate-400 mb-0.5">{{ t('contracts.columns.procurer') }}</p>
-            <p class="text-slate-700 dark:text-slate-300">{{ contract.procurer_name }}</p>
-            <p class="text-xs text-slate-400">IČO: {{ contract.procurer_ico }}</p>
+            <p class="label mb-1">{{ t('contracts.columns.procurer') }}</p>
+            <p class="text-fg-primary truncate">{{ contract.procurer_name }}</p>
+            <p class="text-fg-dim mt-0.5 num">IČO {{ contract.procurer_ico }}</p>
           </div>
           <div>
-            <p class="text-xs text-slate-400 mb-0.5">CPV</p>
-            <p class="text-slate-600 dark:text-slate-400 font-mono text-xs">{{ contract.cpv_code ?? '—' }}</p>
+            <p class="label mb-1">CPV</p>
+            <p class="text-fg-muted num">{{ contract.cpv_code ?? '—' }}</p>
+          </div>
+          <div>
+            <p class="label mb-1">{{ t('contracts.columns.status') }}</p>
+            <p :class="contract.status === 'active' ? 'text-up' : 'text-fg-dim'">
+              {{ t(`contracts.status.${contract.status}`) }}
+            </p>
+          </div>
+          <div v-if="contract.publication_date">
+            <p class="label mb-1">{{ t('contracts.publicationDate') }}</p>
+            <p class="text-fg-muted num">{{ contract.publication_date }}</p>
           </div>
         </div>
 
         <div v-if="contract.all_suppliers?.length">
-          <p class="text-xs text-slate-400 uppercase tracking-wider mb-2">Dodávatelia</p>
-          <div v-for="s in contract.all_suppliers" :key="s.ico" class="text-xs py-1 border-b border-slate-50 dark:border-slate-700">
-            {{ s.nazov }} <span class="text-slate-400 ml-1">IČO: {{ s.ico }}</span>
+          <p class="label mb-2">{{ t('contracts.suppliers') }}</p>
+          <div
+            v-for="s in contract.all_suppliers"
+            :key="String(s.ico)"
+            class="flex items-center justify-between py-1 border-b border-ink-700 text-fg-muted"
+          >
+            <span class="truncate mr-2">{{ s.nazov }}</span>
+            <span class="text-fg-dim num">{{ s.ico }}</span>
           </div>
         </div>
-
-        <div v-if="contract.publication_date">
-          <p class="text-xs text-slate-400 mb-0.5">Dátum zverejnenia</p>
-          <p class="text-xs text-slate-600 dark:text-slate-400">{{ contract.publication_date }}</p>
-        </div>
       </div>
-    </div>
+    </aside>
   </Transition>
 </template>
 
 <style scoped>
-.slide-enter-active, .slide-leave-active { transition: transform 0.2s ease; }
+.slide-enter-active, .slide-leave-active { transition: transform 0.15s ease; }
 .slide-enter-from, .slide-leave-to { transform: translateX(100%); }
 </style>

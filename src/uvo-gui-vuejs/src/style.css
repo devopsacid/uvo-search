@@ -1,3 +1,131 @@
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/700.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html, body, #app {
+    background: #0b0d0f;
+    color: #d6d7d4;
+    font-family: 'JetBrains Mono', 'SF Mono', Consolas, Monaco, monospace;
+    font-feature-settings: 'tnum' on, 'lnum' on, 'zero' on;
+    font-size: 12px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: #ff9e1f;
+    color: #0b0d0f;
+  }
+
+  /* Terminal scrollbars */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: #0b0d0f; }
+  ::-webkit-scrollbar-thumb { background: #2a2d30; border: 2px solid #0b0d0f; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3d40; }
+
+  input, button, select {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  input:focus, button:focus {
+    outline: 1px solid #ff9e1f;
+    outline-offset: -1px;
+  }
+}
+
+@layer components {
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .panel {
+    border: 1px solid #2a2d30;
+    background: #0b0d0f;
+  }
+
+  .panel-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid #2a2d30;
+    background: #0f1113;
+    color: #ff9e1f;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-body {
+    padding: 10px 12px;
+  }
+
+  .label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #8a8e92;
+    font-weight: 500;
+  }
+
+  .t-hotkey {
+    display: inline-block;
+    border: 1px solid #2a2d30;
+    padding: 0 4px;
+    font-size: 10px;
+    color: #8a8e92;
+    line-height: 14px;
+    background: #141618;
+  }
+
+  .t-button {
+    background: #141618;
+    border: 1px solid #2a2d30;
+    padding: 4px 10px;
+    color: #d6d7d4;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .t-button:hover { border-color: #ff9e1f; color: #ff9e1f; }
+  .t-button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .t-button:disabled:hover { border-color: #2a2d30; color: #d6d7d4; }
+
+  .t-input {
+    background: #0b0d0f;
+    border: 1px solid #2a2d30;
+    padding: 5px 10px;
+    color: #d6d7d4;
+    font-size: 12px;
+  }
+
+  .t-input:focus {
+    border-color: #ff9e1f;
+    outline: none;
+  }
+
+  .t-row {
+    display: grid;
+    padding: 3px 0;
+    border-bottom: 1px solid #1d1f22;
+    font-size: 11px;
+    align-items: center;
+  }
+
+  .t-row:hover { background: #141618; }
+  .t-row:last-child { border-bottom: none; }
+}

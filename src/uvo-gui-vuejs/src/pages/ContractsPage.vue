@@ -1,9 +1,9 @@
-<!-- src/uvo-gui-vuejs/src/pages/ContractsPage.vue -->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api/client'
 import type { ContractRow, ContractDetail } from '../api/client'
+import Panel from '../components/Panel.vue'
 import ContractTable from '../components/ContractTable.vue'
 import ContractSlideOver from '../components/ContractSlideOver.vue'
 
@@ -13,7 +13,7 @@ const q = ref('')
 const cpv = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
-const limit = 20
+const limit = 25
 const offset = ref(0)
 const total = ref(0)
 const rows = ref<ContractRow[]>([])
@@ -58,21 +58,38 @@ onMounted(load)
 
 <template>
   <div>
-    <h1 class="text-xl font-bold mb-5">{{ t('contracts.title') }}</h1>
-
-    <div class="bg-white dark:bg-slate-800 rounded-lg p-4 shadow-sm mb-4 flex flex-wrap gap-3">
-      <input v-model="q" :placeholder="t('contracts.search')" class="flex-1 min-w-48 border border-slate-200 dark:border-slate-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" @keydown.enter="search" />
-      <input v-model="cpv" placeholder="CPV kód" class="w-36 border border-slate-200 dark:border-slate-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" />
-      <input v-model="dateFrom" type="date" class="w-40 border border-slate-200 dark:border-slate-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" />
-      <input v-model="dateTo" type="date" class="w-40 border border-slate-200 dark:border-slate-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" />
-      <button @click="search" class="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700 transition-colors">Hľadať</button>
+    <div class="mb-3 flex items-baseline justify-between">
+      <h1 class="text-lg uppercase tracking-widest">&gt; {{ t('contracts.title') }}</h1>
+      <span class="text-2xs text-fg-dim num">{{ total.toLocaleString() }} {{ t('contracts.total') }}</span>
     </div>
 
-    <div v-if="loading" class="text-slate-400 text-sm py-8 text-center">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="text-red-500 text-sm py-4">{{ error }}</div>
-    <div v-else class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
-      <ContractTable :rows="rows" :total="total" :offset="offset" :limit="limit" @select="selectRow" @paginate="paginate" />
-    </div>
+    <Panel :title="t('common.filter')" class="mb-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-accent">$</span>
+        <input
+          v-model="q"
+          :placeholder="t('contracts.search')"
+          class="t-input flex-1 min-w-48"
+          @keydown.enter="search"
+        />
+        <input v-model="cpv" placeholder="CPV" class="t-input w-28" @keydown.enter="search" />
+        <input v-model="dateFrom" type="date" class="t-input w-36" />
+        <input v-model="dateTo" type="date" class="t-input w-36" />
+        <button class="t-button" @click="search">▸ exec</button>
+      </div>
+    </Panel>
+
+    <div v-if="loading && rows.length === 0" class="text-fg-dim text-xs py-8 text-center">{{ t('common.loading') }}</div>
+    <div v-else-if="error" class="text-down text-xs py-4">{{ error }}</div>
+    <ContractTable
+      v-else
+      :rows="rows"
+      :total="total"
+      :offset="offset"
+      :limit="limit"
+      @select="selectRow"
+      @paginate="paginate"
+    />
 
     <ContractSlideOver :contract="selected" @close="selected = null" />
   </div>

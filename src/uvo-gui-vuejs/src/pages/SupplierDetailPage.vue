@@ -1,17 +1,18 @@
-<!-- src/uvo-gui-vuejs/src/pages/SupplierDetailPage.vue -->
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api/client'
-import type { EntitySummary } from '../api/client'
-import KpiCard from '../components/KpiCard.vue'
+import type { EntitySummary, ContractRow, ContractDetail } from '../api/client'
+import Panel from '../components/Panel.vue'
+import Kpi from '../components/Kpi.vue'
 import SpendBarChart from '../components/SpendBarChart.vue'
-import TopRankingList from '../components/TopRankingList.vue'
 import ContractTable from '../components/ContractTable.vue'
 import ContractSlideOver from '../components/ContractSlideOver.vue'
+import { fmtValue } from '../lib/format'
 
 const route = useRoute()
+const router = useRouter()
 const { t } = useI18n()
 const ico = String(route.params.ico)
 
@@ -19,13 +20,9 @@ const summary = ref<EntitySummary | null>(null)
 const detail = ref<Record<string, unknown> | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
-const selected = ref(null)
+const selected = ref<ContractDetail | null>(null)
 
-function fmt(v: number) {
-  if (v >= 1_000_000) return `€ ${(v / 1_000_000).toFixed(2)}M`
-  if (v >= 1_000) return `€ ${(v / 1_000).toFixed(0)}k`
-  return `€ ${v}`
-}
+interface TopProc { ico: string; name: string; total_value: number; contract_count: number }
 
 async function load() {
   loading.value = true
@@ -41,56 +38,83 @@ async function load() {
   }
 }
 
+async function selectRow(row: ContractRow) {
+  try {
+    selected.value = await api.contracts.detail(row.id)
+  } catch {
+    selected.value = { ...row, all_suppliers: [], publication_date: null }
+  }
+}
+
 onMounted(load)
 </script>
 
 <template>
   <div>
-    <div v-if="loading" class="text-slate-400 text-sm py-12 text-center">{{ t('common.loading') }}</div>
-    <div v-else-if="error" class="text-red-500 text-sm py-6">{{ error }}</div>
+    <div v-if="loading && !summary" class="text-fg-dim text-xs py-12 text-center">{{ t('common.loading') }}</div>
+    <div v-else-if="error" class="text-down text-xs py-6">{{ error }}</div>
+
     <template v-else-if="summary">
-      <div class="flex items-center gap-3 mb-5">
+      <div class="mb-2 flex items-baseline justify-between">
         <div>
-          <h1 class="text-xl font-bold">{{ summary.name }}</h1>
-          <p class="text-xs text-slate-400 mt-0.5">IČO: {{ summary.ico }} · Dodávateľ</p>
+          <p class="text-2xs text-fg-dim uppercase tracking-widest">{{ t('suppliers.title') }} · IČO <span class="num">{{ summary.ico }}</span></p>
+          <h1 class="text-xl text-fg-primary">{{ summary.name }}</h1>
         </div>
+        <button class="t-button" @click="router.back()">◂ back</button>
       </div>
 
-      <div class="grid grid-cols-4 gap-4 mb-5">
-        <KpiCard label="Zákazky" :value="summary.contract_count.toLocaleString()" color="blue" />
-        <KpiCard label="Celková hodnota" :value="fmt(summary.total_value ?? 0)" color="green" />
-        <KpiCard label="Priemerná hodnota" :value="fmt(summary.avg_value)" color="red" />
-        <KpiCard :label="t('dashboard.spendByYear')" :value="summary.spend_by_year.length + ' rokov'" color="purple" />
-      </div>
+      <div class="grid grid-cols-12 gap-2 mb-2">
+        <Panel :title="t('entities.keyMetrics')" class="col-span-4">
+          <div class="flex flex-col">
+            <Kpi :label="t('entities.contracts')" :value="summary.contract_count.toLocaleString()" />
+            <Kpi :label="t('suppliers.totalValue')" :value="fmtValue(summary.total_value ?? 0)" />
+            <Kpi :label="t('entities.avgValue')" :value="fmtValue(summary.avg_value)" />
+            <Kpi :label="t('entities.yearsActive')" :value="summary.spend_by_year.length.toString()" />
+          </div>
+        </Panel>
 
-      <div class="grid grid-cols-3 gap-4 mb-5">
-        <div class="col-span-2 bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Trend výdavkov</p>
+        <Panel :title="t('entities.spendTrend')" class="col-span-8">
           <SpendBarChart :data="summary.spend_by_year" />
-        </div>
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
-          <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Top obstarávatelia</p>
-          <TopRankingList
-            v-if="detail?.top_procurers"
-            :items="(detail.top_procurers as any[]).map((p: any) => ({ ico: p.ico, name: p.name, value: p.total_value, count: p.contract_count }))"
-            link-prefix="/procurers"
-          />
-        </div>
+        </Panel>
       </div>
 
-      <div class="bg-white dark:bg-slate-800 rounded-lg p-5 shadow-sm">
-        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Zákazky</p>
+      <div class="grid grid-cols-12 gap-2 mb-2">
+        <Panel :title="t('entities.topProcurers')" class="col-span-12">
+          <div
+            v-if="(detail?.top_procurers as TopProc[] | undefined)?.length"
+            class="flex flex-col"
+          >
+            <div
+              v-for="(p, i) in (detail!.top_procurers as TopProc[])"
+              :key="p.ico"
+              class="t-row grid cursor-pointer px-1"
+              style="grid-template-columns: 40px 100px 1fr 100px 80px"
+              @click="router.push(`/procurers/${p.ico}`)"
+            >
+              <span class="text-accent num">{{ String(i + 1).padStart(2, '0') }}</span>
+              <span class="text-fg-muted num">{{ p.ico }}</span>
+              <span class="text-fg-primary truncate">{{ p.name }}</span>
+              <span class="text-right text-accent font-bold num">{{ fmtValue(p.total_value) }}</span>
+              <span class="text-right text-fg-dim num">{{ p.contract_count }}</span>
+            </div>
+          </div>
+          <div v-else class="text-fg-dim text-xs py-4 text-center">—</div>
+        </Panel>
+      </div>
+
+      <Panel :title="t('nav.contracts')">
         <ContractTable
           v-if="detail?.contracts"
-          :rows="(detail.contracts as any[])"
-          :total="(detail.contracts as any[]).length"
+          :rows="(detail.contracts as ContractRow[])"
+          :total="(detail.contracts as ContractRow[]).length"
           :offset="0"
-          :limit="100"
-          @select="(r: any) => selected = r"
+          :limit="(detail.contracts as ContractRow[]).length"
+          @select="selectRow"
           @paginate="() => {}"
         />
-      </div>
+      </Panel>
     </template>
+
     <ContractSlideOver :contract="selected" @close="selected = null" />
   </div>
 </template>
