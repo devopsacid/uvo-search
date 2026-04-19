@@ -5,8 +5,12 @@ from typing import Literal
 
 from mcp.server.fastmcp import Context
 
+from uvo_mcp.cache import async_ttl_cache, _make_key
+from uvo_mcp.config import Settings
 from uvo_mcp.search_query import build_search_stage
 from uvo_mcp.server import AppContext, mcp
+
+_settings = Settings()
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,14 @@ def _sort_spec(sort_by: SortBy) -> dict:
     }[sort_by]
 
 
+@async_ttl_cache(
+    maxsize=256,
+    ttl=_settings.cache_ttl_entity,
+    key_from=lambda db, collection, lookup_match_field, *, name_query, ico, sort_by, limit, offset: _make_key(
+        (collection, lookup_match_field),
+        {"name_query": name_query, "ico": ico, "sort_by": sort_by, "limit": limit, "offset": offset},
+    ),
+)
 async def _run_entity_search(
     db,
     collection: str,

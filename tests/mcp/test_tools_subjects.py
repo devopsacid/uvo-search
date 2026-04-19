@@ -7,6 +7,13 @@ import pytest
 from uvo_mcp.tools.subjects import _run_entity_search, find_procurer, find_supplier
 
 
+@pytest.fixture(autouse=True)
+def clear_entity_search_cache():
+    _run_entity_search.cache_clear()
+    yield
+    _run_entity_search.cache_clear()
+
+
 class TestFindProcurer:
     @pytest.mark.asyncio
     async def test_no_mongo_returns_503(self, mock_context):

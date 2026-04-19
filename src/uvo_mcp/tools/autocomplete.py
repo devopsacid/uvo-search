@@ -6,7 +6,11 @@ from collections.abc import Iterable
 
 from mcp.server.fastmcp import Context
 
+from uvo_mcp.cache import async_ttl_cache, _make_key
+from uvo_mcp.config import Settings
 from uvo_mcp.server import AppContext, mcp
+
+_settings = Settings()
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,13 @@ async def _one_collection(db, entity_type: str, query: str, limit: int) -> list[
     return out
 
 
+@async_ttl_cache(
+    maxsize=512,
+    ttl=_settings.cache_ttl_search,
+    key_from=lambda db, query, *, types, limit: _make_key(
+        (query,), {"types": tuple(types), "limit": limit}
+    ),
+)
 async def _run_autocomplete(db, query: str, *, types: Iterable[str], limit: int) -> dict:
     q = query.strip()
     if not q:

@@ -2,7 +2,14 @@
 
 import pytest
 
-from uvo_mcp.tools.procurements import get_procurement_detail, search_completed_procurements
+from uvo_mcp.tools.procurements import _search_mongo_procurements, get_procurement_detail, search_completed_procurements
+
+
+@pytest.fixture(autouse=True)
+def clear_procurements_cache():
+    _search_mongo_procurements.cache_clear()
+    yield
+    _search_mongo_procurements.cache_clear()
 
 
 class TestSearchCompletedProcurements:
@@ -42,8 +49,6 @@ async def test_pipeline_has_search_match_and_facet():
     )
     db = MagicMock()
     db.notices.aggregate = MagicMock(return_value=agg)
-
-    from uvo_mcp.tools.procurements import _search_mongo_procurements
 
     out = await _search_mongo_procurements(db, text_query="fakulta", date_from="2024-01-01")
     assert out["total"] == 1

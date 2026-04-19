@@ -4,7 +4,11 @@ import logging
 
 from mcp.server.fastmcp import Context
 
+from uvo_mcp.cache import async_ttl_cache, _make_key
+from uvo_mcp.config import Settings
 from uvo_mcp.server import AppContext, mcp
+
+_settings = Settings()
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +17,23 @@ def _get_app_context(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context
 
 
+@async_ttl_cache(
+    maxsize=256,
+    ttl=_settings.cache_ttl_search,
+    key_from=lambda db, *, text_query, cpv_codes, procurer_id, supplier_ico, date_from, date_to, limit, offset: _make_key(
+        (),
+        {
+            "text_query": text_query,
+            "cpv_codes": tuple(cpv_codes) if cpv_codes else None,
+            "procurer_id": procurer_id,
+            "supplier_ico": supplier_ico,
+            "date_from": date_from,
+            "date_to": date_to,
+            "limit": limit,
+            "offset": offset,
+        },
+    ),
+)
 async def _search_mongo_procurements(
     db,
     *,
