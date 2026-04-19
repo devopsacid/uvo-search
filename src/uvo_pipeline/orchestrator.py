@@ -12,15 +12,14 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from neo4j import AsyncGraphDatabase
 
-from uvo_pipeline.catalog.ckan import discover_vestnik_packages, extract_zip_urls
+from uvo_pipeline.catalog.nkod import discover_vestnik_datasets
 from uvo_pipeline.config import PipelineSettings
-from uvo_pipeline.extractors.vestnik_xml import parse_xml_file
+from uvo_pipeline.extractors.vestnik_nkod import fetch_bulletin
 from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
 from uvo_pipeline.models import PipelineReport
-from uvo_pipeline.transformers.vestnik import transform_notice as transform_vestnik_notice
+from uvo_pipeline.transformers.vestnik_nkod import transform_notice as transform_vestnik_notice
 from uvo_pipeline.utils.checkpoint import get_checkpoint, save_checkpoint
-from uvo_pipeline.utils.zip_handler import download_zip, extract_xml_files
 
 logger = logging.getLogger(__name__)
 
@@ -224,33 +223,56 @@ async def run(
         # Collect notices from all active sources
         all_notices = []
 
-        # Step 6: Vestník XML extractor
-        logger.info("Extracting from Vestník XML via CKAN catalog...")
+        # Step 6: Vestník NKOD extractor (SPARQL discovery + bulletin download)
+        from uvo_pipeline.utils.rate_limiter import RateLimiter
+
+        vestnik_checkpoint = checkpoint.get("vestnik_last_modified")
+        vestnik_since: date | None
+        if mode == "historical":
+            vestnik_since = None
+        elif vestnik_checkpoint:
+            try:
+                vestnik_since = datetime.fromisoformat(str(vestnik_checkpoint)).date()
+            except (ValueError, TypeError):
+                vestnik_since = from_date
+        else:
+            vestnik_since = from_date
+
+        logger.info("Extracting from Vestník NKOD (since=%s)...", vestnik_since)
         cache_dir = Path(settings.cache_dir)
+        vestnik_rate_limiter = RateLimiter(rate=max(1, int(settings.vestnik_rate_limit)), per=1.0)
         vestnik_count = 0
-        async with httpx.AsyncClient(
-            base_url=settings.ckan_base_url,
-            timeout=settings.request_timeout,
-        ) as ckan_client:
-            async with httpx.AsyncClient(timeout=settings.request_timeout) as dl_client:
-                async for package in discover_vestnik_packages(ckan_client, from_date=from_date):
-                    for zip_url in await extract_zip_urls(package):
+        vestnik_max_modified: datetime | None = None
+        async with httpx.AsyncClient(timeout=settings.request_timeout) as sparql_client:
+            async with httpx.AsyncClient(
+                timeout=settings.request_timeout,
+                follow_redirects=True,
+            ) as dl_client:
+                async for ds in discover_vestnik_datasets(
+                    sparql_client,
+                    publisher_uri=settings.uvo_publisher_uri,
+                    sparql_url=settings.nkod_sparql_url,
+                    since=vestnik_since,
+                ):
+                    if ds.modified and (vestnik_max_modified is None or ds.modified > vestnik_max_modified):
+                        vestnik_max_modified = ds.modified
+                    async for raw in fetch_bulletin(
+                        dl_client,
+                        vestnik_rate_limiter,
+                        ds,
+                        cache_dir=cache_dir,
+                    ):
                         try:
-                            zip_path = await download_zip(zip_url, dl_client, cache_dir)
-                            extract_dir = cache_dir / zip_path.stem
-                            xml_files = extract_xml_files(zip_path, extract_dir)
-                            for xml_path in xml_files:
-                                for raw in parse_xml_file(xml_path):
-                                    try:
-                                        notice = transform_vestnik_notice(raw)
-                                        notice.pipeline_run_id = run_id
-                                        all_notices.append(notice)
-                                        vestnik_count += 1
-                                    except Exception as exc:
-                                        logger.warning("Vestník transform error: %s", exc)
+                            notice = transform_vestnik_notice(raw)
+                            notice.pipeline_run_id = run_id
+                            all_notices.append(notice)
+                            vestnik_count += 1
                         except Exception as exc:
-                            logger.error("Vestník ZIP error for %s: %s", zip_url, exc)
-                            report.errors.append(f"Vestník ZIP {zip_url}: {exc}")
+                            logger.warning(
+                                "Vestník transform error (item id=%s): %s",
+                                raw.get("id"),
+                                str(exc).splitlines()[0],
+                            )
 
         report.source_counts["vestnik"] = vestnik_count
         logger.info("Vestník: %d notices extracted", vestnik_count)
@@ -408,12 +430,17 @@ async def run(
                     report.errors.append(f"Neo4j: {neo4j_result['errors']} merge errors")
 
             # Save checkpoint
-            await save_checkpoint(db, "pipeline", {
+            checkpoint_state = {
                 "last_mode": mode,
                 "from_date": from_date.isoformat(),
                 "notices_processed": len(all_notices),
                 "itms_min_id": str(itms_max_seen + 1),
-            })
+            }
+            if vestnik_max_modified is not None:
+                checkpoint_state["vestnik_last_modified"] = vestnik_max_modified.isoformat()
+            elif vestnik_checkpoint:
+                checkpoint_state["vestnik_last_modified"] = vestnik_checkpoint
+            await save_checkpoint(db, "pipeline", checkpoint_state)
 
             # Cross-source deduplication
             logger.info("Running cross-source deduplication...")
