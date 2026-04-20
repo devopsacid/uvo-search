@@ -86,6 +86,47 @@ Full stack (mcp + api + gui + admin-gui + mongo + neo4j + pipeline) lives in `do
 - `pytest_plugins = ["nicegui.testing.general_fixtures"]` belongs in the **root** `conftest.py` only. Putting it in a subdirectory conftest breaks `pytest tests/` collection — which is why unit tests are run as `tests/mcp/ tests/gui/` explicitly.
 - Layout-isolated tests use the `layout_user` fixture + `tests/gui/layout_test_app.py`.
 
+## Data integrity & pipeline status
+
+**Quick health check** — per-source counts, last ingestion age, cross-source match stats:
+
+```bash
+uv run python -m uvo_pipeline health          # human-readable
+uv run python -m uvo_pipeline health --json   # machine-readable
+```
+
+**What the health report shows:**
+
+- Per source (vestnik, crz, ted, uvo, itms): total notices, ingested last 24h/7d, last ingestion timestamp
+- Registry entries and skip counts (skipped = unchanged hash, not re-upserted)
+- Cross-source deduplication: total canonical matches, notices linked by canonical_id
+- Latest pipeline run metadata
+
+**Mongo collections to inspect manually:**
+
+- `notices` — canonical procurement records; unique on `(source, source_id)`
+- `ingested_docs` — ingestion registry; tracks `content_hash`, `last_seen_at`, `skipped_count`
+- `cross_source_matches` — cross-source deduplication results
+- `pipeline_state` — checkpoint per source (last run, ITMS min_id, Vestník last_modified)
+- `procurers` / `suppliers` — unique on `ico` (sparse) + `name_slug`
+
+**Integrity invariants to verify:**
+
+- Every notice in `notices` has a corresponding entry in `ingested_docs` with matching `content_hash`
+- `(source, source_id)` is unique in `notices`; duplicates indicate a failed upsert constraint
+- `ico` is unique in `procurers`/`suppliers` (sparse — nulls allowed, but non-null ICOs must be distinct)
+- Notices with `canonical_id` set appear in `cross_source_matches`
+
+**Backfill / repair scripts:**
+
+```bash
+# Backfill ITMS notices with missing procurer details
+uv run python scripts/enrich_itms_procurers.py --dry-run   # preview
+uv run python scripts/enrich_itms_procurers.py --limit 100 # run on first 100
+```
+
+**Cross-source deduplication** runs automatically at the end of each pipeline run (two passes: ICO+CPV match, then title-slug + date ±7 days). Re-trigger manually by running the pipeline — dedup is idempotent.
+
 ## Data / search gotchas
 
 - Mongo uses a custom `sk_folding` analyzer (standard tokenizer + `lowercase` + `icuFolding`) for case- and diacritic-insensitive Slovak search. Name fields carry an `autocomplete` (edgeGram) subfield powering the live dropdown.
