@@ -4,12 +4,35 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
+from pymongo.errors import OperationFailure
 
 from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
 from uvo_pipeline.utils.hashing import compute_notice_hash
 
 logger = logging.getLogger(__name__)
+
+
+async def _create_index_upgrading(
+    collection: AsyncIOMotorCollection,
+    keys: list,
+    *,
+    name: str,
+    **options: Any,
+) -> None:
+    """create_index that drops and recreates when an index with the same name
+    exists with different options. Needed to migrate the legacy sparse
+    ico_unique index to a partialFilterExpression-based variant in place.
+    """
+    try:
+        await collection.create_index(keys, name=name, **options)
+    except OperationFailure as exc:
+        # code 85 = IndexOptionsConflict, 86 = IndexKeySpecsConflict
+        if exc.code not in (85, 86):
+            raise
+        logger.info("Dropping legacy index %s.%s and recreating", collection.name, name)
+        await collection.drop_index(name)
+        await collection.create_index(keys, name=name, **options)
 
 
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
@@ -29,23 +52,31 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         default_language="none",
     )
 
-    # procurers: unique on ico (sparse) and name_slug
-    await db.procurers.create_index(
-        [("ico", 1)], unique=True, sparse=True, name="ico_unique"
-    )
-    await db.procurers.create_index(
-        [("name_slug", 1)], unique=True, name="name_slug_unique"
-    )
-    await db.procurers.create_index([("name", "text")], name="text_search")
-
-    # suppliers: same as procurers
-    await db.suppliers.create_index(
-        [("ico", 1)], unique=True, sparse=True, name="ico_unique"
-    )
-    await db.suppliers.create_index(
-        [("name_slug", 1)], unique=True, name="name_slug_unique"
-    )
-    await db.suppliers.create_index([("name", "text")], name="text_search")
+    # procurers / suppliers:
+    # - ico_unique uses partialFilterExpression rather than sparse. MongoDB
+    #   "sparse" still indexes null-valued fields, so two records with ico=null
+    #   violate uniqueness; partialFilterExpression only indexes docs whose
+    #   ico is an actual string.
+    # - name_slug is indexed for lookup but NOT unique: real procurement data
+    #   contains distinct legal entities sharing a name (different ICOs), and
+    #   also inconsistent ICO reporting across sources for the same name.
+    #   Dedup is driven by ico when present; name_slug fallback in upserts
+    #   finds the first matching doc, which is acceptable for null-ico cases.
+    ico_partial = {"ico": {"$type": "string"}}
+    for coll in (db.procurers, db.suppliers):
+        await _create_index_upgrading(
+            coll,
+            [("ico", 1)],
+            name="ico_unique",
+            unique=True,
+            partialFilterExpression=ico_partial,
+        )
+        await _create_index_upgrading(
+            coll,
+            [("name_slug", 1)],
+            name="name_slug_unique",
+        )
+        await coll.create_index([("name", "text")], name="text_search")
 
     # pipeline_state: unique on source
     await db.pipeline_state.create_index(
@@ -86,16 +117,26 @@ async def upsert_notice(db: AsyncIOMotorDatabase, notice: CanonicalNotice) -> st
     return str(result["_id"])
 
 
+def _entity_filter(ico: str | None, name_slug: str) -> dict[str, Any]:
+    """Match key for procurer/supplier upsert.
+
+    With ICO: uniquely keyed on the ICO itself.
+    Without ICO: keyed on (name_slug, ico=None) — the ico=None clause prevents
+    the null-ico upsert from clobbering an existing ICO-bearing doc that
+    happens to share a name_slug (real data has multiple distinct legal
+    entities with identical slugified names).
+    """
+    if ico:
+        return {"ico": ico}
+    return {"name_slug": name_slug, "ico": None}
+
+
 async def upsert_procurer(db: AsyncIOMotorDatabase, procurer: CanonicalProcurer) -> str:
     """Upsert a procurer by ico (preferred) or name_slug fallback."""
     doc = procurer.model_dump(mode="json")
     sources = doc.pop("sources", []) or []
-    if procurer.ico:
-        filter_: dict[str, Any] = {"ico": procurer.ico}
-    else:
-        filter_ = {"name_slug": procurer.name_slug}
     result = await db.procurers.find_one_and_update(
-        filter_,
+        _entity_filter(procurer.ico, procurer.name_slug),
         {"$set": doc, "$addToSet": {"sources": {"$each": sources}}},
         upsert=True,
         return_document=True,
@@ -107,12 +148,8 @@ async def upsert_supplier(db: AsyncIOMotorDatabase, supplier: CanonicalSupplier)
     """Upsert a supplier by ico (preferred) or name_slug fallback."""
     doc = supplier.model_dump(mode="json")
     sources = doc.pop("sources", []) or []
-    if supplier.ico:
-        filter_: dict[str, Any] = {"ico": supplier.ico}
-    else:
-        filter_ = {"name_slug": supplier.name_slug}
     result = await db.suppliers.find_one_and_update(
-        filter_,
+        _entity_filter(supplier.ico, supplier.name_slug),
         {"$set": doc, "$addToSet": {"sources": {"$each": sources}}},
         upsert=True,
         return_document=True,
