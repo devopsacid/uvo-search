@@ -27,6 +27,8 @@ export default {
     topSuppliers: 'Top suppliers',
     topProcurers: 'Top procurers',
     vsYear: 'vs.',
+    filterBy: 'Filter by supplier or procurer',
+    filteredBy: 'Filtered by',
   },
   contracts: {
     title: 'Contracts',
@@ -61,6 +63,8 @@ export default {
     contracts: 'contracts',
     totalValue: 'Total',
     noResults: 'No suppliers.',
+    emptyTitle: 'No supplier data',
+    emptyHelp: 'Ingested source data (ITMS/CRZ) does not yet include contract winners. The list stays empty until the ingestion pipeline starts extracting award winners from detail pages.',
   },
   procurers: {
     title: 'Procurers',
@@ -78,6 +82,8 @@ export default {
     spendTrend: 'Spend trend',
     topProcurers: 'Top procurers',
     topSuppliers: 'Top suppliers',
+    supplier: 'Supplier',
+    procurer: 'Procurer',
   },
   costs: {
     title: 'Cost analysis',
@@ -88,6 +94,7 @@ export default {
     title: 'Search',
     query: 'Query',
     placeholder: 'Search contracts, suppliers, procurers…',
+    entityPlaceholder: 'Search supplier or procurer…',
     noResults: 'No results.',
   },
   palette: {

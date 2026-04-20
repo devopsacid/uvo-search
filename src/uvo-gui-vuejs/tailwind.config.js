@@ -14,14 +14,14 @@ export default {
         'd-muted':   '#9FA7B3',
         'd-dim':     '#6E7580',
 
-        'l-canvas':  '#F4F5F5',
-        'l-panel':   '#FFFFFF',
-        'l-panel-2': '#F4F5F5',
-        'l-border':  '#D8DAE0',
-        'l-hover':   '#F4F5F5',
+        'l-canvas':  '#E6E8EC',
+        'l-panel':   '#F3F5F7',
+        'l-panel-2': '#E9ECEF',
+        'l-border':  '#C9CED5',
+        'l-hover':   '#DEE2E6',
         'l-text':    '#1F2937',
-        'l-muted':   '#464C54',
-        'l-dim':     '#8E95A0',
+        'l-muted':   '#4A5058',
+        'l-dim':     '#828790',
 
         primary: {
           DEFAULT: '#3274D9',

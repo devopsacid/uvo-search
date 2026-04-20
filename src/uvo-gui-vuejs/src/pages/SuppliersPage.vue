@@ -41,6 +41,11 @@ onMounted(load)
 
     <Panel :title="`${t('suppliers.title')} · ${total.toLocaleString()}`" :loading="loading" dense>
       <div v-if="error" class="p-4 text-bad text-sm">{{ error }}</div>
+      <div v-else-if="!loading && items.length === 0 && !q" class="p-6 flex flex-col items-center gap-2 text-center">
+        <svg class="w-8 h-8 dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v4M12 17h.01M4.93 19.07A10 10 0 1 1 19.07 4.93 10 10 0 0 1 4.93 19.07z"/></svg>
+        <p class="font-medium text-l-text dark:text-d-text">{{ t('suppliers.emptyTitle') }}</p>
+        <p class="text-xs muted max-w-md">{{ t('suppliers.emptyHelp') }}</p>
+      </div>
       <EntityTable
         v-else
         :rows="items"

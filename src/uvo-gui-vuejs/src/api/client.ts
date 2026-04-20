@@ -34,6 +34,9 @@ export interface EntityListResponse { data: EntityCard[]; pagination: Pagination
 
 export interface EntitySummary { ico: string; name: string; contract_count: number; total_value?: number; total_spend?: number; avg_value: number; spend_by_year: SpendByYear[] }
 
+export interface EntityHit { ico: string; name: string; type: 'supplier' | 'procurer'; contract_count: number; total_value: number }
+export interface EntitySearchResponse { items: EntityHit[] }
+
 export const api = {
   dashboard: {
     summary: (p = {}) => get<DashboardSummary>('/dashboard/summary', p),
@@ -56,5 +59,8 @@ export const api = {
     list: (p = {}) => get<EntityListResponse>('/procurers', p),
     detail: (ico: string) => get<Record<string, unknown>>(`/procurers/${ico}`),
     summary: (ico: string) => get<EntitySummary>(`/procurers/${ico}/summary`),
+  },
+  search: {
+    entities: (q: string, limit = 10) => get<EntitySearchResponse>('/search/entities', { q, limit }),
   },
 }

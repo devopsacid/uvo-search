@@ -27,6 +27,8 @@ export default {
     topSuppliers: 'Top dodávatelia',
     topProcurers: 'Top obstarávatelia',
     vsYear: 'vs.',
+    filterBy: 'Filter podľa dodávateľa alebo obstarávateľa',
+    filteredBy: 'Filtrované podľa',
   },
   contracts: {
     title: 'Zákazky',
@@ -61,6 +63,8 @@ export default {
     contracts: 'zákaziek',
     totalValue: 'Hodnota',
     noResults: 'Žiadni dodávatelia.',
+    emptyTitle: 'Žiadne údaje o dodávateľoch',
+    emptyHelp: 'Ingestovaná zdrojová dáta (ITMS/CRZ) zatiaľ neobsahujú priradené víťazné firmy. Zoznam ostane prázdny, kým ingestion pipeline nezačne extrahovať víťazov zmluvy z detailných stránok.',
   },
   procurers: {
     title: 'Obstarávatelia',
@@ -78,6 +82,8 @@ export default {
     spendTrend: 'Trend výdavkov',
     topProcurers: 'Top obstarávatelia',
     topSuppliers: 'Top dodávatelia',
+    supplier: 'Dodávateľ',
+    procurer: 'Obstarávateľ',
   },
   costs: {
     title: 'Analýza nákladov',
@@ -88,6 +94,7 @@ export default {
     title: 'Vyhľadávanie',
     query: 'Dopyt',
     placeholder: 'Hľadať zákazky, dodávateľov, obstarávateľov…',
+    entityPlaceholder: 'Vyhľadať dodávateľa alebo obstarávateľa…',
     noResults: 'Žiadne výsledky.',
   },
   palette: {

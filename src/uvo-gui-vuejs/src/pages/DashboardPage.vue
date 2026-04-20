@@ -10,6 +10,7 @@ import StatCard from '../components/StatCard.vue'
 import SpendBarChart from '../components/SpendBarChart.vue'
 import CpvDonutChart from '../components/CpvDonutChart.vue'
 import ContractStatusBadge from '../components/ContractStatusBadge.vue'
+import EntitySearchBox from '../components/EntitySearchBox.vue'
 import { fmtValue, fmtPct } from '../lib/format'
 
 const { t } = useI18n()
@@ -68,6 +69,19 @@ const latestYear = computed(() => spendByYear.value[spendByYear.value.length - 1
   <div v-else-if="error" class="text-bad py-4">{{ error }}</div>
 
   <div v-else-if="summary" class="flex flex-col gap-3">
+    <Panel :title="t('dashboard.filterBy')" :loading="false">
+      <div class="flex items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <EntitySearchBox />
+        </div>
+        <span v-if="filter.isFiltered" class="text-xs dim shrink-0">
+          {{ t('dashboard.filteredBy') }}
+          <span class="badge badge-good ml-1">{{ filter.type === 'supplier' ? t('entities.supplier') : t('entities.procurer') }}</span>
+          <button class="g-btn ml-2" @click="filter.clear()">✕ {{ t('common.clearFilter') }}</button>
+        </span>
+      </div>
+    </Panel>
+
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
       <StatCard
         :label="t('dashboard.totalValue')"
