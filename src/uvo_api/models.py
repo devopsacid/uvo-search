@@ -173,3 +173,60 @@ class ProcurerSummary(BaseModel):
     total_spend: float
     avg_value: float
     spend_by_year: list[SpendByYear]
+
+
+# --- Dashboard extensions (Phase 3) ---
+
+
+class MonthBucket(BaseModel):
+    month: int  # 1..12
+    contract_count: int
+    total_value: float
+
+
+# --- Concentration ---
+
+
+class SupplierShare(BaseModel):
+    ico: str
+    name: str
+    total_value: float
+    share: float  # 0..100 percentage
+
+
+class ConcentrationResponse(BaseModel):
+    procurer_ico: str
+    procurer_name: str
+    top_suppliers: list[SupplierShare]
+    hhi: float  # Herfindahl-Hirschman Index 0..10000
+
+
+# --- Graph (Cytoscape-compatible) ---
+
+
+class CytoNodeData(BaseModel):
+    id: str
+    label: str
+    type: str  # "procurer" | "supplier"
+    value: float = 0.0
+
+
+class CytoEdgeData(BaseModel):
+    id: str
+    source: str
+    target: str
+    label: str = ""
+    value: float = 0.0
+
+
+class CytoNode(BaseModel):
+    data: CytoNodeData
+
+
+class CytoEdge(BaseModel):
+    data: CytoEdgeData
+
+
+class GraphResponse(BaseModel):
+    nodes: list[CytoNode]
+    edges: list[CytoEdge]

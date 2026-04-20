@@ -13,6 +13,7 @@ from uvo_api.models import (
     CpvShare,
     DashboardDelta,
     DashboardSummary,
+    MonthBucket,
     RecentContract,
     SpendByYear,
     TopProcurer,
@@ -33,7 +34,7 @@ def _load_cpv_labels() -> dict[str, dict[str, str]]:
     global _CPV_LABELS
     if not _CPV_LABELS:
         path = Path(__file__).parent.parent / "data" / "cpv_labels.json"
-        _CPV_LABELS = json.loads(path.read_text())
+        _CPV_LABELS = json.loads(path.read_text(encoding="utf-8"))
     return _CPV_LABELS
 
 
@@ -242,12 +243,20 @@ async def top_procurers(
 async def by_cpv(
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
+    year_from: int | None = Query(None),
+    year_to: int | None = Query(None),
 ) -> list[CpvShare]:
     contracts, _ = await _fetch_contracts_sample(_ico_filter(ico, entity_type))
     labels = _load_cpv_labels()
 
     buckets: dict[str, float] = defaultdict(float)
     for c in contracts:
+        if year_from is not None or year_to is not None:
+            year = year_from_date(contract_date(c))
+            if year_from is not None and year < year_from:
+                continue
+            if year_to is not None and year > year_to:
+                continue
         prefix = _cpv_prefix(c.get("cpv_code"))
         buckets[prefix] += contract_value(c)
 
@@ -265,6 +274,36 @@ async def by_cpv(
             )
         )
     return shares
+
+
+@router.get("/by-month", response_model=list[MonthBucket])
+async def by_month(
+    year: int = Query(..., ge=2010, le=2100),
+) -> list[MonthBucket]:
+    """Monthly contract count + value for a given year."""
+    contracts, _ = await _fetch_contracts_sample({})
+
+    counts: dict[int, int] = defaultdict(int)
+    values: dict[int, float] = defaultdict(float)
+
+    for c in contracts:
+        date_str = contract_date(c)
+        if not date_str or len(date_str) < 7:
+            continue
+        try:
+            c_year = int(date_str[:4])
+            c_month = int(date_str[5:7])
+        except ValueError:
+            continue
+        if c_year != year:
+            continue
+        counts[c_month] += 1
+        values[c_month] += contract_value(c)
+
+    return [
+        MonthBucket(month=m, contract_count=counts.get(m, 0), total_value=values.get(m, 0.0))
+        for m in range(1, 13)
+    ]
 
 
 @router.get("/recent", response_model=list[RecentContract])

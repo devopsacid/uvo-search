@@ -19,6 +19,8 @@ async def list_contracts(
     value_min: float | None = Query(None),
     value_max: float | None = Query(None),
     ico: str | None = Query(None),
+    supplier_ico: str | None = Query(None),
+    procurer_ico: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> ContractListResponse:
@@ -31,8 +33,13 @@ async def list_contracts(
         args["date_from"] = date_from
     if date_to:
         args["date_to"] = date_to
-    if ico:
+    # `ico` is legacy; prefer explicit supplier_ico / procurer_ico
+    if supplier_ico:
+        args["supplier_ico"] = supplier_ico
+    elif ico:
         args["supplier_ico"] = ico
+    if procurer_ico:
+        args["procurer_id"] = procurer_ico
 
     result = await call_tool("search_completed_procurements", args)
 

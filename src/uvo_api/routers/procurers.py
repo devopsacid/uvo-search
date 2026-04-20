@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from uvo_api._schema import contract_date, contract_value, map_contract_row, year_from_date
 from uvo_api.mcp_client import call_tool
 from uvo_api.models import (
+    ConcentrationResponse,
     ContractRow,
     PaginationMeta,
     ProcurerCard,
@@ -16,6 +17,7 @@ from uvo_api.models import (
     ProcurerSummary,
     SpendByYear,
     SupplierRelation,
+    SupplierShare,
 )
 
 router = APIRouter(prefix="/api/procurers", tags=["procurers"])
@@ -132,4 +134,69 @@ async def get_procurer_detail(ico: str) -> ProcurerDetail:
         years_active=sorted(y for y in years if y > 0),
         top_suppliers=top_suppliers,
         contracts=rows,
+    )
+
+
+@router.get("/{ico}/concentration", response_model=ConcentrationResponse)
+async def get_procurer_concentration(
+    ico: str,
+    top_n: int = Query(10, ge=1, le=50),
+) -> ConcentrationResponse:
+    """Supplier concentration for a procurer with HHI computed server-side over all suppliers."""
+    procurer_result = await call_tool("find_procurer", {"ico": ico, "limit": 1})
+    procurers = procurer_result.get("items", [])
+    if not procurers:
+        raise HTTPException(status_code=404, detail=f"Procurer {ico} not found")
+    procurer_name = procurers[0].get("name") or ""
+
+    # Fetch all contracts for this procurer to compute HHI over full population
+    contracts_result = await call_tool(
+        "search_completed_procurements", {"procurer_id": ico, "limit": 100}
+    )
+    contracts = contracts_result.get("items", [])
+
+    # Aggregate by supplier
+    supplier_totals: dict[str, dict] = defaultdict(lambda: {"name": "", "value": 0.0})
+    total_spend = 0.0
+    for c in contracts:
+        awards = c.get("awards") or []
+        if not awards:
+            continue
+        a = awards[0]
+        s_ico = str(a.get("supplier_ico") or a.get("ico") or "")
+        if not s_ico:
+            continue
+        v = contract_value(c)
+        supplier_totals[s_ico]["name"] = a.get("supplier_name") or a.get("name") or supplier_totals[s_ico]["name"]
+        supplier_totals[s_ico]["value"] += v
+        total_spend += v
+
+    if not total_spend:
+        return ConcentrationResponse(
+            procurer_ico=ico,
+            procurer_name=procurer_name,
+            top_suppliers=[],
+            hhi=0.0,
+        )
+
+    # HHI = sum of (market share %)^2 over ALL suppliers
+    hhi = sum((v["value"] / total_spend * 100) ** 2 for v in supplier_totals.values())
+
+    # Return only top_n for display
+    sorted_suppliers = sorted(supplier_totals.items(), key=lambda x: x[1]["value"], reverse=True)
+    top_suppliers = [
+        SupplierShare(
+            ico=k,
+            name=v["name"],
+            total_value=v["value"],
+            share=round(v["value"] / total_spend * 100, 2),
+        )
+        for k, v in sorted_suppliers[:top_n]
+    ]
+
+    return ConcentrationResponse(
+        procurer_ico=ico,
+        procurer_name=procurer_name,
+        top_suppliers=top_suppliers,
+        hhi=round(hhi, 1),
     )
