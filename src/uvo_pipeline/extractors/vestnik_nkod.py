@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def _cache_key(url: str) -> str:
-    segment = url.rstrip("/").split("/")[-1].split("?")[0]
-    if segment:
-        return segment
+    # Hash the full URL — stripping query params collapses every
+    # data.slovensko.sk/download?id=<uuid> URL to the same key.
     return hashlib.sha1(url.encode()).hexdigest()
 
 
