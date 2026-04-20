@@ -2,38 +2,47 @@
 
 ## Overview
 
-UVO Search is a **two-process Python application** designed to search and browse Slovak government procurement data. The system comprises:
+UVO Search is a **three-tier Python application** designed to search and browse Slovak government procurement data:
 
-1. **NiceGUI Frontend** — Web interface for browsing and searching procurements
-2. **FastMCP Server** — API layer providing structured tools for data access
-3. **Data sources** — Pipeline ingests from UVO Vestník (XML), CRZ (Ekosystem), ITMS, TED and NKOD
+1. **MCP Server** (port 8000) — FastMCP providing tools for data access
+2. **API Bridge** (port 8001) — FastAPI wrapping MCP tools with HTTP endpoints
+3. **Frontends** — React SPA (public) + Vue dashboard (admin) + Claude integration
+4. **Data sources** — Pipeline ingests from UVO Vestník (XML), CRZ (Ekosystem), ITMS, TED and NKOD
 
-The two processes communicate over HTTP using the **streamable-http MCP protocol**, allowing independent scaling, deployment, and multiple client types.
+The system allows multiple clients to share a single data backend.
 
 ## System Architecture
 
 ```
-┌────────────────────────────────────────────────────┐
-│  MCP Server (port 8000, FastMCP + Python)         │
-│  ├─ 4 MCP tools (search, detail, find, contracts) │
-│  ├─ TTL caching via cachetools                    │
-│  ├─ Health check endpoint (/health)               │
-│  └─ Request validation & error handling           │
-└────────────────────────────────────────────────────┘
-       ↑                    ↑                    ↑
-   (HTTP)             (HTTP)             (stdio)
-       │                    │                    │
-   ┌───┴─────────────┐ ┌────┴──────────┐  ┌─────┴──────┐
-   │ NiceGUI         │ │ Vue Admin GUI │  │ Claude     │
-   │ (port 8080)     │ │ (port 5173)   │  │ Desktop/   │
-   │ Python/FastAPI  │ │ Vue 3+TS      │  │ Code       │
-   ├─────────────────┤ ├───────────────┤  └────────────┘
-   │ • Search        │ │ • Dashboard   │
-   │ • Procurers     │ │ • Contracts   │
-   │ • Suppliers     │ │ • Analytics   │
-   │ • Detail views  │ │ • Dark theme  │
-   │ • Graphs        │ │ • Command pal │
-   └─────────────────┘ └───────────────┘
+┌──────────────────────────────────────────────┐
+│  MCP Server (port 8000, FastMCP + Python)   │
+│  ├─ 6 tools (search, graph, entities, etc.)  │
+│  ├─ TTL caching via cachetools              │
+│  ├─ Health check (/health)                  │
+│  └─ stdio transport (Claude Desktop/Code)   │
+└──────────────────────────────────────────────┘
+    ↑                      ↑
+  (HTTP)                (stdio)
+    │                      │
+    ├─────────────────────────────────┐
+    │                                 │
+┌───┴──────────────────────┐    ┌────┴────────┐
+│ API Bridge               │    │   Claude    │
+│ (port 8001, FastAPI)     │    │ Desktop/Code│
+└───┬──────────────────────┘    └─────────────┘
+    ├──────────────────┬──────────────────┐
+    │                  │                  │
+┌───┴────────────┐ ┌──┴──────────┐ ┌────┴─────────┐
+│ React SPA      │ │ Vue Admin   │ │ (legacy)     │
+│ (port 8080)    │ │ (port 5173) │ │ NiceGUI 8090 │
+│ Vite+React+TS  │ │ Vue 3+TS    │ │ retiring soon│
+├────────────────┤ ├─────────────┤ └──────────────┘
+│ • Search       │ │ • Dashboard │
+│ • Procurers    │ │ • Contracts │
+│ • Suppliers    │ │ • Analytics │
+│ • Graphs       │ │ • Dark theme│
+│ • CPV trends   │ │ • Hotkeys   │
+└────────────────┘ └─────────────┘
 
 External Data Sources:
 ├─ UVO Vestník (Slovak procurement notices, XML)
@@ -45,26 +54,56 @@ External Data Sources:
 
 ## Process Architecture
 
-### NiceGUI Frontend (port 8080)
+### React SPA Frontend (port 8080, primary)
+
+- **Framework**: Vite 5 + React 18 + TypeScript
+- **Language**: TypeScript + React hooks
+- **Features**:
+  - Client-side routing (React Router 6)
+  - URL-as-state (pagination, filters in query params)
+  - Interactive search, filtering, sorting
+  - TanStack Query for data fetching & caching
+  - Network graph visualization (Cytoscape.js, lazy-loaded)
+  - CPV trends and concentration analysis
+
+- **Key Responsibilities**:
+  - Single-page application with client-side navigation
+  - Handle user interactions (search, pagination, filtering)
+  - Call API backend via TanStack Query
+  - Display results with Tailwind CSS + shadcn/ui components
+  - Lazy-load large libraries (Cytoscape)
+
+**Port**: 8080 (Docker host) / 5174 (dev)
+
+**Bind Host**: `0.0.0.0` (configurable in Dockerfile)
+
+### Legacy NiceGUI Frontend (port 8090, retiring)
 
 - **Framework**: NiceGUI 3.9 (FastAPI + Vue/Quasar + Tailwind CSS)
 - **Language**: Python
+- **Status**: Deprecated — use React SPA above
+- **Migration plan**: Delete after 2-week soak on gui-react
+
+**Port**: 8090 (post-cutover rollback)
+
+### FastAPI Bridge (port 8001)
+
+- **Framework**: FastAPI (Python)
+- **Language**: Python
 - **Features**:
-  - Fully Slovak-language UI
-  - Server-side pagination for result sets
-  - Interactive search filters (text, date range, CPV codes)
-  - Split-panel detail views
-  - Entity browsing (procurers, suppliers)
-  - Relationship network graph visualization
+  - Routes requests from frontends to MCP server
+  - Wraps MCP tools with HTTP endpoints (GET, POST)
+  - Adds new endpoints for React GUI requirements (graph, dashboard, concentration)
+  - CORS-enabled for browser requests
+- **Key Responsibilities**:
+  - Accept HTTP requests from React SPA and Vue dashboard
+  - Call MCP server tools
+  - Return JSON responses
+  - Cache decorator support (future)
 
-**Key Responsibilities**:
-- Render pages and components
-- Handle user interactions (search, pagination, selection)
-- Call MCP server tools via HTTP
-- Display results and details
+**Port**: 8001
 
-**Port**: 8080
-**Bind Host**: `0.0.0.0` (configurable via `GUI_HOST`)
+**Bind Host**: `0.0.0.0`
 
 ### Vue Admin GUI (port 5173)
 
@@ -112,17 +151,29 @@ External Data Sources:
 
 ## Communication Flow
 
-### Browser → Frontend → MCP Server
+### Browser → React SPA → API Bridge → MCP Server
 
-1. User enters search query and clicks "Hľadať" (Search)
-2. Frontend component calls `mcp_client.call_tool("search_completed_procurements", {...})`
-3. Client establishes HTTP connection to MCP server via streamable-http protocol
-4. MCP server receives tool call, validates arguments
-5. MCP server queries MongoDB (Atlas Search) / Neo4j
-6. Storage returns matched documents / subgraphs
-7. MCP server wraps result in JSON and returns to frontend
-8. Frontend parses result, updates state, triggers refresh
-9. Component re-renders with new data
+1. User enters search query and clicks search
+2. React component calls `api.search({...})` via TanStack Query
+3. Query sends GET request to `http://localhost:8001/contracts?query=...`
+4. API bridge receives request, validates params
+5. API bridge calls MCP server tool: `search_completed_procurements(...)`
+6. MCP server receives tool call, validates arguments
+7. MCP server queries MongoDB (Atlas Search) / Neo4j
+8. Storage returns matched documents / subgraphs
+9. MCP server returns result to API bridge
+10. API bridge wraps result in JSON and returns to React
+11. React component (via TanStack Query) parses result, updates cache
+12. Component re-renders with new data
+
+**New API Endpoints** (added in React redesign):
+
+- `GET /dashboard/by-month?year=YYYY` — monthly aggregation
+- `GET /dashboard/by-cpv?year_from=Y&year_to=Y` — CPV trends
+- `GET /graph/ego/{ico}?hops=N` — entity ego network
+- `GET /graph/cpv/{cpv}?year=YYYY` — CPV network
+- `GET /procurers/{ico}/concentration?top_n=N` — HHI supplier concentration
+- `GET /contracts?procurer_ico=ICO` — contracts by procurer (new filter param)
 
 ### Claude Desktop/Code → MCP Server (stdio)
 

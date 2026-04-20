@@ -4,13 +4,14 @@ Search and browse Slovak government procurement data. Shared MCP backend, multip
 
 ## Architecture
 
-Five Python packages under `src/` + one Vue app:
+Five Python packages under `src/` + two frontends (React + Vue):
 
 | Package | Port | Entrypoint | Role |
 | ------- | ---- | ---------- | ---- |
 | `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` | FastMCP server — search, detail, graph tools |
-| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (admin-gui → MCP) |
-| `uvo_gui` | 8080 | `uv run python -m uvo_gui` | NiceGUI public frontend (Slovak UI) |
+| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (frontends → MCP) |
+| `uvo-gui-react` | 8080 host / 5174 dev | `cd src/uvo-gui-react && npm run dev` | React 18 SPA public frontend (Slovak UI) |
+| `uvo_gui` | 8090 | `uv run python -m uvo_gui` | *Legacy* NiceGUI public frontend (post-cutover rollback) |
 | `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | One-shot ingestion (UVO/CRZ/ITMS/TED/NKOD → Mongo/Neo4j) |
 | `uvo-gui-vuejs` | 5173 dev / 3000 prod | `cd src/uvo-gui-vuejs && npm run dev` | Vue 3 admin dashboard |
 
@@ -30,8 +31,8 @@ cp .env.example .env                        # edit secrets before first run
 # Run services natively (each in its own terminal)
 uv run python -m uvo_mcp
 uv run python -m uvo_api
-uv run python -m uvo_gui
-cd src/uvo-gui-vuejs && npm install && npm run dev
+cd src/uvo-gui-react && npm run dev        # React public frontend (5174 dev, 8080 prod)
+cd src/uvo-gui-vuejs && npm install && npm run dev  # Vue admin dashboard (5173)
 
 # Tests
 uv run pytest tests/mcp/ tests/gui/ -v      # unit (mocked) — run these, not `tests/`
@@ -43,7 +44,10 @@ uv run pytest --cov=src -v
 uv run ruff check src/ tests/
 uv run ruff format src/ tests/
 
-# Vue
+# React public GUI
+cd src/uvo-gui-react && npm install && npm test
+
+# Vue admin dashboard
 cd src/uvo-gui-vuejs && npm run test
 ```
 
@@ -56,7 +60,17 @@ Full stack (mcp + api + gui + admin-gui + mongo + neo4j + pipeline) lives in `do
 - New features: use `superpowers:using-git-worktrees` to create an isolated worktree before writing code. Skip for single-file fixes, docs-only edits, or changes to the in-progress branch.
 - Non-trivial multi-phase work (design + build + test): prefer the `/team` skill over ad-hoc subagent spawns.
 
+## React GUI notes
+
+- **URL-as-state:** Pagination, filters, sort, search live in URL query params (react-router) — enables bookmarking.
+- **i18n:** All Slovak strings in `src/i18n/sk.ts` only; use `t("key")` from context.
+- **Utilities:** `cn()` (Tailwind class merging) from `src/lib/utils.ts`.
+- **Data fetching:** TanStack Query v5, no Redux/Zustand state.
+- **Graph chunk:** Cytoscape.js lazy-loaded as code-split chunk; `<Suspense>` wraps graph pages.
+
 ## NiceGUI 3.9 gotchas
+
+*Applies to legacy `src/uvo_gui/` only — being retired post-cutover.*
 
 - `ui.page_container` does not exist — use `ui.column().classes("w-full h-full")` as content wrapper.
 - Async from sync handlers: `asyncio.ensure_future(coro())`, not `ui.timer(0, ..., once=True)`.
@@ -64,6 +78,8 @@ Full stack (mcp + api + gui + admin-gui + mongo + neo4j + pipeline) lives in `do
 - `@ui.refreshable` functions called from state methods is the established refresh pattern.
 
 ## NiceGUI testing
+
+*Applies to legacy `src/uvo_gui/` only — being retired post-cutover.*
 
 - User API: `should_see` / `should_not_see` — `should_contain` does not exist.
 - Click events do NOT bubble — attach `.on("click", ...)` to the element `user.find()` targets.

@@ -8,12 +8,12 @@ Search and browse Slovak government procurement data via a dual-interface applic
 - **Structured filtering** by CPV codes (EU product classification), date ranges, procurement authorities, and suppliers
 - **MCP server** with 4 tools for AI agent integration — search procurements, find procurers and suppliers
 - **Two frontends**:
-  - **NiceGUI** (Python-based) — Public web UI with server-side pagination and Slovak interface
-  - **Vue Admin GUI** (Vue 3) — Internal dashboard with Grafana-style layout, light/dark theme, and analytics
+  - **React SPA** (Vite 5 + React 18 + TypeScript) — Public web UI with client-side routing, advanced filtering, and graphs
+  - **Vue Admin GUI** (Vue 3 + TypeScript) — Internal dashboard with Grafana-style layout, light/dark theme, and analytics
 - **Dual access** — use the same backend with Claude Desktop/Code (via stdio) or in your browser (via HTTP)
 - **Caching layer** with configurable TTLs to respect API rate limits
 - **Docker Compose deployment** with health checks for all services
-- **Playwright e2e tests** for both frontends
+- **Vitest + Testing Library** for React frontend; Playwright e2e tests
 
 ## Architecture
 
@@ -23,23 +23,25 @@ UVO Search is a **three-process application** with shared MCP backend:
 ┌──────────────────────────────────────────────┐
 │ MCP Server (Python, port 8000)               │
 │ ├─ 4 tools (search, detail, find, contracts)│
+│ ├─ Graph tools (ego, cpv networks)          │
 │ ├─ TTL caching via cachetools               │
 │ └─ REST clients for external APIs           │
 └──────────────────────────────────────────────┘
-            ↑                      ↑
-    ┌───────┴──────┐      ┌──────┴──────┐
-    │              │      │             │
-    │ (HTTP)       │ (HTTP)             │ (stdio)
-    │              │                    │
-┌───┴────────────┐  ┌──────────────┐  ┌───────┐
-│ NiceGUI        │  │ Vue Admin    │  │Claude │
-│ (port 8080)    │  │ (port 5173)  │  │Desktop│
-│ Python         │  │ Vue 3 + TS   │  │Code   │
-├────────────────┤  ├──────────────┤  └───────┘
+            ↑                      ↑                   ↑
+    ┌───────┴──────┐      ┌──────┴──────┐      ┌────┴────┐
+    │              │      │             │      │ (stdio) │
+    │ (HTTP)       │ (HTTP)             │      │         │
+    │              │                    │      │         │
+┌───┴────────────┐  ┌──────────────┐  ┌──────┴──────┐
+│ React SPA      │  │ Vue Admin    │  │   Claude   │
+│ (port 8080)    │  │ (port 5173)  │  │ Desktop/   │
+│ Vite+React+TS  │  │ Vue 3 + TS   │  │ Code       │
+├────────────────┤  ├──────────────┤  └────────────┘
 │ • Search       │  │ • Dashboard  │
 │ • Procurers    │  │ • Contracts  │
 │ • Suppliers    │  │ • Analytics  │
-│ • Detail views │  │ • Dark theme │
+│ • Graphs       │  │ • Dark theme │
+│ • CPV trends   │  │ • Command pal│
 └────────────────┘  └──────────────┘
 
 External sources:
@@ -108,11 +110,16 @@ uv sync --all-extras
 # Run MCP server (Terminal 1)
 uv run python -m uvo_mcp
 
-# Run NiceGUI frontend (Terminal 2)
-uv run python -m uvo_gui
-# Open browser to http://localhost:8080
+# Run API bridge (Terminal 2)
+uv run python -m uvo_api
 
-# Run Vue admin GUI (Terminal 3)
+# Run React public frontend (Terminal 3)
+cd src/uvo-gui-react
+npm install
+npm run dev
+# Open browser to http://localhost:5174
+
+# Run Vue admin GUI (Terminal 4, optional)
 cd src/uvo-gui-vuejs
 npm install
 npm run dev
@@ -122,18 +129,25 @@ npm run dev
 ### Running Tests
 
 ```bash
-# Unit tests (MCP server and NiceGUI, mocked API responses)
-uv run pytest tests/mcp/ tests/gui/ -v
+# Backend unit tests (MCP server, API, mocked responses)
+uv run pytest tests/mcp/ tests/api/ -v
+
+# React frontend unit tests (Vitest + Testing Library)
+cd src/uvo-gui-react
+npm test
 
 # E2E browser tests (requires docker compose running)
-uv run pytest tests/e2e/ -v
+cd ../.. && uv run pytest tests/e2e/ -v
 
 # With coverage
-uv run pytest tests/mcp/ tests/gui/ --cov=src/ -v
+uv run pytest tests/mcp/ tests/api/ --cov=src/ -v
 
 # Lint check
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
+
+# React linting
+cd src/uvo-gui-react && npm run lint
 
 # Vue admin GUI unit tests
 cd src/uvo-gui-vuejs
@@ -168,6 +182,9 @@ docker compose logs -f
 # Access the web interface
 open http://localhost:8080
 
+# Or access via Docker service name inside stack
+curl http://gui-react:5173/
+
 # Verify MCP server
 curl http://localhost:8000/health
 ```
@@ -180,7 +197,7 @@ docker compose down -v
 
 ## MCP Server Tools
 
-The MCP server provides 4 tools for AI agent integration:
+The MCP server provides 6 tools for AI agent integration:
 
 | Tool | Description | Parameters |
 |------|-------------|-----------|
@@ -188,10 +205,12 @@ The MCP server provides 4 tools for AI agent integration:
 | `get_procurement_detail` | Get full details of a specific procurement | `procurement_id` |
 | `find_procurer` | Find contracting authorities (obstaravatelia) | `name_query`, `ico`, `limit`, `offset` |
 | `find_supplier` | Find suppliers who won contracts | `name_query`, `ico`, `limit`, `offset` |
+| `graph_ego_network` | Entity relationship network (procurer/supplier ego graph) | `ico`, `entity_type`, `hops` |
+| `graph_cpv_network` | CPV code procurement network (by year) | `cpv_code`, `year`, `limit` |
 
 ### Current Implementation Status
 
-The MVP includes 4 core tools. Future phases will add:
+Core tools (4) + graph tools (2). Future phases will add:
 - `search_announced_procurements` — open bidding opportunities
 - `get_subject_detail` — entity profiles with procurement history  
 - `search_contracts` — CRZ contracts via Ekosystem Datahub
@@ -240,18 +259,29 @@ All settings come from environment variables (via `.env` file):
 
 ## Frontend Interfaces
 
-### NiceGUI (Public)
+### React SPA (Public, Primary)
 
-Built with **NiceGUI** (FastAPI + Vue/Quasar + Tailwind CSS), fully Slovak interface:
+Built with **Vite 5 + React 18 + TypeScript**, modern single-page application:
 
-- **Vyhľadávanie (Search)** — Full-text and structured filtering for procurements
-- **Obstaravatelia (Procurers)** — Browse contracting authorities and procurement history
-- **Dodavatelia (Suppliers)** — Browse awarded contractors
-- **Detail views** — Complete procurement records with associated contracts and suppliers
+- **Overview** — Dashboard with annual trends and CPV breakdown
+- **Search** — Full-text and structured filtering (dates, CPV codes, entities)
+- **Suppliers** — Browse awarded contractors by name, ICO, or contract count
+- **Procurers** — Browse contracting authorities and procurement spending
+- **Graphs** — Interactive network visualization (Cytoscape.js)
+  - Ego network: procurer/supplier relationships (configurable hop depth)
+  - CPV network: procurement patterns by product category
+- **CPV Trends** — Historical spend analysis by procurement code
+- **Calendar** — Timeline view of procurements
+- **Concentration Analysis** — HHI supplier concentration metrics
 
-All pages support **server-side pagination** and are mobile-optimized.
+**Features:**
+- **URL-as-state:** All filters, pagination, sort live in query params (bookmarkable)
+- **TanStack Query:** Efficient data fetching with caching
+- **Tailwind CSS + shadcn/ui:** Modern, accessible component library
+- **Lazy-loaded graph chunk:** Code splitting for large Cytoscape bundle
+- **Mobile-optimized:** Responsive sidebar and touch-friendly interactions
 
-### Vue Admin GUI (Internal)
+### Vue Admin GUI (Internal, Optional)
 
 Built with **Vue 3 + TypeScript**, Grafana-style analytics dashboard with dark/light theme:
 
@@ -268,6 +298,8 @@ Features:
 - Keyboard shortcuts (⌘K, Esc to close, arrow keys)
 - Responsive sidebar (collapsible on mobile)
 
+---
+
 ## Development
 
 ### Project Structure
@@ -275,47 +307,74 @@ Features:
 ```
 uvo-search/
 ├── src/
-│   ├── uvo_mcp/                 # MCP server (Python)
-│   │   ├── __main__.py          # Entry point
-│   │   ├── server.py            # FastMCP setup with httpx lifespan
-│   │   ├── config.py            # Settings (pydantic-settings)
-│   │   ├── models.py            # Pydantic response models
+│   ├── uvo_mcp/                      # MCP server (Python)
+│   │   ├── __main__.py               # Entry point
+│   │   ├── server.py                 # FastMCP setup with httpx lifespan
+│   │   ├── config.py                 # Settings (pydantic-settings)
+│   │   ├── models.py                 # Pydantic response models
 │   │   └── tools/
-│   │       ├── procurements.py  # Search/detail tools
-│   │       └── subjects.py      # Entity lookup tools
+│   │       ├── procurements.py       # Search/detail tools
+│   │       ├── subjects.py           # Entity lookup tools
+│   │       └── graph.py              # Graph tools (ego, cpv networks)
 │   │
-│   └── uvo_gui/                 # NiceGUI frontend (Python)
-│       ├── __main__.py          # Entry point
-│       ├── app.py               # NiceGUI app setup
-│       ├── config.py            # GUI settings
-│       ├── mcp_client.py        # HTTP MCP client
-│       ├── pages/
-│       │   └── search.py        # Main search page
-│       └── components/
-│           ├── nav_header.py    # Navigation bar
-│           └── detail_dialog.py # Detail view modal
+│   ├── uvo_api/                      # FastAPI bridge (Python)
+│   │   ├── __main__.py               # Entry point
+│   │   ├── main.py                   # App setup
+│   │   ├── config.py                 # Settings
+│   │   ├── mcp_client.py             # HTTP MCP client
+│   │   └── routers/
+│   │       ├── contracts.py          # Contract endpoints
+│   │       ├── dashboard.py          # Dashboard endpoints
+│   │       ├── procurers.py          # Procurer endpoints
+│   │       ├── suppliers.py          # Supplier endpoints
+│   │       └── graph.py              # Graph endpoints
+│   │
+│   ├── uvo-gui-react/                # React SPA public frontend
+│   │   ├── src/
+│   │   │   ├── pages/                # Route components (Search, Suppliers, etc.)
+│   │   │   ├── components/           # Reusable UI components
+│   │   │   ├── hooks/                # Custom React hooks
+│   │   │   ├── lib/                  # Utilities (cn, api client)
+│   │   │   ├── i18n/                 # Translations (Slovak)
+│   │   │   ├── test/                 # Vitest unit tests
+│   │   │   ├── router.tsx            # React Router 6 routes
+│   │   │   └── App.tsx               # Root component
+│   │   ├── vite.config.ts            # Vite bundler config
+│   │   ├── tsconfig.json             # TypeScript config
+│   │   ├── tailwind.config.js        # Tailwind CSS config
+│   │   ├── vitest.config.ts          # Vitest test config
+│   │   └── package.json              # npm dependencies
+│   │
+│   ├── uvo-gui-vuejs/                # Vue 3 admin dashboard (optional)
+│   │   └── [Vue app structure]
+│   │
+│   └── uvo_gui/                      # Legacy NiceGUI (retiring)
+│       └── [Legacy Python app]
 │
 ├── tests/
-│   ├── mcp/                     # Unit tests for MCP server
-│   ├── gui/                     # Unit tests for GUI
-│   └── e2e/                     # End-to-end tests (require docker compose)
+│   ├── mcp/                          # Unit tests for MCP server
+│   ├── api/                          # Unit tests for API
+│   └── e2e/                          # End-to-end tests (require docker compose)
 │
 ├── docs/
-│   ├── plan.md                  # Project overview
-│   ├── superpowers/specs/       # Full design specification
-│   ├── data-sources-research.md # API documentation and research
-│   └── nicegui-research.md      # NiceGUI patterns and capabilities
+│   ├── plan.md                       # Project overview
+│   ├── architecture.md               # Architecture documentation
+│   ├── backend.md                    # Backend (MCP) documentation
+│   ├── frontend.md                   # Frontend documentation
+│   ├── superpowers/specs/            # Full design specifications
+│   └── data-sources-research.md      # API documentation and research
 │
 ├── .github/workflows/
-│   ├── ci.yml                   # Unit tests, lint, Docker build
-│   └── docker-publish.yml       # Push to container registry
+│   ├── ci.yml                        # Unit tests, lint, Docker build
+│   └── docker-publish.yml            # Push to container registry
 │
-├── Dockerfile.mcp               # MCP server container
-├── Dockerfile.gui               # GUI container
-├── docker-compose.yml           # Local deployment
-├── pyproject.toml               # Dependencies and tooling
-├── uv.lock                      # Locked dependency versions
-└── .env.example                 # Configuration template
+├── docker-compose.yml                # Local deployment
+├── Dockerfile.mcp                    # MCP server container
+├── Dockerfile.api                    # API container
+├── src/uvo-gui-react/Dockerfile      # React app container
+├── pyproject.toml                    # Python dependencies and tooling
+├── uv.lock                           # Locked Python dependency versions
+└── .env.example                      # Configuration template
 ```
 
 ### Running Locally with Hot Reload
