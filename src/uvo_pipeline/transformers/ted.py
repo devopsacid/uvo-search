@@ -25,14 +25,19 @@ from uvo_pipeline.models import (
 
 logger = logging.getLogger(__name__)
 
-_ND_TO_NOTICE_TYPE: dict[str, str] = {
-    "24": "contract_notice",
-    "25": "contract_award",
-}
-_ND_TO_STATUS: dict[str, str] = {
-    "24": "announced",
-    "25": "awarded",
-}
+# TED v3 notice-type values → canonical notice_type / status.
+# Full list at https://docs.ted.europa.eu/eforms/latest/codelists/notice-type.html;
+# we map the ones relevant to SK procurement here, defaulting to "other"/"unknown".
+_CAN_TYPES = {"can-standard", "can-modif", "can-social", "can-desg", "can-tran"}
+_CN_TYPES = {"cn-standard", "cn-social", "cn-desg"}
+
+
+def _map_notice_type(notice_type_value: str) -> tuple[str, str]:
+    if notice_type_value in _CAN_TYPES:
+        return "contract_award", "awarded"
+    if notice_type_value in _CN_TYPES:
+        return "contract_notice", "announced"
+    return "other", "unknown"
 
 # Preferred language order when TED returns a multilingual dict like {"slk": ..., "eng": ...}
 _LANG_PREFERENCE = ("slk", "eng", "ces", "deu", "fra")
@@ -218,8 +223,7 @@ def _build_awards(raw: dict) -> list[CanonicalAward]:
 def transform_ted_notice(raw: dict) -> CanonicalNotice:
     """Map a raw TED API v3 notice dict → CanonicalNotice."""
     nd = str(raw.get("publication-number", ""))
-    notice_type = _ND_TO_NOTICE_TYPE.get(nd, "other")
-    status = _ND_TO_STATUS.get(nd, "unknown")
+    notice_type, status = _map_notice_type(_first_str(raw.get("notice-type")) or "")
 
     pub_date_str = _first_str(raw.get("publication-date")) or ""
     ted_id = raw.get("ND_OJ") or f"ted-{pub_date_str}-{nd}"

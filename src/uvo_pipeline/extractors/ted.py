@@ -46,9 +46,20 @@ _FIELDS = [
 ]
 
 
-def _build_query(date_from: date | None, date_to: date | None) -> str:
+# TED Contract-Award-Notice types — only these carry winner/supplier data.
+_CAN_NOTICE_TYPES = ("can-standard", "can-modif", "can-social", "can-desg", "can-tran")
+
+
+def _build_query(
+    date_from: date | None,
+    date_to: date | None,
+    awards_only: bool = False,
+) -> str:
     """Build TED v3 search query string for Slovak notices."""
     base = "buyer-country = SVK"
+    if awards_only:
+        can_clause = " OR ".join(f'notice-type="{t}"' for t in _CAN_NOTICE_TYPES)
+        base += f" AND ({can_clause})"
     if date_from is not None:
         base += f" AND publication-date >= {date_from.strftime('%Y%m%d')}"
     if date_to is not None:
@@ -62,12 +73,15 @@ async def search_sk_notices(
     date_from: date | None = None,
     date_to: date | None = None,
     page_size: int = 100,
+    awards_only: bool = False,
 ) -> AsyncIterator[dict]:
     """Yield raw TED notice dicts for Slovak procurement notices.
 
-    Paginates through all result pages.  On HTTP error, logs and stops.
+    When awards_only=True, the query is narrowed to Contract-Award-Notice
+    types (can-*) — these are the ones that carry winner/supplier data.
+    Paginates through all result pages. On HTTP error, logs and stops.
     """
-    query = _build_query(date_from, date_to)
+    query = _build_query(date_from, date_to, awards_only=awards_only)
     page = 1
 
     while True:

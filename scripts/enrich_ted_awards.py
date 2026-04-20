@@ -50,41 +50,57 @@ async def main(from_year: int, limit: int | None, dry_run: bool) -> int:
     processed = 0
     upserted = 0
     failed = 0
+    current_year = date.today().year
 
-    async with httpx.AsyncClient(
-        base_url=settings.ted_base_url,
-        timeout=settings.request_timeout,
-    ) as client:
-        async for raw in search_sk_notices(client, date_from=date(from_year, 1, 1)):
-            try:
-                notice = transform_ted_notice(raw)
-                notice.content_hash = compute_notice_hash(notice)
-                batch.append(notice)
-            except Exception as exc:
-                logger.warning("TED transform error: %s", exc)
-                failed += 1
-            processed += 1
-
-            if limit and processed >= limit:
-                break
-
-            if len(batch) >= batch_size:
-                if not dry_run:
-                    result = await upsert_batch(db, batch, batch_size=batch_size)
-                    upserted += result["inserted"] + result["updated"]
-                    async with neo4j_driver.session() as s:
-                        await merge_notice_batch(s, batch)
-                logger.info(
-                    "progress: %d processed, %d upserted, %d failed",
-                    processed, upserted, failed,
-                )
-                batch.clear()
-
+    async def flush() -> None:
+        nonlocal upserted
         if batch and not dry_run:
             result = await upsert_batch(db, batch, batch_size=batch_size)
             upserted += result["inserted"] + result["updated"]
             async with neo4j_driver.session() as s:
                 await merge_notice_batch(s, batch)
+        batch.clear()
+
+    async with httpx.AsyncClient(
+        base_url=settings.ted_base_url,
+        timeout=settings.request_timeout,
+    ) as client:
+        # TED v3 caps pagination at 15,000 per query. Segment by year so each
+        # yearly slice fits the window, and narrow to CAN types (the ones
+        # that actually carry winner/supplier data).
+        for year in range(from_year, current_year + 1):
+            year_from = date(year, 1, 1)
+            year_to = date(year, 12, 31)
+            logger.info("TED CAN backfill: year=%d", year)
+            async for raw in search_sk_notices(
+                client,
+                date_from=year_from,
+                date_to=year_to,
+                awards_only=True,
+            ):
+                try:
+                    notice = transform_ted_notice(raw)
+                    notice.content_hash = compute_notice_hash(notice)
+                    batch.append(notice)
+                except Exception as exc:
+                    logger.warning("TED transform error: %s", exc)
+                    failed += 1
+                processed += 1
+
+                if limit and processed >= limit:
+                    break
+
+                if len(batch) >= batch_size:
+                    await flush()
+                    logger.info(
+                        "progress: year=%d, %d processed, %d upserted, %d failed",
+                        year, processed, upserted, failed,
+                    )
+
+            if limit and processed >= limit:
+                break
+
+        await flush()
 
     logger.info(
         "Done: %d processed, %d upserted (dry_run=%s), %d failed",
