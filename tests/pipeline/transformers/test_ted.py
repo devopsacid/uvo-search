@@ -94,13 +94,99 @@ def test_transform_missing_date_gives_none():
     assert r.publication_date is None
 
 
-def test_transform_awards_empty():
+def test_transform_awards_empty_when_no_winner_name():
+    # RAW_CAN has no winner-name → awards stays empty
     r = transform_ted_notice(RAW_CAN)
     assert r.awards == []
 
 
+# --- CAN award extraction ---
+
+RAW_CAN_SINGLE = {
+    **RAW_CAN,
+    "winner-name": ["Acme s.r.o."],
+    "winner-identifier": ["12345678"],
+    "result-value-lot": [45000.0],
+    "result-value-cur-lot": ["EUR"],
+}
+
+RAW_CAN_MULTI = {
+    **RAW_CAN,
+    "winner-name": ["Acme s.r.o.", "Beta a.s."],
+    "winner-identifier": ["12345678", "87654321"],
+    "result-value-lot": [20000.0, 25000.0],
+    "result-value-cur-lot": ["EUR", "EUR"],
+}
+
+
+def test_awards_single_winner():
+    r = transform_ted_notice(RAW_CAN_SINGLE)
+    assert len(r.awards) == 1
+    a = r.awards[0]
+    assert a.supplier.name == "Acme s.r.o."
+    assert a.supplier.name_slug == "acme-s-r-o"
+    assert a.supplier.ico == "12345678"
+    assert a.value == 45000.0
+    assert a.currency == "EUR"
+
+
+def test_awards_multi_lot():
+    r = transform_ted_notice(RAW_CAN_MULTI)
+    assert len(r.awards) == 2
+    assert r.awards[0].supplier.name == "Acme s.r.o."
+    assert r.awards[0].value == 20000.0
+    assert r.awards[1].supplier.name == "Beta a.s."
+    assert r.awards[1].value == 25000.0
+
+
+def test_awards_non_numeric_identifier_gives_ico_none():
+    raw = {**RAW_CAN, "winner-name": ["Foreign Corp"], "winner-identifier": ["DE-XYZ-9999"]}
+    r = transform_ted_notice(raw)
+    assert len(r.awards) == 1
+    assert r.awards[0].supplier.ico is None
+
+
+def test_awards_no_winner_name_returns_empty():
+    raw = {**RAW_CAN, "winner-name": []}
+    r = transform_ted_notice(raw)
+    assert r.awards == []
+
+
+def test_awards_mismatched_list_lengths_no_crash():
+    # More names than values/identifiers — should pad with None, not crash
+    raw = {
+        **RAW_CAN,
+        "winner-name": ["Alpha", "Beta", "Gamma"],
+        "winner-identifier": ["11111111"],
+        "result-value-lot": [1000.0],
+        "result-value-cur-lot": ["EUR"],
+    }
+    r = transform_ted_notice(raw)
+    assert len(r.awards) == 3
+    # First entry has full data
+    assert r.awards[0].supplier.ico == "11111111"
+    assert r.awards[0].value == 1000.0
+    # Later entries fall back to notice-level value
+    assert r.awards[1].supplier.ico is None
+
+
+def test_awards_fallback_to_notice_value_when_no_lot_value():
+    raw = {
+        **RAW_CAN,
+        "winner-name": ["Fallback Corp"],
+        "result-value-notice": [99999.0],
+        "result-value-cur-notice": ["EUR"],
+    }
+    r = transform_ted_notice(raw)
+    assert len(r.awards) == 1
+    assert r.awards[0].value == 99999.0
+
+
 def test_transform_multilingual_title_prefers_slovak():
-    raw = {**RAW_CAN, "notice-title": {"hun": "Szlovákia…", "slk": "IT služby", "eng": "IT services"}}
+    raw = {
+        **RAW_CAN,
+        "notice-title": {"hun": "Szlovákia…", "slk": "IT služby", "eng": "IT services"},
+    }
     r = transform_ted_notice(raw)
     assert r.title == "IT služby"
 

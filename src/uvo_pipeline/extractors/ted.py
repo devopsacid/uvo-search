@@ -30,6 +30,18 @@ _FIELDS = [
     "tender-value-cur",
     "notice-type",
     "winner-name",
+    "winner-identifier",
+    "winner-country",
+    "winner-size",
+    "winner-decision-date",
+    "result-value-lot",
+    "result-value-cur-lot",
+    "result-value-notice",
+    "result-value-cur-notice",
+    "contract-conclusion-date",
+    "contract-identifier",
+    "organisation-name-tenderer",
+    "organisation-identifier-tenderer",
     "ojs-number",
 ]
 

@@ -17,8 +17,10 @@ from datetime import date
 from slugify import slugify
 
 from uvo_pipeline.models import (
+    CanonicalAward,
     CanonicalNotice,
     CanonicalProcurer,
+    CanonicalSupplier,
 )
 
 logger = logging.getLogger(__name__)
@@ -106,6 +108,63 @@ def _parse_ted_date(value: str | None) -> date | None:
     return None
 
 
+_SK_ICO_RE = re.compile(r"\d{8}")
+
+
+def _build_awards(raw: dict) -> list[CanonicalAward]:
+    """Build CanonicalAward list from TED v3 winner/result fields.
+
+    TED returns parallel lists (one entry per lot). Lengths may differ;
+    we pad with None rather than zip-strict to avoid crashing on bad data.
+    """
+    names: list = raw.get("winner-name") or []
+    identifiers: list = raw.get("winner-identifier") or []
+    lot_values: list = raw.get("result-value-lot") or []
+    lot_currencies: list = raw.get("result-value-cur-lot") or []
+
+    if not names:
+        return []
+
+    # Fallback notice-level value/currency when lot-level is absent
+    notice_value = _first_float(raw.get("result-value-notice") or raw.get("tender-value"))
+    notice_currency = (
+        _first_str(raw.get("result-value-cur-notice") or raw.get("tender-value-cur")) or "EUR"
+    )
+
+    awards: list[CanonicalAward] = []
+    for i, name_raw in enumerate(names):
+        name = _pick_lang(name_raw)
+        if not name:
+            continue
+
+        identifier = identifiers[i] if i < len(identifiers) else None
+        # Only treat identifier as Slovak ICO when it is exactly 8 digits
+        ico = str(identifier) if identifier and _SK_ICO_RE.fullmatch(str(identifier)) else None
+
+        value_raw = lot_values[i] if i < len(lot_values) else None
+        value = _first_float(value_raw) if value_raw is not None else notice_value
+
+        currency_raw = lot_currencies[i] if i < len(lot_currencies) else None
+        currency = (
+            _first_str(currency_raw) if currency_raw is not None else notice_currency
+        ) or "EUR"
+
+        awards.append(
+            CanonicalAward(
+                supplier=CanonicalSupplier(
+                    name=name,
+                    ico=ico,
+                    name_slug=slugify(name),
+                    sources=["ted"],
+                ),
+                value=value,
+                currency=currency,
+            )
+        )
+
+    return awards
+
+
 def transform_ted_notice(raw: dict) -> CanonicalNotice:
     """Map a raw TED API v3 notice dict → CanonicalNotice."""
     nd = str(raw.get("publication-number", ""))
@@ -141,7 +200,7 @@ def transform_ted_notice(raw: dict) -> CanonicalNotice:
         status=status,  # type: ignore[arg-type]
         title=title,
         procurer=procurer,
-        awards=[],  # v3 basic search response has no winner field
+        awards=_build_awards(raw),
         final_value=final_value,
         currency=currency,
         cpv_code=cpv_code,
