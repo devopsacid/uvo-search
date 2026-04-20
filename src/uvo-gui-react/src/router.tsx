@@ -7,6 +7,7 @@ import { SuppliersPage } from '@/pages/SuppliersPage'
 import { SupplierDetailPage } from '@/pages/SupplierDetailPage'
 import { ProcurersPage } from '@/pages/ProcurersPage'
 import { ProcurerDetailPage } from '@/pages/ProcurerDetailPage'
+import { GraphPage } from '@/pages/GraphPage'
 
 export const router = createBrowserRouter([
   {
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: 'suppliers/:ico', element: <SupplierDetailPage /> },
       { path: 'procurers', element: <ProcurersPage /> },
       { path: 'procurers/:ico', element: <ProcurerDetailPage /> },
+      { path: 'graph', element: <GraphPage /> },
     ],
   },
 ])

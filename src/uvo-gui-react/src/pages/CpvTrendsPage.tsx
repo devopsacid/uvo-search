@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useCpvShare } from '@/api/queries/dashboard'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { StackedAreaChart, type AreaSeries } from '@/components/charts/StackedAreaChart'
 import { formatCurrency } from '@/lib/utils'
 import sk from '@/i18n/sk'
 

@@ -4,11 +4,12 @@
  * Import via React.lazy to keep the initial bundle clean:
  *   const CytoscapeGraph = React.lazy(() => import('./CytoscapeGraph'))
  */
+// @ts-expect-error — no @types/react-cytoscapejs package available
 import CytoscapeComponent from 'react-cytoscapejs'
-import type { ElementDefinition, Stylesheet } from 'cytoscape'
+import type { ElementDefinition, StylesheetStyle, Core, EventObject } from 'cytoscape'
 import type { CytoEdge, CytoNode } from '@/api/types'
 
-const STYLESHEET: Stylesheet[] = [
+const STYLESHEET: StylesheetStyle[] = [
   {
     selector: 'node',
     style: {
@@ -74,10 +75,10 @@ export default function CytoscapeGraph({
       stylesheet={STYLESHEET}
       layout={{ name: 'cose', animate: false }}
       style={{ width: '100%', height }}
-      cy={(cy) => {
+      cy={(cy: Core) => {
         if (onNodeClick) {
-          cy.on('tap', 'node', (evt) => {
-            const node = evt.target
+          cy.on('tap', 'node', (evt: EventObject) => {
+            const node = evt.target as ReturnType<Core['$']>
             onNodeClick(node.data('id') as string, node.data('type') as string)
           })
         }

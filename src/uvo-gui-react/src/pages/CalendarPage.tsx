@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useByMonth } from '@/api/queries/dashboard'
 import { CalendarHeatmap } from '@/components/charts/CalendarHeatmap'
-import { Skeleton } from '@/components/ui/Skeleton'
 import sk from '@/i18n/sk'
 
 const CURRENT_YEAR = new Date().getFullYear()

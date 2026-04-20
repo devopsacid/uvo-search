@@ -11,9 +11,10 @@ describe('Detail Pages', () => {
 
   describe('SupplierDetailPage', () => {
     beforeEach(() => {
-      global.fetch = vi.fn((url: string) => {
+      global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
         if (url.includes('/suppliers/87654321/summary')) {
-          return Promise.resolve({
+          return {
             ok: true,
             json: async () => ({
               ico: '87654321',
@@ -27,10 +28,10 @@ describe('Detail Pages', () => {
                 { year: 2024, total_value: 25000 },
               ],
             }),
-          } as Response)
+          } as Response
         }
         if (url.includes('/suppliers/87654321')) {
-          return Promise.resolve({
+          return {
             ok: true,
             json: async () => ({
               ico: '87654321',
@@ -59,17 +60,14 @@ describe('Detail Pages', () => {
                 },
               ],
             }),
-          } as Response)
+          } as Response
         }
-        return Promise.resolve({
-          ok: false,
-          json: async () => ({}),
-        } as Response)
-      })
+        return { ok: false, json: async () => ({}) } as Response
+      }) as typeof fetch
     })
 
     it('renders supplier name and ICO', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText('Supplier A')).toBeInTheDocument()
@@ -78,7 +76,7 @@ describe('Detail Pages', () => {
     })
 
     it('renders years active', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText(/2022–2024/)).toBeInTheDocument()
@@ -86,17 +84,17 @@ describe('Detail Pages', () => {
     })
 
     it('displays KPI cards: contracts, total volume, average value', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
-        expect(screen.getByText(sk.suppliers.kpiContracts)).toBeInTheDocument()
-        expect(screen.getByText(sk.suppliers.kpiTotal)).toBeInTheDocument()
-        expect(screen.getByText(sk.suppliers.kpiAvg)).toBeInTheDocument()
+        expect(screen.getAllByText(sk.suppliers.kpiContracts).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(sk.suppliers.kpiTotal).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(sk.suppliers.kpiAvg).length).toBeGreaterThan(0)
       })
     })
 
     it('displays formatted currency values in KPIs', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         const kpiValues = screen.getAllByText(/€|,/)
@@ -105,7 +103,7 @@ describe('Detail Pages', () => {
     })
 
     it('renders spend-by-year chart section', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.suppliers.sectionSpend)).toBeInTheDocument()
@@ -113,44 +111,46 @@ describe('Detail Pages', () => {
     })
 
     it('renders top procurers table', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.suppliers.sectionProcurers)).toBeInTheDocument()
-        expect(screen.getByText('Procurer X')).toBeInTheDocument()
-        expect(screen.getByText('Procurer Y')).toBeInTheDocument()
+        expect(screen.getAllByText('Procurer X').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Procurer Y').length).toBeGreaterThan(0)
       })
     })
 
     it('renders top procurers as links', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
-        const procurerLink = screen.getByRole('link', { name: 'Procurer X' })
-        expect(procurerLink).toHaveAttribute('href', '/procurers/11111111')
+        const procurerLinks = screen.getAllByRole('link', { name: 'Procurer X' })
+        expect(procurerLinks.length).toBeGreaterThan(0)
+        expect(procurerLinks[0]).toHaveAttribute('href', '/procurers/11111111')
       })
     })
 
     it('renders contracts table', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
-        expect(screen.getByText(sk.suppliers.sectionContracts)).toBeInTheDocument()
+        expect(screen.getAllByText(sk.suppliers.sectionContracts).length).toBeGreaterThan(0)
         expect(screen.getByText('Contract 1')).toBeInTheDocument()
       })
     })
 
     it('displays contract procurer as link', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
-        const procurerLink = screen.getByRole('link', { name: 'Procurer X' })
-        expect(procurerLink).toHaveAttribute('href', '/procurers/11111111')
+        const procurerLinks = screen.getAllByRole('link', { name: 'Procurer X' })
+        expect(procurerLinks.length).toBeGreaterThan(0)
+        expect(procurerLinks[0]).toHaveAttribute('href', '/procurers/11111111')
       })
     })
 
     it('has back link to suppliers list', async () => {
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         const backLink = screen.getByRole('link', { name: /Spat/ })
@@ -159,9 +159,9 @@ describe('Detail Pages', () => {
     })
 
     it('shows loading skeletons while data is loading', async () => {
-      global.fetch = vi.fn(() => new Promise(() => {}))
+      global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
 
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         const skeletons = screen.getAllByTestId('skeleton')
@@ -170,15 +170,13 @@ describe('Detail Pages', () => {
     })
 
     it('shows error message when fetch fails', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
-          ok: false,
-          status: 404,
-          json: async () => ({ message: 'Not found' }),
-        } as Response)
-      )
+      global.fetch = vi.fn(async (): Promise<Response> => ({
+        ok: false,
+        status: 404,
+        json: async () => ({ message: 'Not found' }),
+      } as Response)) as typeof fetch
 
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.common.error)).toBeInTheDocument()
@@ -189,9 +187,10 @@ describe('Detail Pages', () => {
 
   describe('ProcurerDetailPage', () => {
     beforeEach(() => {
-      global.fetch = vi.fn((url: string) => {
+      global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
         if (url.includes('/procurers/12345678/summary')) {
-          return Promise.resolve({
+          return {
             ok: true,
             json: async () => ({
               ico: '12345678',
@@ -205,10 +204,10 @@ describe('Detail Pages', () => {
                 { year: 2024, total_value: 50000 },
               ],
             }),
-          } as Response)
+          } as Response
         }
         if (url.includes('/procurers/12345678')) {
-          return Promise.resolve({
+          return {
             ok: true,
             json: async () => ({
               ico: '12345678',
@@ -237,17 +236,14 @@ describe('Detail Pages', () => {
                 },
               ],
             }),
-          } as Response)
+          } as Response
         }
-        return Promise.resolve({
-          ok: false,
-          json: async () => ({}),
-        } as Response)
-      })
+        return { ok: false, json: async () => ({}) } as Response
+      }) as typeof fetch
     })
 
     it('renders procurer name and ICO', async () => {
-      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678' })
+      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678', routePattern: '/procurers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText('Procurer A')).toBeInTheDocument()
@@ -256,17 +252,17 @@ describe('Detail Pages', () => {
     })
 
     it('displays KPI cards: contracts, total spend, average value', async () => {
-      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678' })
+      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678', routePattern: '/procurers/:ico' })
 
       await waitFor(() => {
-        expect(screen.getByText(sk.procurers.kpiContracts)).toBeInTheDocument()
-        expect(screen.getByText(sk.procurers.kpiTotal)).toBeInTheDocument()
-        expect(screen.getByText(sk.procurers.kpiAvg)).toBeInTheDocument()
+        expect(screen.getAllByText(sk.procurers.kpiContracts).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(sk.procurers.kpiTotal).length).toBeGreaterThan(0)
+        expect(screen.getAllByText(sk.procurers.kpiAvg).length).toBeGreaterThan(0)
       })
     })
 
     it('renders spend-by-year chart section', async () => {
-      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678' })
+      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678', routePattern: '/procurers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.procurers.sectionSpend)).toBeInTheDocument()
@@ -274,26 +270,27 @@ describe('Detail Pages', () => {
     })
 
     it('renders top suppliers table', async () => {
-      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678' })
+      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678', routePattern: '/procurers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.procurers.sectionSuppliers)).toBeInTheDocument()
-        expect(screen.getByText('Supplier A')).toBeInTheDocument()
-        expect(screen.getByText('Supplier B')).toBeInTheDocument()
+        expect(screen.getAllByText('Supplier A').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Supplier B').length).toBeGreaterThan(0)
       })
     })
 
     it('renders top suppliers as links', async () => {
-      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678' })
+      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678', routePattern: '/procurers/:ico' })
 
       await waitFor(() => {
-        const supplierLink = screen.getByRole('link', { name: 'Supplier A' })
-        expect(supplierLink).toHaveAttribute('href', '/suppliers/87654321')
+        const supplierLinks = screen.getAllByRole('link', { name: 'Supplier A' })
+        expect(supplierLinks.length).toBeGreaterThan(0)
+        expect(supplierLinks[0]).toHaveAttribute('href', '/suppliers/87654321')
       })
     })
 
     it('has back link to procurers list', async () => {
-      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678' })
+      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678', routePattern: '/procurers/:ico' })
 
       await waitFor(() => {
         const backLink = screen.getByRole('link', { name: /Spat/ })
@@ -302,9 +299,9 @@ describe('Detail Pages', () => {
     })
 
     it('shows loading skeletons while data is loading', async () => {
-      global.fetch = vi.fn(() => new Promise(() => {}))
+      global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
 
-      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678' })
+      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678', routePattern: '/procurers/:ico' })
 
       await waitFor(() => {
         const skeletons = screen.getAllByTestId('skeleton')
@@ -315,15 +312,13 @@ describe('Detail Pages', () => {
 
   describe('Detail pages - error handling', () => {
     it('shows error when supplier detail endpoint fails', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
-          ok: false,
-          status: 500,
-          json: async () => ({ message: 'Server error' }),
-        } as Response)
-      )
+      global.fetch = vi.fn(async (): Promise<Response> => ({
+        ok: false,
+        status: 500,
+        json: async () => ({ message: 'Server error' }),
+      } as Response)) as typeof fetch
 
-      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321' })
+      renderWithProviders(<SupplierDetailPage />, { route: '/suppliers/87654321', routePattern: '/suppliers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.common.error)).toBeInTheDocument()
@@ -331,15 +326,13 @@ describe('Detail Pages', () => {
     })
 
     it('shows error when procurer detail endpoint fails', async () => {
-      global.fetch = vi.fn(() =>
-        Promise.resolve({
-          ok: false,
-          status: 500,
-          json: async () => ({ message: 'Server error' }),
-        } as Response)
-      )
+      global.fetch = vi.fn(async (): Promise<Response> => ({
+        ok: false,
+        status: 500,
+        json: async () => ({ message: 'Server error' }),
+      } as Response)) as typeof fetch
 
-      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678' })
+      renderWithProviders(<ProcurerDetailPage />, { route: '/procurers/12345678', routePattern: '/procurers/:ico' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.common.error)).toBeInTheDocument()

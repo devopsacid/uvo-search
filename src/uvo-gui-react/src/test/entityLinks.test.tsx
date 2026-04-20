@@ -6,9 +6,10 @@ import { SuppliersPage } from '../pages/SuppliersPage'
 import { ProcurersPage } from '../pages/ProcurersPage'
 import { vi } from 'vitest'
 
-global.fetch = vi.fn((url: string) => {
+global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
   if (url.includes('/contracts')) {
-    return Promise.resolve({
+    return {
       ok: true,
       json: async () => ({
         data: [
@@ -27,10 +28,10 @@ global.fetch = vi.fn((url: string) => {
         ],
         pagination: { total: 1, limit: 20, offset: 0 },
       }),
-    } as Response)
+    } as Response
   }
   if (url.includes('/suppliers')) {
-    return Promise.resolve({
+    return {
       ok: true,
       json: async () => ({
         data: [
@@ -38,10 +39,10 @@ global.fetch = vi.fn((url: string) => {
         ],
         pagination: { total: 1, limit: 20, offset: 0 },
       }),
-    } as Response)
+    } as Response
   }
   if (url.includes('/procurers')) {
-    return Promise.resolve({
+    return {
       ok: true,
       json: async () => ({
         data: [
@@ -49,13 +50,10 @@ global.fetch = vi.fn((url: string) => {
         ],
         pagination: { total: 1, limit: 20, offset: 0 },
       }),
-    } as Response)
+    } as Response
   }
-  return Promise.resolve({
-    ok: false,
-    json: async () => ({}),
-  } as Response)
-})
+  return { ok: false, json: async () => ({}) } as Response
+}) as typeof fetch
 
 describe('Entity Linking', () => {
   it('renders supplier link with correct href', () => {

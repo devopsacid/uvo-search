@@ -4,17 +4,18 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { App } from '../App'
 import sk from '../i18n/sk'
 
-// Stub fetch globally
-global.fetch = vi.fn().mockResolvedValue({
-  ok: true,
-  json: async () => ({
-    total_value: 1000000,
-    contract_count: 42,
-    avg_value: 23809,
-    active_suppliers: 15,
-    deltas: {},
-  }),
-} as Response)
+// Stub fetch globally — returns type-appropriate shapes per URL so page
+// components don't crash (e.g. recent?.map requires an array).
+global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+  let body: unknown
+  if (url.includes('/recent') || url.includes('/spend-by-year') || url.includes('/top-suppliers') || url.includes('/top-procurers') || url.includes('/by-cpv') || url.includes('/by-month')) {
+    body = []
+  } else {
+    body = { total_value: 1000000, contract_count: 42, avg_value: 23809, active_suppliers: 15, deltas: {} }
+  }
+  return { ok: true, json: async () => body } as Response
+}) as typeof fetch
 
 describe('Layout + Routing', () => {
   beforeEach(() => {

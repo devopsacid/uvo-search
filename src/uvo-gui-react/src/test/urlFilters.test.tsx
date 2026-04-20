@@ -4,13 +4,14 @@ import { SearchPage } from '../pages/SearchPage'
 import { SuppliersPage } from '../pages/SuppliersPage'
 import sk from '../i18n/sk'
 
-global.fetch = vi.fn((url: string) => {
+global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
   if (url.includes('/contracts')) {
     const urlObj = new URL(url, 'http://localhost')
     const q = urlObj.searchParams.get('q')
     const year = urlObj.searchParams.get('date_from')?.substring(0, 4)
 
-    return Promise.resolve({
+    return {
       ok: true,
       json: async () => ({
         data: q || year ? [
@@ -29,13 +30,13 @@ global.fetch = vi.fn((url: string) => {
         ] : [],
         pagination: { total: q || year ? 100 : 0, limit: 20, offset: 0 },
       }),
-    } as Response)
+    } as Response
   }
   if (url.includes('/suppliers')) {
     const urlObj = new URL(url, 'http://localhost')
     const q = urlObj.searchParams.get('q')
 
-    return Promise.resolve({
+    return {
       ok: true,
       json: async () => ({
         data: q ? [
@@ -43,13 +44,10 @@ global.fetch = vi.fn((url: string) => {
         ] : [],
         pagination: { total: q ? 100 : 0, limit: 20, offset: 0 },
       }),
-    } as Response)
+    } as Response
   }
-  return Promise.resolve({
-    ok: false,
-    json: async () => ({}),
-  } as Response)
-})
+  return { ok: false, json: async () => ({}) } as Response
+}) as typeof fetch
 
 describe('URL-as-State Filters', () => {
   beforeEach(() => {
@@ -144,9 +142,9 @@ describe('URL-as-State Filters', () => {
 
     // Wait for data to load and pagination to appear
     await waitFor(() => {
-      const paginationSection = screen.queryByText(/página/)
       // Pagination exists when there are results
-      expect(screen.getByText('Dodavatelia')).toBeInTheDocument()
+      const headings = screen.getAllByText('Dodavatelia')
+      expect(headings.length).toBeGreaterThan(0)
     })
   })
 

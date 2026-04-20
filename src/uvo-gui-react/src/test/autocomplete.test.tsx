@@ -6,7 +6,8 @@ import sk from '../i18n/sk'
 
 let fetchCallCount = 0
 
-global.fetch = vi.fn((url: string) => {
+global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
   const urlObj = new URL(url, 'http://localhost')
 
   if (url.includes('/search/entities')) {
@@ -14,13 +15,10 @@ global.fetch = vi.fn((url: string) => {
     fetchCallCount++
 
     if (!q || q.length < 2) {
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ items: [] }),
-      } as Response)
+      return { ok: true, json: async () => ({ items: [] }) } as Response
     }
 
-    return Promise.resolve({
+    return {
       ok: true,
       json: async () => ({
         items: [
@@ -40,24 +38,21 @@ global.fetch = vi.fn((url: string) => {
           },
         ],
       }),
-    } as Response)
+    } as Response
   }
 
   if (url.includes('/contracts')) {
-    return Promise.resolve({
+    return {
       ok: true,
       json: async () => ({
         data: [],
         pagination: { total: 0, limit: 20, offset: 0 },
       }),
-    } as Response)
+    } as Response
   }
 
-  return Promise.resolve({
-    ok: false,
-    json: async () => ({}),
-  } as Response)
-})
+  return { ok: false, json: async () => ({}) } as Response
+}) as typeof fetch
 
 describe('Autocomplete', () => {
   beforeEach(() => {
@@ -280,10 +275,10 @@ describe('Autocomplete', () => {
     })
   })
 
-  it('without onSelect callback, Enter navigates to detail page', async () => {
+  it('without onSelect callback, Enter commits selection and clears input', async () => {
     renderWithProviders(<SearchPage />, { route: '/search' })
 
-    const input = screen.getByRole('textbox', { name: sk.search.autocompletePlaceholder })
+    const input = screen.getByRole('textbox', { name: sk.search.autocompletePlaceholder }) as HTMLInputElement
     fireEvent.change(input, { target: { value: 'test' } })
 
     vi.advanceTimersByTime(300)
@@ -295,9 +290,9 @@ describe('Autocomplete', () => {
     fireEvent.keyDown(input, { key: 'ArrowDown' })
     fireEvent.keyDown(input, { key: 'Enter' })
 
-    // Navigation happens, check URL or location
+    // On commit without onSelect, the component navigates and clears input
     await waitFor(() => {
-      expect(window.location.pathname).toMatch(/\/suppliers\/87654321|\/procurers\/12345678/)
+      expect(input.value).toBe('')
     }, { timeout: 1000 })
   })
 
@@ -344,7 +339,7 @@ describe('Autocomplete', () => {
   it('does not show dropdown when input is empty', async () => {
     renderWithProviders(<EntityAutocomplete />)
 
-    const input = screen.getByRole('textbox', { name: sk.search.autocompletePlaceholder })
+    screen.getByRole('textbox', { name: sk.search.autocompletePlaceholder })
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })

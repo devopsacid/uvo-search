@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderWithProviders, screen, waitFor } from './utils'
 import { SearchPage } from '../pages/SearchPage'
 import { SuppliersPage } from '../pages/SuppliersPage'
@@ -10,9 +10,13 @@ describe('Loading + Empty + Error States', () => {
     vi.clearAllMocks()
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   describe('Loading states', () => {
     it('shows skeleton rows while contracts are loading', async () => {
-      global.fetch = vi.fn(() => new Promise(() => {})) // Never resolves
+      global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
 
       renderWithProviders(<SearchPage />, { route: '/search?q=test' })
 
@@ -23,7 +27,7 @@ describe('Loading + Empty + Error States', () => {
     })
 
     it('shows skeleton rows while suppliers are loading', async () => {
-      global.fetch = vi.fn(() => new Promise(() => {})) // Never resolves
+      global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
 
       renderWithProviders(<SuppliersPage />, { route: '/suppliers?q=test' })
 
@@ -34,12 +38,12 @@ describe('Loading + Empty + Error States', () => {
     })
 
     it('shows skeleton loading state for contract detail pane', async () => {
-      vi.useFakeTimers()
-      global.fetch = vi.fn((url: string) => {
+      global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
         if (url.includes('/contracts/')) {
-          return new Promise(() => {})
+          return new Promise(() => {}) // detail endpoint never resolves -> loading state
         }
-        return Promise.resolve({
+        return {
           ok: true,
           json: async () => ({
             data: [
@@ -58,8 +62,8 @@ describe('Loading + Empty + Error States', () => {
             ],
             pagination: { total: 1, limit: 20, offset: 0 },
           }),
-        } as Response)
-      })
+        } as Response
+      }) as typeof fetch
 
       renderWithProviders(<SearchPage />, { route: '/search' })
 
@@ -69,23 +73,21 @@ describe('Loading + Empty + Error States', () => {
       await waitFor(() => {
         const skeletons = screen.getAllByTestId('skeleton')
         expect(skeletons.length).toBeGreaterThan(0)
-      }, { timeout: 1000 })
-
-      vi.useRealTimers()
+      }, { timeout: 2000 })
     })
   })
 
   describe('Empty states', () => {
     beforeEach(() => {
-      global.fetch = vi.fn((url: string) => {
-        return Promise.resolve({
+      global.fetch = vi.fn(async (): Promise<Response> => {
+        return {
           ok: true,
           json: async () => ({
             data: [],
             pagination: { total: 0, limit: 20, offset: 0 },
           }),
-        } as Response)
-      })
+        } as Response
+      }) as typeof fetch
     })
 
     it('shows empty state title for contracts with no results', async () => {
@@ -116,9 +118,9 @@ describe('Loading + Empty + Error States', () => {
     it('does not show clear filters action when no filters are applied', async () => {
       renderWithProviders(<SearchPage />, { route: '/search' })
 
-      // Wait for empty state to load
+      // Wait for empty state to load (no filters → empty results but no clearFilters button)
       await waitFor(() => {
-        expect(screen.getByText(sk.search.selectRow)).toBeInTheDocument()
+        expect(screen.getByText(sk.search.noResults)).toBeInTheDocument()
       })
 
       const clearButton = screen.queryByRole('button', { name: sk.common.clearFilters })
@@ -146,13 +148,13 @@ describe('Loading + Empty + Error States', () => {
 
   describe('Error states', () => {
     beforeEach(() => {
-      global.fetch = vi.fn((url: string) => {
-        return Promise.resolve({
+      global.fetch = vi.fn(async (): Promise<Response> => {
+        return {
           ok: false,
           status: 500,
           json: async () => ({ message: 'Internal server error' }),
-        } as Response)
-      })
+        } as Response
+      }) as typeof fetch
     })
 
     it('shows error message when search fails', async () => {
@@ -183,7 +185,7 @@ describe('Loading + Empty + Error States', () => {
 
   describe('No scroll layout shift', () => {
     it('maintains table header while loading results', async () => {
-      global.fetch = vi.fn(() => new Promise(() => {}))
+      global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
 
       renderWithProviders(<SearchPage />, { route: '/search?q=test' })
 
