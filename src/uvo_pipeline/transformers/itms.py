@@ -8,12 +8,18 @@ Reads enriched items produced by the ITMS extractor:
 Falls back to legacy flat list-endpoint shape when those extras are absent
 (used by older tests/fixtures).
 """
+
 import logging
 from datetime import date
 
 from slugify import slugify
 
-from uvo_pipeline.models import CanonicalAward, CanonicalNotice, CanonicalProcurer, CanonicalSupplier
+from uvo_pipeline.models import (
+    CanonicalAward,
+    CanonicalNotice,
+    CanonicalProcurer,
+    CanonicalSupplier,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,28 +66,45 @@ def _build_procurer(raw: dict) -> CanonicalProcurer | None:
     return CanonicalProcurer(
         ico=ico,
         name=name,
-        name_slug=slugify(name) if name else f"itms-subject-{(raw.get('obstaravatelSubjekt') or {}).get('subjekt', {}).get('id', '')}",
+        name_slug=slugify(name)
+        if name
+        else f"itms-subject-{(raw.get('obstaravatelSubjekt') or {}).get('subjekt', {}).get('id', '')}",
         sources=["itms"],
+    )
+
+
+def _make_award(sup: dict, value: float | None) -> CanonicalAward:
+    name = sup.get("nazov") or ""
+    return CanonicalAward(
+        supplier=CanonicalSupplier(
+            ico=sup.get("ico"),
+            name=name,
+            name_slug=slugify(name),
+            sources=["itms"],
+        ),
+        value=value,
+        currency="EUR",  # ITMS contracts have no currency field; EUR by policy
     )
 
 
 def _build_awards(contracts: list) -> list[CanonicalAward]:
     awards = []
     for c in contracts:
-        d = c.get("dodavatel")
-        if not d:
+        value = c.get("celkovaSumaZmluvy")  # real field name confirmed by API probe
+
+        # detail-endpoint shape may have dodavatelia[] (multi-supplier); emit one award each
+        multi = c.get("_suppliers")
+        if multi:
+            for sup in multi:
+                if sup.get("ico") or sup.get("nazov"):
+                    awards.append(_make_award(sup, value))
             continue
-        name = d.get("nazov") or ""
-        awards.append(CanonicalAward(
-            supplier=CanonicalSupplier(
-                ico=d.get("ico"),
-                name=name,
-                name_slug=slugify(name),
-                sources=["itms"],
-            ),
-            value=c.get("celkovaHodnotaZmluvy"),
-            currency=c.get("mena") or "EUR",
-        ))
+
+        # prefer enriched supplier (has nazov); fall back to inline ref for ICO-only
+        sup = c.get("_supplier") or c.get("hlavnyDodavatelDodavatelObstaravatel") or {}
+        if not sup.get("ico") and not sup.get("nazov"):
+            continue
+        awards.append(_make_award(sup, value))
     return awards
 
 
@@ -99,7 +122,9 @@ def transform_procurement(raw: dict) -> CanonicalNotice:
     return CanonicalNotice(
         source="itms",
         source_id=str(raw["id"]),
-        notice_type="contract_award" if stav in ("Ukoncene", "Ukončené") and contracts else "contract_notice",
+        notice_type="contract_award"
+        if stav in ("Ukoncene", "Ukončené") and contracts
+        else "contract_notice",
         status=_STAV_TO_STATUS.get(stav, "unknown"),
         title=raw.get("nazov") or "Unnamed procurement",
         cpv_code=_cpv_code(raw),
