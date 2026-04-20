@@ -97,6 +97,7 @@ services:
 
   mongo:
     image: mongodb/mongodb-atlas-local:latest
+    hostname: mongo
     restart: unless-stopped
     environment:
       MONGODB_INITDB_ROOT_USERNAME: uvo
