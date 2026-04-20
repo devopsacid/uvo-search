@@ -150,7 +150,9 @@ def test_transform_procurer_name_slug():
 def test_transform_procurer_sources():
     r = transform_notice(_raw())
     assert r.procurer is not None
-    assert r.procurer.sources == ["vestnik"]
+    # Vestník is UVO's official gazette; mark both provenances so
+    # cross-source dedup can link to legacy UVO-sourced entities.
+    assert r.procurer.sources == ["vestnik", "uvo"]
 
 
 def test_transform_procurer_none_when_missing():

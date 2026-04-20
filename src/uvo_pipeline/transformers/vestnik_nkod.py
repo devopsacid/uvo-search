@@ -115,12 +115,14 @@ def transform_notice(raw: dict) -> CanonicalNotice:
     partner_name, _partner_id = _parse_partner(_lookup(flat, "DL-Metadata-Partner"))
     procurer = None
     if partner_name:
+        # Vestník is UVO's official gazette; mark procurer provenance as both
+        # so cross-source dedup links vestnik notices to any legacy UVO data.
         procurer = CanonicalProcurer(
             name=partner_name,
             name_slug=slugify(partner_name),
             ico=None,
             organisation_type=None,
-            sources=["vestnik"],
+            sources=["vestnik", "uvo"],
         )
 
     publication_date = _parse_date(raw.get("_bulletin_publish_date"))
