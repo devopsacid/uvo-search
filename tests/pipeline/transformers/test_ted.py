@@ -102,19 +102,22 @@ def test_transform_awards_empty_when_no_winner_name():
 
 # --- CAN award extraction ---
 
+# TED v3 returns winner-name as a multilingual dict whose language values
+# are lists (one per awarded lot). winner-identifier is a flat list that
+# may contain multiple identifier schemes (ICO + VAT) for the same winner.
 RAW_CAN_SINGLE = {
     **RAW_CAN,
-    "winner-name": ["Acme s.r.o."],
-    "winner-identifier": ["12345678"],
-    "result-value-lot": [45000.0],
+    "winner-name": {"slk": ["Acme s.r.o."]},
+    "winner-identifier": ["12345678", "2022116976"],
+    "result-value-lot": ["45000.00"],
     "result-value-cur-lot": ["EUR"],
 }
 
 RAW_CAN_MULTI = {
     **RAW_CAN,
-    "winner-name": ["Acme s.r.o.", "Beta a.s."],
-    "winner-identifier": ["12345678", "87654321"],
-    "result-value-lot": [20000.0, 25000.0],
+    "winner-name": {"slk": ["Acme s.r.o.", "Beta a.s."]},
+    "winner-identifier": ["12345678"],
+    "result-value-lot": ["20000.00", "25000.00"],
     "result-value-cur-lot": ["EUR", "EUR"],
 }
 
@@ -125,6 +128,7 @@ def test_awards_single_winner():
     a = r.awards[0]
     assert a.supplier.name == "Acme s.r.o."
     assert a.supplier.name_slug == "acme-s-r-o"
+    # First 8-digit identifier wins, VAT 2022116976 is ignored
     assert a.supplier.ico == "12345678"
     assert a.value == 45000.0
     assert a.currency == "EUR"
@@ -137,49 +141,76 @@ def test_awards_multi_lot():
     assert r.awards[0].value == 20000.0
     assert r.awards[1].supplier.name == "Beta a.s."
     assert r.awards[1].value == 25000.0
+    # All awards share the winner's single ICO
+    assert r.awards[0].supplier.ico == "12345678"
+    assert r.awards[1].supplier.ico == "12345678"
 
 
 def test_awards_non_numeric_identifier_gives_ico_none():
-    raw = {**RAW_CAN, "winner-name": ["Foreign Corp"], "winner-identifier": ["DE-XYZ-9999"]}
+    raw = {
+        **RAW_CAN,
+        "winner-name": {"eng": ["Foreign Corp"]},
+        "winner-identifier": ["DE-XYZ-9999", "ABC123"],
+    }
     r = transform_ted_notice(raw)
     assert len(r.awards) == 1
     assert r.awards[0].supplier.ico is None
 
 
 def test_awards_no_winner_name_returns_empty():
-    raw = {**RAW_CAN, "winner-name": []}
+    raw = {**RAW_CAN, "winner-name": {}}
     r = transform_ted_notice(raw)
     assert r.awards == []
 
 
-def test_awards_mismatched_list_lengths_no_crash():
-    # More names than values/identifiers — should pad with None, not crash
+def test_awards_fallback_to_tenderer_when_no_winner_name():
+    # SK notices sometimes populate only organisation-name-tenderer.
     raw = {
         **RAW_CAN,
-        "winner-name": ["Alpha", "Beta", "Gamma"],
-        "winner-identifier": ["11111111"],
-        "result-value-lot": [1000.0],
-        "result-value-cur-lot": ["EUR"],
+        "winner-name": {},
+        "organisation-name-tenderer": {"slk": ["Tender Company s.r.o."]},
+        "organisation-identifier-tenderer": ["31348238"],
     }
     r = transform_ted_notice(raw)
-    assert len(r.awards) == 3
-    # First entry has full data
-    assert r.awards[0].supplier.ico == "11111111"
-    assert r.awards[0].value == 1000.0
-    # Later entries fall back to notice-level value
-    assert r.awards[1].supplier.ico is None
+    assert len(r.awards) == 1
+    assert r.awards[0].supplier.name == "Tender Company s.r.o."
+    assert r.awards[0].supplier.ico == "31348238"
 
 
 def test_awards_fallback_to_notice_value_when_no_lot_value():
     raw = {
         **RAW_CAN,
-        "winner-name": ["Fallback Corp"],
-        "result-value-notice": [99999.0],
+        "winner-name": {"slk": ["Fallback Corp"]},
+        "result-value-notice": ["99999.00"],
         "result-value-cur-notice": ["EUR"],
     }
     r = transform_ted_notice(raw)
     assert len(r.awards) == 1
     assert r.awards[0].value == 99999.0
+
+
+def test_awards_fallback_to_tender_value_when_no_result_value():
+    raw = {
+        **RAW_CAN,
+        "winner-name": {"slk": ["Tender Corp"]},
+        # Only tender-value available (not result-value-*)
+        "tender-value": ["321393.60"],
+        "tender-value-cur": ["EUR"],
+    }
+    r = transform_ted_notice(raw)
+    assert len(r.awards) == 1
+    assert r.awards[0].value == 321393.60
+
+
+def test_awards_prefers_slovak_over_other_languages():
+    raw = {
+        **RAW_CAN,
+        "winner-name": {"eng": ["Acme Ltd"], "slk": ["Acme s.r.o."], "deu": ["Acme GmbH"]},
+        "winner-identifier": ["12345678"],
+    }
+    r = transform_ted_notice(raw)
+    assert len(r.awards) == 1
+    assert r.awards[0].supplier.name == "Acme s.r.o."
 
 
 def test_transform_multilingual_title_prefers_slovak():
