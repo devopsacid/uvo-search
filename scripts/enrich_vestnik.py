@@ -66,6 +66,8 @@ async def main(since: date | None, limit: int | None, dry_run: bool) -> int:
     cache_dir = Path(settings.cache_dir)
     rate_limiter = RateLimiter(rate=max(1, int(settings.vestnik_rate_limit)), per=1.0)
 
+    seen_uris: set[str] = set()
+
     async with httpx.AsyncClient(timeout=settings.request_timeout) as sparql_client, \
         httpx.AsyncClient(timeout=settings.request_timeout, follow_redirects=True) as dl_client:
         dataset_count = 0
@@ -75,6 +77,11 @@ async def main(since: date | None, limit: int | None, dry_run: bool) -> int:
             sparql_url=settings.nkod_sparql_url,
             since=since,
         ):
+            # Each dataset exposes multiple distributions (JSON, XML, XLSX…)
+            # as separate SPARQL rows — content is identical, skip dupes.
+            if ds.uri in seen_uris:
+                continue
+            seen_uris.add(ds.uri)
             dataset_count += 1
             before_count = processed
             async for raw in fetch_bulletin(dl_client, rate_limiter, ds, cache_dir=cache_dir):

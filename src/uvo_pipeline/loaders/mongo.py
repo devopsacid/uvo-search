@@ -170,7 +170,17 @@ async def upsert_batch(
     inserted = updated = skipped = errors = 0
 
     for i in range(0, len(notices), batch_size):
-        batch = notices[i : i + batch_size]
+        raw_batch = notices[i : i + batch_size]
+
+        # Dedupe within the batch on (source, source_id). Callers may emit the
+        # same notice twice when a source exposes the same payload via multiple
+        # distributions (e.g. Vestník datasets have several format rows in the
+        # NKOD SPARQL result). Without this, the first occurrence inserts and
+        # the second collides on the ingested_docs unique index.
+        deduped: dict[tuple[str, str], CanonicalNotice] = {}
+        for notice in raw_batch:
+            deduped[(notice.source, notice.source_id)] = notice
+        batch = list(deduped.values())
 
         # Compute hashes for all notices in this batch
         for notice in batch:
