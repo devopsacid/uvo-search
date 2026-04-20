@@ -7,36 +7,46 @@ Search and browse Slovak government procurement data via a dual-interface applic
 - **Full-text search** across government procurement records from [UVOstat.sk](https://www.uvostat.sk/)
 - **Structured filtering** by CPV codes (EU product classification), date ranges, procurement authorities, and suppliers
 - **MCP server** with 4 tools for AI agent integration — search procurements, find procurers and suppliers
-- **NiceGUI web frontend** with server-side pagination, detail views, and entity browsing (fully in Slovak)
+- **Two frontends**:
+  - **NiceGUI** (Python-based) — Public web UI with server-side pagination and Slovak interface
+  - **Vue Admin GUI** (Vue 3) — Internal dashboard with Grafana-style layout, light/dark theme, and analytics
 - **Dual access** — use the same backend with Claude Desktop/Code (via stdio) or in your browser (via HTTP)
 - **Caching layer** with configurable TTLs to respect API rate limits
-- **Docker Compose deployment** with health checks for both services
+- **Docker Compose deployment** with health checks for all services
+- **Playwright e2e tests** for both frontends
 
 ## Architecture
 
-UVO Search runs as a **two-process Python application** communicating over HTTP:
+UVO Search is a **three-process application** with shared MCP backend:
 
 ```
-┌─────────────────┐
-│   Browser       │ ──HTTP──┐
-│   (user)        │         │
-└─────────────────┘         │
-                            ├──→ NiceGUI Frontend (port 8080)
-┌─────────────────┐         │    ├─ Search pages (Vyhľadávanie)
-│  Claude Desktop │ ──stdio─┤    ├─ Procurement browsers
-│  Claude Code    │         │    └─ Detail views
-└─────────────────┘         │         │
-                            │         │ (MCP client)
-                            │         │
-                            └──→ MCP Server (port 8000)
-                                 ├─ 7 tools (search, detail, find, contracts)
-                                 ├─ TTL caching
-                                 └─ REST client for external APIs
-                                      │
-                                      ├─ UVOstat API
-                                      ├─ Ekosystem Datahub
-                                      ├─ TED API (EU procurements)
-                                      └─ RPVS/OpenSanctions (beneficial ownership)
+┌──────────────────────────────────────────────┐
+│ MCP Server (Python, port 8000)               │
+│ ├─ 4 tools (search, detail, find, contracts)│
+│ ├─ TTL caching via cachetools               │
+│ └─ REST clients for external APIs           │
+└──────────────────────────────────────────────┘
+            ↑                      ↑
+    ┌───────┴──────┐      ┌──────┴──────┐
+    │              │      │             │
+    │ (HTTP)       │ (HTTP)             │ (stdio)
+    │              │                    │
+┌───┴────────────┐  ┌──────────────┐  ┌───────┐
+│ NiceGUI        │  │ Vue Admin    │  │Claude │
+│ (port 8080)    │  │ (port 5173)  │  │Desktop│
+│ Python         │  │ Vue 3 + TS   │  │Code   │
+├────────────────┤  ├──────────────┤  └───────┘
+│ • Search       │  │ • Dashboard  │
+│ • Procurers    │  │ • Contracts  │
+│ • Suppliers    │  │ • Analytics  │
+│ • Detail views │  │ • Dark theme │
+└────────────────┘  └──────────────┘
+
+External APIs:
+├─ UVOstat (Slovak procurements)
+├─ Ekosystem Datahub (CRZ contracts)
+├─ TED API (EU procurements)
+└─ RPVS/OpenSanctions (beneficial ownership)
 ```
 
 **Why two processes?**
@@ -92,31 +102,42 @@ cd uvo-search
 cp .env.example .env
 # Edit .env and set UVOSTAT_API_TOKEN=your-actual-token
 
-# Install dependencies
+# Install Python dependencies
 uv sync --all-extras
 
-# Run both services (in separate terminals)
-# Terminal 1: MCP server
+# Run MCP server (Terminal 1)
 uv run python -m uvo_mcp
 
-# Terminal 2: GUI
+# Run NiceGUI frontend (Terminal 2)
 uv run python -m uvo_gui
-
 # Open browser to http://localhost:8080
+
+# Run Vue admin GUI (Terminal 3)
+cd src/uvo-gui-vuejs
+npm install
+npm run dev
+# Open browser to http://localhost:5173
 ```
 
 ### Running Tests
 
 ```bash
-# Unit tests (mocked API responses)
-uv run pytest tests/ -m "not e2e and not integration" -v
+# Unit tests (MCP server and NiceGUI, mocked API responses)
+uv run pytest tests/mcp/ tests/gui/ -v
+
+# E2E browser tests (requires docker compose running)
+uv run pytest tests/e2e/ -v
 
 # With coverage
-uv run pytest tests/ -m "not e2e and not integration" --cov=src/
+uv run pytest tests/mcp/ tests/gui/ --cov=src/ -v
 
 # Lint check
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
+
+# Vue admin GUI unit tests
+cd src/uvo-gui-vuejs
+npm run test
 ```
 
 ## Running with Docker Compose
@@ -220,16 +241,35 @@ All settings come from environment variables (via `.env` file):
 | `REQUEST_TIMEOUT` | — | `30.0` | HTTP request timeout in seconds |
 | `LOG_LEVEL` | — | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
-## GUI Structure
+## Frontend Interfaces
 
-The web frontend is built with **NiceGUI** (FastAPI + Vue/Quasar + Tailwind CSS) with a fully Slovak interface:
+### NiceGUI (Public)
 
-- **Vyhľadávanie (Search)** — Main page with full-text and structured filtering for procurements
-- **Obstaravatelia (Procurers)** — Browse contracting authorities and their procurement history
-- **Dodavatelia (Suppliers)** — Browse companies that won government contracts
+Built with **NiceGUI** (FastAPI + Vue/Quasar + Tailwind CSS), fully Slovak interface:
+
+- **Vyhľadávanie (Search)** — Full-text and structured filtering for procurements
+- **Obstaravatelia (Procurers)** — Browse contracting authorities and procurement history
+- **Dodavatelia (Suppliers)** — Browse awarded contractors
 - **Detail views** — Complete procurement records with associated contracts and suppliers
 
-All pages support **server-side pagination** and are optimized for both desktop and mobile browsers.
+All pages support **server-side pagination** and are mobile-optimized.
+
+### Vue Admin GUI (Internal)
+
+Built with **Vue 3 + TypeScript**, Grafana-style analytics dashboard with dark/light theme:
+
+- **Dashboard** — KPI cards, charts (spend, CPV breakdown)
+- **Contracts** — Full contract table with filtering, sorting, pagination
+- **Suppliers** — Supplier performance and contract history
+- **Procurers** — Authority spending patterns
+- **Costs** — Cost analysis and trends
+- **Search** — Global search across all entities
+
+Features:
+- Command palette (⌘K) for quick navigation
+- Dark/light theme toggle (localStorage-persisted)
+- Keyboard shortcuts (⌘K, Esc to close, arrow keys)
+- Responsive sidebar (collapsible on mobile)
 
 ## Development
 

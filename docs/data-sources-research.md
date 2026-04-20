@@ -143,34 +143,55 @@ The Vestnik publishes multiple types of notices per EU procurement directives:
 
 ---
 
-## 2b. data.gov.sk — CKAN Open Data Catalog
+## 2b. data.slovensko.sk — NKOD SPARQL Catalog
 
-**Portal:** https://data.gov.sk
-**API base:** https://data.gov.sk/api/3/action
+**Portal:** https://data.slovensko.sk
+**SPARQL Endpoint:** `POST https://data.slovensko.sk/api/sparql`
 
 ### Overview
-data.gov.sk is the Slovak national open data catalog (CKAN-based). The Vestník verejného obstarávania XML datasets are published here daily (on working days). Each issue gets its own dataset with a UUID-based URL — no predictable URL pattern — so programmatic discovery via the CKAN catalog API is required.
+data.slovensko.sk replaced CKAN (data.gov.sk) with a React SPA backed by a **public SPARQL endpoint** conforming to DCAT-AP (EU standard for data catalogs).
+
+The Vestník verejného obstarávania datasets are published as weekly bulletins with JSON downloads (~10 MB each, ~520 historical issues back to 2016).
 
 ### Dataset Discovery
 ```
-GET https://data.gov.sk/api/3/action/package_search
-  ?q=vestnik+verejneho+obstaravania
-  &sort=metadata_modified+desc
-  &rows=50
-  &start=0
+POST https://data.slovensko.sk/api/sparql
+Content-Type: application/x-www-form-urlencoded
+
+query=PREFIX dcat: <http://www.w3.org/ns/dcat#>
+PREFIX dct:  <http://purl.org/dc/terms/>
+SELECT ?dataset ?title ?modified ?url WHERE {
+  ?dataset a dcat:Dataset ;
+           dct:publisher <https://data.gov.sk/id/legal-subject/31797903> ;
+           dct:title ?title ;
+           dcat:distribution ?dist .
+  ?dist dcat:accessURL ?url .
+  OPTIONAL { ?dataset dct:modified ?modified }
+  FILTER (lang(?title) = "sk")
+  FILTER (?modified >= "2026-01-01T00:00:00"^^xsd:dateTime)
+} ORDER BY ?modified
 ```
-Returns paginated list of dataset records. Each record has `.resources[].url` pointing to ZIP download(s).
+
+Returns SPARQL JSON results with paginated datasets. Paginate via `LIMIT 200 OFFSET n`.
 
 ### Authentication
-No authentication required for public dataset access.
+No authentication required for public catalogs.
 
 ### Update Frequency
-Daily on working days. Each Vestník issue (numbered within the year) becomes one dataset.
+Daily on working days. Each Vestník issue (weekly bulletin, numbered within the year) becomes one dataset.
 
-### XML Format
-eForms/UBL 2.3 standard. Key namespaces:
-- `cbc`: Common Basic Components
-- `cac`: Common Aggregate Components
+### Data Format
+**Outer format**: JSON envelope with `bulletinItemList[]`
+**Item format**: eForms/UBL 2.3 (eForms SDK 1.13) in JSON, extracted via `itemData` string field
+
+Key eForms Business Term (BT) codes used:
+- `BT-02-notice` — Notice form type (e.g., `can-standard`)
+- `BT-03-notice` — Notice purpose (`result`, `planning`, `change`)
+- `BT-04-notice` — Notice UUID (stable across republications)
+- `DL-Metadata-Partner` — Procuring organization
+- `DL-Metadata-Order` — Procurement title
+- `BT-262-Lot` — CPV code (main category)
+- `BT-27-Lot`, `BT-720-Tender` — Monetary amounts (estimated/final value)
 
 ---
 

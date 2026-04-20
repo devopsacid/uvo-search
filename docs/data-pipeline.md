@@ -40,10 +40,12 @@ The pipeline runs as a Docker Compose service. The default mode (`recent`) fetch
 
 | Source | Type | Auth | Update Frequency | Coverage |
 |---|---|---|---|---|
-| UVO.gov.sk Vestník XML | CKAN + ZIP download | None | Daily (working days) | 2014–present |
+| UVO.gov.sk Vestník NKOD | SPARQL + JSON download | None | Daily (working days) | 2016–present |
 | UVOstat.sk API | REST API | `ApiToken` header | 24h–7d | 2014–present |
 | Ekosystem CRZ | REST API | Optional token | Continuous | 2011–present |
 | TED EU API | REST API | None | Daily | All above-threshold |
+
+**Note**: Vestník source changed from CKAN (data.gov.sk) to NKOD SPARQL (data.slovensko.sk) as CKAN was deprecated in favor of React SPA. See [plan-vestnik-nkod.md](plan-vestnik-nkod.md) for implementation details.
 
 ---
 

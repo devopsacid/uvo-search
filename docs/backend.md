@@ -90,6 +90,30 @@ class Settings(BaseSettings):
 
 All settings come from environment variables (via `.env`). Unused URLs/tokens (ekosystem, ted) are for future expansion.
 
+## API Schema & Response Models
+
+**File**: `src/uvo_api/_schema.py`
+
+Mapping helpers normalize API responses to MCP schema (contracts list returns `items` not `data`, standardizes field names across sources):
+
+```python
+def map_contract_row(item: dict) -> ContractRow:
+    """Convert API response item → MCP ContractRow."""
+    return ContractRow(
+        id=item.get("_id") or item.get("id"),
+        title=item.get("title"),
+        procurer_name=item.get("procurer", {}).get("name"),
+        procurer_ico=item.get("procurer", {}).get("ico"),
+        supplier_name=...,  # From first award
+        value=...,          # final_value or estimated_value
+        cpv_code=item.get("cpv_code"),
+        year=extract from date,
+        status=active|closed,
+    )
+```
+
+Handles field name variations across UVOstat, Ekosystem, and TED APIs. All routers (`contracts`, `dashboard`, `procurers`, `suppliers`) use these helpers.
+
 ## Data Models
 
 **File**: `src/uvo_mcp/models.py`

@@ -13,35 +13,34 @@ The two processes communicate over HTTP using the **streamable-http MCP protocol
 ## System Architecture
 
 ```
-┌─────────────────┐
-│   Browser       │ ──HTTP──┐
-│   (user)        │         │
-└─────────────────┘         │
-                            ├──→ NiceGUI Frontend (port 8080)
-┌─────────────────┐         │    ├─ Search pages (Vyhľadávanie)
-│  Claude Desktop │ ──stdio─┤    ├─ Procurement browsers
-│  Claude Code    │         │    ├─ Detail views
-└─────────────────┘         │    └─ Shared layout component
-                            │         │
-                            │         │ (MCP HTTP client)
-                            │         │
-                            └──→ MCP Server (port 8000)
-                                 ├─ 4 MCP tools
-                                 ├─ TTL caching (configurable)
-                                 ├─ Request validation
-                                 └─ REST clients for external APIs
-                                      │
-                                      ├─ UVOstat API
-                                      │  (Slovak procurements)
-                                      │
-                                      ├─ Ekosystem Datahub
-                                      │  (CRZ contracts, entities)
-                                      │
-                                      ├─ TED API
-                                      │  (EU procurements)
-                                      │
-                                      └─ RPVS/OpenSanctions
-                                         (Beneficial ownership)
+┌────────────────────────────────────────────────────┐
+│  MCP Server (port 8000, FastMCP + Python)         │
+│  ├─ 4 MCP tools (search, detail, find, contracts) │
+│  ├─ TTL caching via cachetools                    │
+│  ├─ Health check endpoint (/health)               │
+│  └─ Request validation & error handling           │
+└────────────────────────────────────────────────────┘
+       ↑                    ↑                    ↑
+   (HTTP)             (HTTP)             (stdio)
+       │                    │                    │
+   ┌───┴─────────────┐ ┌────┴──────────┐  ┌─────┴──────┐
+   │ NiceGUI         │ │ Vue Admin GUI │  │ Claude     │
+   │ (port 8080)     │ │ (port 5173)   │  │ Desktop/   │
+   │ Python/FastAPI  │ │ Vue 3+TS      │  │ Code       │
+   ├─────────────────┤ ├───────────────┤  └────────────┘
+   │ • Search        │ │ • Dashboard   │
+   │ • Procurers     │ │ • Contracts   │
+   │ • Suppliers     │ │ • Analytics   │
+   │ • Detail views  │ │ • Dark theme  │
+   │ • Graphs        │ │ • Command pal │
+   └─────────────────┘ └───────────────┘
+
+External Data Sources:
+├─ UVOstat.sk API (Slovak procurements, 2014+)
+├─ Vestník NKOD SPARQL (Slovak bulletin, 2016+)
+├─ Ekosystem Datahub (CRZ contracts, 2011+)
+├─ TED API (EU procurements)
+└─ RPVS/OpenSanctions (Beneficial ownership)
 ```
 
 ## Process Architecture
@@ -56,6 +55,7 @@ The two processes communicate over HTTP using the **streamable-http MCP protocol
   - Interactive search filters (text, date range, CPV codes)
   - Split-panel detail views
   - Entity browsing (procurers, suppliers)
+  - Relationship network graph visualization
 
 **Key Responsibilities**:
 - Render pages and components
@@ -65,6 +65,29 @@ The two processes communicate over HTTP using the **streamable-http MCP protocol
 
 **Port**: 8080
 **Bind Host**: `0.0.0.0` (configurable via `GUI_HOST`)
+
+### Vue Admin GUI (port 5173)
+
+- **Framework**: Vue 3 + TypeScript + Pinia (state management)
+- **Styling**: Tailwind CSS v4 + dark mode
+- **Features**:
+  - Grafana-style layout (Sidebar + TopBar + Panels)
+  - Dark/light theme with localStorage persistence
+  - Command palette (⌘K) for quick navigation
+  - Hotkey support (Cmd/Ctrl combinations)
+  - Responsive data tables with sorting/pagination
+  - Chart.js visualizations (spend, CPV breakdown)
+  - Filter store for global filtering state
+
+**Key Responsibilities**:
+- Render analytics dashboard and admin views
+- Manage theme state (dark/light) and persist to localStorage
+- Handle command palette and hotkeys
+- Call MCP server tools via fetch
+- Display charts and data tables with Tailwind styling
+
+**Port**: 5173 (dev) / 4173 (preview)
+**Build Host**: `0.0.0.0` (configurable in vite.config.ts)
 
 ### FastMCP Server (port 8000)
 
@@ -258,10 +281,49 @@ All loggers use Python's `logging` module. Set `LOG_LEVEL` env var:
 - Connection timeout → return error dict
 - Validation errors → return 400 (handled by FastMCP)
 
+## Data Pipeline
+
+A separate **pipeline service** ingests from four sources into MongoDB + Neo4j:
+
+```
+SPARQL        UVOstat       Ekosystem      TED
+(NKOD)        API           Datahub        API
+  │             │             │             │
+  └─────────────┼─────────────┼─────────────┘
+                │
+         Pipeline Container
+         ├─ discover_vestnik_datasets() — SPARQL catalog
+         ├─ fetch_bulletin() — Download + parse Vestník JSON
+         ├─ transform_* → CanonicalNotice
+         ├─ Cross-source deduplication
+         └─ Load to MongoDB + Neo4j
+                │
+         ┌──────┴──────┐
+         │             │
+      MongoDB       Neo4j
+      (notices)     (graph)
+         │             │
+         └──────┬──────┘
+                │
+           MCP Server
+         (reads via queries)
+```
+
+**Modes**:
+- `recent` (default) — Last 365 days, checkpoint-based incremental
+- `historical` — Full backfill from 2014/2016 (one-time)
+- `dry-run` — Validate config without DB writes
+
+**Deduplication**:
+- Per-source: `(source, source_id)` unique constraint
+- Cross-source: Hash matching on `(procurer_ico, cpv_code)` links notices
+
+See [data-pipeline.md](data-pipeline.md) and [plan-vestnik-nkod.md](plan-vestnik-nkod.md) for details.
+
 ## Future Enhancements
 
 See [plan.md](plan.md) for:
-- TTL caching implementation (currently config-only)
-- Additional MCP tools (announced procurements, entity profiles, CRZ contracts)
+- Additional MCP tools (announced procurements, entity profiles)
+- Multi-lot support in Vestník extractor
 - Performance optimizations (pagination benchmarks, query optimization)
-- Additional data sources (beneficial ownership, contract compliance)
+- Beneficial ownership integration and compliance analysis

@@ -2,7 +2,14 @@
 
 ## Overview
 
-The UVO Search frontend is a **NiceGUI application** (Python + FastAPI + Quasar/Vue + Tailwind CSS) with a fully Slovak-language interface. It provides a web UI for searching, filtering, and browsing Slovak government procurement data.
+UVO Search has **two frontends**:
+
+1. **NiceGUI** (Python-based) — Public-facing web UI for searching procurement data
+2. **Vue Admin GUI** (Vue 3 + TypeScript) — Internal admin/analytics interface
+
+Both connect to the same MCP backend but serve different purposes.
+
+### NiceGUI Frontend (User-facing)
 
 **Key Files**:
 - `src/uvo_gui/__main__.py` — Entry point
@@ -11,6 +18,17 @@ The UVO Search frontend is a **NiceGUI application** (Python + FastAPI + Quasar/
 - `src/uvo_gui/components/layout.py` — Shared layout shell (header + sidebar)
 - `src/uvo_gui/pages/` — Individual page implementations
 - `src/uvo_gui/config.py` — Settings (environment variables)
+
+### Vue Admin GUI (Internal dashboard)
+
+**Key Files**:
+- `src/uvo-gui-vuejs/` — Vue 3 + TypeScript single-page app
+- `src/uvo-gui-vuejs/src/main.ts` — Entry point
+- `src/uvo-gui-vuejs/src/App.vue` — Root component
+- `src/uvo-gui-vuejs/src/router/` — Route definitions
+- `src/uvo-gui-vuejs/src/stores/` — Pinia state management
+- `src/uvo-gui-vuejs/src/components/` — Reusable components
+- `src/uvo-gui-vuejs/src/composables/` — Vue 3 composition functions
 
 ## Starting the Frontend
 
@@ -514,3 +532,265 @@ Call `.refresh()` before async work to show loading state, then again after.
 2. **Async in sync handlers** — Use `asyncio.ensure_future(coro())`, not `ui.timer(0, ..., once=True)`
 3. **Module-level state** — `_state = StateClass()` is the established pattern (not instance variables)
 4. **Refresh for reactivity** — `@ui.refreshable` functions + `.refresh()` calls = data binding
+
+---
+
+## Vue Admin GUI
+
+### Starting the Admin GUI
+
+```bash
+cd src/uvo-gui-vuejs
+npm run dev
+```
+
+The app starts on `http://localhost:5173` and connects to the MCP server at `http://localhost:8000/mcp` (configurable via `.env.local`).
+
+### Architecture
+
+**Grafana-style layout** with dark/light theme support:
+
+```
+┌────────────────────────────────────────────┐
+│ TopBar: Dashboard | Filters | Theme Toggle │
+├────────────────┬─────────────────────────┤
+│   Sidebar      │                         │
+│ • Dashboard    │   Main Content Area     │
+│ • Contracts    │   (routed pages)        │
+│ • Suppliers    │                         │
+│ • Procurers    │   Uses Panels +         │
+│ • Costs        │   StatCards for layout  │
+│ • Search       │                         │
+└────────────────┴─────────────────────────┘
+```
+
+### Layout Components
+
+Located in `src/uvo-gui-vuejs/src/components/`:
+
+| Component | Purpose |
+|-----------|---------|
+| `Sidebar.vue` | Collapsible navigation with active state tracking |
+| `TopBar.vue` | Header with page title, filter badge, command palette, language toggle |
+| `Panel.vue` | Content container with dark/light theme styling |
+| `StatCard.vue` | Dashboard metric card (value + label + trend) |
+| `EntityTable.vue` | Paginated data table for contracts/suppliers/procurers |
+| `ContractStatusBadge.vue` | Status indicator (active/closed/etc) |
+| `CommandPalette.vue` | Global keyboard-driven command search (⌘K) |
+
+### State Management (Pinia stores)
+
+Located in `src/uvo-gui-vuejs/src/stores/`:
+
+#### `filter.ts`
+- Tracks active filter state (entity type, ICO, date range)
+- Methods: `apply()`, `clear()`, `isFiltered` (computed)
+- Syncs to localStorage for persistence across sessions
+
+#### `theme.ts`
+- Manages light/dark mode
+- Reads system preference on init, respects user selection
+- Writes to localStorage synchronously (commit c6117a7 ensures `flush: 'sync'` to avoid flicker)
+- Applies class to `document.documentElement` for CSS dark mode
+
+### Composables
+
+Located in `src/uvo-gui-vuejs/src/composables/`:
+
+#### `useCommandPalette.ts`
+- Exposes `open()` method to trigger the command palette
+- Manages palette visibility state
+- Used by TopBar to open palette when ⌘K is pressed
+
+#### `useHotkeys.ts`
+- Global hotkey listener
+- Maps ⌘K → `useCommandPalette().open()`
+- Prevents conflicts with browser shortcuts
+
+### Theme & Styling
+
+**Framework**: Tailwind CSS v4 + Dark mode (media query + class-based toggle)
+
+**Theme tokens** (CSS variables in `src/uvo-gui-vuejs/src/style.css`):
+
+Light mode:
+```css
+--l-bg: #ffffff
+--l-panel: #f9fafb
+--l-border: #e5e7eb
+--l-text: #1f2937
+--l-text-dim: #6b7280
+--l-primary: #2563eb
+```
+
+Dark mode (when `document.documentElement.classList.contains('dark')`):
+```css
+--d-bg: #0f172a
+--d-panel: #1e293b
+--d-border: #334155
+--d-text: #f1f5f9
+--d-text-dim: #94a3b8
+--d-primary: #3b82f6
+```
+
+Tailwind classes use both light and dark variants:
+```vue
+<div class="bg-l-panel dark:bg-d-panel text-l-text dark:text-d-text">
+```
+
+### Chart Components
+
+Located in `src/uvo-gui-vuejs/src/components/`:
+
+| Component | Library | Purpose |
+|-----------|---------|---------|
+| `SpendBarChart.vue` | Chart.js | Horizontal bar chart (top suppliers/procurers by value) |
+| `CpvDonutChart.vue` | Chart.js | Donut chart (CPV category breakdown) |
+| `ContractTable.vue` | HTML `<table>` | Data table with sorting, pagination |
+
+**Chart defaults** in `src/uvo-gui-vuejs/src/components/charts/chartDefaults.ts`:
+- Font sizes, colors, legend position
+- Responsive sizing
+- Dark/light theme chart colors (coordinated with theme store)
+
+### Utilities
+
+Located in `src/uvo-gui-vuejs/src/lib/`:
+
+#### `format.ts`
+- Currency formatting (`formatCurrency(value, currency)`)
+- Date formatting (`formatDate(date, locale)`)
+- Number formatting with localization
+
+### Router
+
+Located in `src/uvo-gui-vuejs/src/router/index.ts`:
+
+Six main routes:
+```
+/ → Dashboard
+/contracts → Contract list + detail
+/suppliers → Supplier list + detail
+/procurers → Procurer list + detail
+/costs → Cost analysis page
+/search → Global search interface
+```
+
+All routes use lazy loading and integrate with the filter store.
+
+### Testing
+
+**Unit tests**: Vue component tests using Vitest + Vue Test Utils
+- `components/*.test.ts` — Component snapshot/behavior tests
+- `stores/*.test.ts` — Pinia store logic tests
+- `composables/*.test.ts` — Composable function tests
+
+**E2E tests**: Playwright browser tests (see [Testing](#testing) section below)
+- Located in `tests/e2e/test_vue_admin_*.py`
+- Test user interactions, navigation, form submission, API integration
+
+Run tests:
+```bash
+cd src/uvo-gui-vuejs
+
+# Unit tests
+npm run test
+
+# E2E tests (requires running backend + docker compose)
+cd ../..
+pytest tests/e2e/test_vue_admin_browser.py -v
+```
+
+### How to Add a New Page
+
+1. **Create page component**: `src/uvo-gui-vuejs/src/views/MyFeature.vue`
+   ```vue
+   <script setup lang="ts">
+   import { ref } from 'vue'
+   import Panel from '@/components/Panel.vue'
+   import { useI18n } from 'vue-i18n'
+   
+   const { t } = useI18n()
+   const data = ref([])
+   
+   async function load() {
+     const resp = await fetch('/api/my-endpoint')
+     data.value = await resp.json()
+   }
+   </script>
+   
+   <template>
+     <Panel>
+       <h2>{{ t('my_feature.title') }}</h2>
+       <!-- Content -->
+     </Panel>
+   </template>
+   ```
+
+2. **Register route** in `src/uvo-gui-vuejs/src/router/index.ts`:
+   ```ts
+   {
+     path: '/my-feature',
+     component: () => import('@/views/MyFeature.vue'),
+   }
+   ```
+
+3. **Add nav item** in `src/uvo-gui-vuejs/src/components/Sidebar.vue`:
+   ```ts
+   items.push({
+     key: 'nav.my_feature',
+     path: '/my-feature',
+     icon: 'feature',
+   })
+   ```
+
+4. **Add i18n keys** in `src/uvo-gui-vuejs/src/i18n/` (SK and EN):
+   ```json
+   {
+     "nav.my_feature": "Moja funkcia",
+     "my_feature.title": "Názov funkcie"
+   }
+   ```
+
+---
+
+## End-to-End Testing
+
+Both frontends have Playwright browser tests that verify full integration with the MCP backend.
+
+### Running E2E Tests
+
+Prerequisites:
+- Services running via `docker compose up -d`
+- Databases initialized
+- Tests in `tests/e2e/`
+
+```bash
+# All E2E tests
+pytest tests/e2e/ -v
+
+# Only NiceGUI browser tests
+pytest tests/e2e/test_nicegui_browser.py -v
+
+# Only Vue admin tests
+pytest tests/e2e/test_vue_admin_browser.py -v
+```
+
+Test files:
+- `test_docker_compose.py` — Validates service health
+- `test_nicegui_browser.py` — NiceGUI page navigation, search, detail views
+- `test_vue_admin_browser.py` — Vue admin page navigation, filtering, theming
+- `test_vue_admin_gui.py` — Vue component rendering and interactions
+
+### Writing Browser Tests
+
+Use Playwright's `Page` API via pytest fixtures:
+
+```python
+async def test_search_contract(page: Page):
+    await page.goto("http://localhost:8080/")
+    await page.fill("input[placeholder*='Search']", "software")
+    await page.click("button:has-text('Search')")
+    await page.wait_for_selector("text=Results")
+    assert (await page.query_selector("text=Results")) is not None
+```
