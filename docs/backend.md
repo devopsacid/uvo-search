@@ -1,8 +1,10 @@
-# Backend (MCP Server) Documentation
+# Backend Documentation
 
-## Overview
+Two Python services comprise the UVO Search backend:
 
-The UVO Search backend is a **FastMCP server** (Anthropic's Model Context Protocol) running on port 8000. It provides tools for searching and retrieving Slovak government procurement data from the UVOstat API.
+## 1. MCP Server (port 8000)
+
+The **FastMCP server** (Anthropic's Model Context Protocol) provides tools for searching and retrieving Slovak government procurement data.
 
 **Key Files**:
 - `src/uvo_mcp/__main__.py` — Entry point
@@ -11,20 +13,44 @@ The UVO Search backend is a **FastMCP server** (Anthropic's Model Context Protoc
 - `src/uvo_mcp/models.py` — Pydantic response models
 - `src/uvo_mcp/tools/procurements.py` — Search and detail lookup tools
 - `src/uvo_mcp/tools/subjects.py` — Procurer and supplier lookup tools
+- `src/uvo_mcp/tools/graph.py` — Graph tools (ego networks, CPV networks)
 
-## Starting the Server
+## 2. API Bridge (port 8001)
+
+The **FastAPI server** wraps MCP tools with HTTP endpoints for browser clients (React SPA, Vue dashboard).
+
+**Key Files**:
+- `src/uvo_api/__main__.py` — Entry point
+- `src/uvo_api/main.py` — FastAPI app setup
+- `src/uvo_api/config.py` — Settings
+- `src/uvo_api/mcp_client.py` — HTTP client for MCP server
+- `src/uvo_api/routers/contracts.py` — Contract endpoints
+- `src/uvo_api/routers/dashboard.py` — Dashboard aggregation
+- `src/uvo_api/routers/procurers.py` — Procurer endpoints
+- `src/uvo_api/routers/suppliers.py` — Supplier endpoints
+- `src/uvo_api/routers/graph.py` — Graph wrapper endpoints
+
+## Starting the Servers
+
+**MCP Server** (port 8000):
 
 ```bash
-# HTTP mode (for GUI frontend)
+# HTTP mode (default, for API bridge)
 uv run python -m uvo_mcp
 
 # Stdio mode (for Claude Desktop/Code)
 uv run python -m uvo_mcp stdio
 ```
 
-The server listens on `http://0.0.0.0:8000` by default.
+**API Bridge** (port 8001):
 
-## Server Setup
+```bash
+uv run python -m uvo_api
+```
+
+Both listen on `0.0.0.0` by default.
+
+## MCP Server Setup
 
 **File**: `src/uvo_mcp/server.py`
 
@@ -168,6 +194,43 @@ class Subject(BaseModel):
 ```
 
 **Note**: These models are defined for type clarity but the MVP returns raw UVOstat API responses (dicts). Future versions will use these models for validation and documentation.
+
+## API Bridge (uvo_api)
+
+The API Bridge wraps MCP tools with HTTP endpoints for browser clients. New endpoints added in the React redesign:
+
+**File**: `src/uvo_api/routers/`
+
+### Dashboard Endpoints
+
+- `GET /dashboard/summary` — KPI snapshot (total procurements, spend, suppliers, procurers)
+- `GET /dashboard/by-month?year=YYYY` — Monthly aggregation (count, spend) for specified year
+- `GET /dashboard/by-cpv?year_from=Y&year_to=Y` — CPV code breakdown by year range (backward compatible)
+
+### Graph Endpoints
+
+**File**: `src/uvo_api/routers/graph.py`
+
+- `GET /graph/ego/{ico}?hops=N` — Wraps MCP `graph_ego_network`; returns Cytoscape-format JSON
+  - `ico` (path) — Entity ICO (procurer or supplier)
+  - `hops` (query, default 2) — Relationship depth (1-3)
+  - Returns: Cytoscape nodes + edges with metadata
+
+- `GET /graph/cpv/{cpv}?year=YYYY` — Wraps MCP `graph_cpv_network`; returns Cytoscape-format JSON
+  - `cpv` (path) — CPV code (e.g., `30100000`)
+  - `year` (query, required) — Single year to analyze
+  - Returns: Cytoscape nodes + edges for procurer–supplier–notice relationships
+
+### Procurer Endpoints
+
+- `GET /procurers/{ico}/concentration?top_n=N` — Supplier concentration analysis
+  - `ico` (path) — Procurer ICO
+  - `top_n` (query, default 10) — Top N suppliers to include
+  - Returns: List of suppliers with contract counts, values, and HHI index
+
+### Contract Endpoints
+
+- `GET /contracts?procurer_ico=ICO&...` — Enhanced to support new `procurer_ico` filter param (backward compatible)
 
 ## MCP Tools
 
