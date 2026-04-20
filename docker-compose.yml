@@ -56,12 +56,14 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # Legacy NiceGUI frontend — kept as rollback during soak period after React cutover.
+  # Retire + delete src/uvo_gui/ + Dockerfile.gui after 2 weeks of clean uptime on gui-react.
   gui:
     build:
       context: .
       dockerfile: Dockerfile.gui
     ports:
-      - "8080:8080"
+      - "8090:8080"
     env_file: .env
     environment:
       MCP_SERVER_URL: http://mcp-server:8000/mcp
@@ -81,7 +83,7 @@ services:
       context: ./src/uvo-gui-react
       dockerfile: Dockerfile
     ports:
-      - "8090:80"
+      - "8080:80"
     depends_on:
       api:
         condition: service_healthy
