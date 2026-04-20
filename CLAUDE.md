@@ -4,6 +4,10 @@
 Two-process app: NiceGUI frontend (port 8080) + FastMCP server (port 8000).
 Frontend calls backend via `mcp_client.call_tool(tool_name, arguments)`.
 
+## Workflow
+
+- New features: use `superpowers:using-git-worktrees` to create an isolated worktree before writing code. Skip for single-file fixes, docs-only edits, or changes to the current in-progress branch.
+
 ## Dev Commands
 - `pytest tests/gui/ -v` — GUI tests
 - `pytest tests/mcp/ -v` — MCP/backend tests
