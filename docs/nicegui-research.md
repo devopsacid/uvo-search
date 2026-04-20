@@ -360,7 +360,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - UVOSTAT_API_TOKEN=${UVOSTAT_API_TOKEN}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
     
   gui:
     build: ./gui
@@ -747,7 +747,7 @@ def about_page():
         ui.markdown('''
         **UVO Search** je aplikácia na vyhľadávanie v slovenských verejných obstarávaniach.
         
-        Dáta pochádzajú z [UVOstat.sk](https://www.uvostat.sk/) API.
+        Dáta pochádzajú z [UVO Vestníka](https://www.uvo.gov.sk/vestnik), CRZ, ITMS, TED a NKOD.
         
         Zdrojový kód: [GitHub](https://github.com/...)
         ''')
@@ -845,7 +845,7 @@ ui.run(
 
 4. **All required components exist** -- date pickers, dialogs, tabs, cards, navigation, responsive layout, notifications, spinners. No need for workarounds or third-party extensions.
 
-5. **Async-first** -- Every event handler can be `async`. Calling the MCP server or UVOstat API from the GUI is straightforward.
+5. **Async-first** -- Every event handler can be `async`. Calling the MCP server from the GUI is straightforward.
 
 6. **Simpler deployment** -- Single Python process, standard Docker, no compile/build step (unlike Reflex which compiles to React).
 

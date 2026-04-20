@@ -8,7 +8,7 @@ import pytest
 
 class TestGuiSettings:
     def test_settings_loads_required_fields(self):
-        env = {"STORAGE_SECRET": "test-secret-abc", "UVOSTAT_API_TOKEN": "dummy"}
+        env = {"STORAGE_SECRET": "test-secret-abc"}
         with patch.dict(os.environ, env, clear=False):
             from uvo_gui.config import GuiSettings
 
@@ -16,7 +16,7 @@ class TestGuiSettings:
             assert s.storage_secret == "test-secret-abc"
 
     def test_settings_default_values(self):
-        env = {"STORAGE_SECRET": "test-secret", "UVOSTAT_API_TOKEN": "dummy"}
+        env = {"STORAGE_SECRET": "test-secret"}
         with patch.dict(os.environ, env, clear=False):
             from uvo_gui.config import GuiSettings
 
@@ -28,7 +28,6 @@ class TestGuiSettings:
     def test_settings_override_from_env(self):
         env = {
             "STORAGE_SECRET": "test",
-            "UVOSTAT_API_TOKEN": "dummy",
             "MCP_SERVER_URL": "http://mcp:8000/mcp",
             "GUI_PORT": "9090",
         }

@@ -2,21 +2,22 @@
 
 ## Overview
 
-The data pipeline ingests Slovak public procurement data from four sources into local databases, enabling the MCP server to answer queries without real-time API calls. Data is stored in MongoDB (primary document store) and Neo4j (graph relationships for network analysis).
+The data pipeline ingests Slovak public procurement data from several sources into local databases, enabling the MCP server to answer queries without real-time API calls. Data is stored in MongoDB (primary document store) and Neo4j (graph relationships for network analysis).
 
-The pipeline runs as a Docker Compose service. The default mode (`recent`) fetches the past 365 days on startup. Historical backfill from 2014 is available as an on-demand command.
+The pipeline runs as a Docker Compose service. The default mode (`recent`) fetches the past 365 days on startup. Historical backfill is available as an on-demand command.
 
 ---
 
 ## Architecture
 
 ```
-[data.gov.sk CKAN]     [UVOstat.sk API]     [Ekosystem CRZ]     [TED EU API]
-       |                      |                    |                   |
-  catalog/ckan.py      extractors/uvostat.py  extractors/crz.py  extractors/ted.py
-  extractors/vestnik_xml.py
-       |                      |                    |                   |
-       +----------------------+--------------------+-------------------+
+[NKOD / data.gov.sk]   [UVO Vestník XML]    [Ekosystem CRZ]    [ITMS]    [TED EU API]
+       |                      |                    |              |          |
+  catalog/ckan.py       extractors/uvo.py     extractors/crz.py  extractors/itms.py  extractors/ted.py
+  catalog/nkod.py       extractors/vestnik_xml.py
+  extractors/vestnik_nkod.py
+       |                      |                    |              |          |
+       +----------------------+--------------------+--------------+----------+
                               |
                     transformers/<source>.py
                     (-> CanonicalNotice)
@@ -40,12 +41,12 @@ The pipeline runs as a Docker Compose service. The default mode (`recent`) fetch
 
 | Source | Type | Auth | Update Frequency | Coverage |
 |---|---|---|---|---|
-| UVO.gov.sk Vestník NKOD | SPARQL + JSON download | None | Daily (working days) | 2016–present |
-| UVOstat.sk API | REST API | `ApiToken` header | 24h–7d | 2014–present |
+| UVO Vestník (XML) | Anonymous XML download | None | Per UVO publication schedule | 2016–present |
+| UVO Vestník via NKOD | DCAT/SPARQL catalog | None | Daily (working days) | 2016–present |
 | Ekosystem CRZ | REST API | Optional token | Continuous | 2011–present |
+| ITMS | Open data / REST | None | Per ITMS publication schedule | EU structural funds |
 | TED EU API | REST API | None | Daily | All above-threshold |
-
-**Note**: Vestník source changed from CKAN (data.gov.sk) to NKOD SPARQL (data.slovensko.sk) as CKAN was deprecated in favor of React SPA. See [plan-vestnik-nkod.md](plan-vestnik-nkod.md) for implementation details.
+| NKOD catalog | CKAN / DCAT | None | On publisher update | Catalog metadata |
 
 ---
 
@@ -87,8 +88,8 @@ All sources normalize to `CanonicalNotice` before any DB write. See `src/uvo_pip
 | Source | Primary dedup key | Notes |
 |---|---|---|
 | `vestnik` | `(source="vestnik", source_id=notice_id)` | notice_id from XML `cbc:ID` |
-| `uvostat` | `(source="uvostat", source_id=str(id))` | numeric API ID |
 | `crz` | `(source="crz", source_id=str(id))` | Ekosystem contract ID |
+| `itms` | `(source="itms", source_id=str(id))` | ITMS project/contract ID |
 | `ted` | `(source="ted", source_id=ND_OJ)` | TED official journal number |
 
 **Cross-source deduplication:** After each pipeline run, notices with matching `(procurer_ico, cpv_code)` from different sources are linked via a shared `canonical_id` field. Links are stored in the `cross_source_matches` collection.
@@ -212,7 +213,6 @@ HISTORICAL_FROM_YEAR=2014
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `401 Unauthorized` from UVOstat | Token expired or missing | Check `UVOSTAT_API_TOKEN` in `.env` |
 | `429 Too Many Requests` from CRZ | Rate limit exceeded | Lower `CRZ_RATE_LIMIT` (default: 55/min) |
 | ZIP download timeout | Large Vestník package | Increase `REQUEST_TIMEOUT` |
 | Neo4j OOM | Heap too small | Set `NEO4J_server_memory_heap_max__size: 2g` |

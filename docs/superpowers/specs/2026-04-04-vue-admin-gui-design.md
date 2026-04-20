@@ -8,7 +8,7 @@
 
 ## Context
 
-The existing stack has a NiceGUI frontend (port 8080) for general users and a FastMCP server (port 8000) exposing 4 tools against the UVOstat.sk API. This design adds an admin-oriented GUI for two audiences:
+The existing stack has a NiceGUI frontend (port 8080) for general users and a FastMCP server (port 8000) exposing tools against MongoDB + Neo4j (populated by the `uvo_pipeline`). This design adds an admin-oriented GUI for two audiences:
 
 1. **Executive / decision makers** — need bird's-eye KPI dashboards, spend trends, top supplier rankings, cost breakdowns by category.
 2. **Investigators / auditors** — need deep drill-down into contracts, supplier profiles, procurer relationships, and money flows.
@@ -26,7 +26,7 @@ Browser (admin users)
   └─► Vue 3 Admin GUI          src/uvo-gui-vuejs/   port 3000
         └─► FastAPI Analytics  src/uvo_api/         port 8001
               └─► FastMCP Server (existing)         port 8000
-                    └─► UVOstat.sk API (external)
+                    └─► MongoDB + Neo4j (populated by uvo_pipeline)
 ```
 
 **New Docker services:**
@@ -73,7 +73,7 @@ Browser (admin users)
 | `/costs` | Cost Analysis | Spend by CPV, year-over-year comparison, top contracts by value |
 | `/search` | Search | Global full-text search across contracts, suppliers, procurers |
 
-**No Persons page** — UVOstat API does not expose individual person data. Person–company connections are covered via Supplier/Procurer detail pages using IČO. A dedicated Persons page is deferred until RPVS/ORSR integration (Tier 2/3 data sources).
+**No Persons page** — current data sources do not expose individual person data. Person–company connections are covered via Supplier/Procurer detail pages using IČO. A dedicated Persons page is deferred until RPVS/ORSR integration (Tier 2/3 data sources).
 
 ---
 
@@ -131,7 +131,7 @@ Both share the same layout pattern:
 - Full-width filterable data table
 - Filters: free text, CPV code, date range (from/to), value range (min/max)
 - Columns: title, procurer, supplier, value, CPV, year, status
-- Row click → slide-over panel on the right with full contract detail (all fields, link to UVOstat source)
+- Row click → slide-over panel on the right with full contract detail (all fields, link to source record)
 - Pagination: server-side (offset/limit)
 
 ---
@@ -212,11 +212,11 @@ The following features require data not currently available from the 4 existing 
 
 | Feature | Gap | Recommendation |
 |---|---|---|
-| Spend-by-year aggregation | UVOstat returns flat lists, no group-by | Fetch all pages and aggregate in FastAPI (acceptable for MVP, add caching) |
-| CPV category labels | UVOstat returns raw CPV codes | Maintain a CPV code→label mapping file in `src/uvo_api/data/cpv_labels.json` |
+| Spend-by-year aggregation | MCP returns flat lists | Aggregate in FastAPI (acceptable for MVP, add caching) |
+| CPV category labels | Records carry raw CPV codes | Maintain a CPV code→label mapping file in `src/uvo_api/data/cpv_labels.json` |
 | Contract status (active/closed) | Not in current MCP response | Map from `year` field as proxy (current year = active); proper status needs Vestník XML (Tier 3) |
-| Persons / beneficial owners | Not in UVOstat | Requires RPVS integration (Tier 2) — deferred |
-| Financial health of suppliers | Not in UVOstat | Requires FinStat integration (Tier 3) — deferred |
+| Persons / beneficial owners | Not in current sources | Requires RPVS integration (Tier 2) — deferred |
+| Financial health of suppliers | Not in current sources | Requires FinStat integration (Tier 3) — deferred |
 | Year-over-year deltas | Requires two aggregation passes | Compute in FastAPI from two date-range queries |
 
 ---
@@ -284,7 +284,7 @@ After implementation, verify end-to-end:
 
 1. `cd src/uvo-gui-vuejs && npm run dev` — Vue app starts on port 3000
 2. `uv run python -m uvo_api` — FastAPI starts on port 8001
-3. Open `http://localhost:3000` — dashboard loads with real data from UVOstat
+3. Open `http://localhost:3000` — dashboard loads with real data from MongoDB/Neo4j
 4. Global company filter: select a procurer → all KPIs and charts update
 5. Click a supplier name → navigates to `/suppliers/:ico` with company dashboard
 6. Contracts page: filter by CPV code, verify table updates

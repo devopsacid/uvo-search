@@ -25,7 +25,7 @@ MOCK_RESULTS = {
 
 @pytest.mark.asyncio
 async def test_search_page_lists_all_on_open(user: User) -> None:
-    with patch.dict(os.environ, {"STORAGE_SECRET": "x", "UVOSTAT_API_TOKEN": "dummy"}):
+    with patch.dict(os.environ, {"STORAGE_SECRET": "x"}):
         with patch(
             "uvo_gui.mcp_client.call_tool",
             new_callable=AsyncMock,
@@ -47,7 +47,7 @@ async def test_search_page_shows_error_on_failure(
 ) -> None:
     import logging
 
-    with patch.dict(os.environ, {"STORAGE_SECRET": "x", "UVOSTAT_API_TOKEN": "dummy"}):
+    with patch.dict(os.environ, {"STORAGE_SECRET": "x"}):
         with patch(
             "uvo_gui.mcp_client.call_tool",
             new_callable=AsyncMock,

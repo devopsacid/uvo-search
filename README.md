@@ -4,7 +4,7 @@ Search and browse Slovak government procurement data via a dual-interface applic
 
 ## Features
 
-- **Full-text search** across government procurement records from [UVOstat.sk](https://www.uvostat.sk/)
+- **Full-text search** across Slovak government procurement records (UVO Vestník, CRZ, ITMS, TED, NKOD)
 - **Structured filtering** by CPV codes (EU product classification), date ranges, procurement authorities, and suppliers
 - **MCP server** with 4 tools for AI agent integration — search procurements, find procurers and suppliers
 - **Two frontends**:
@@ -42,11 +42,12 @@ UVO Search is a **three-process application** with shared MCP backend:
 │ • Detail views │  │ • Dark theme │
 └────────────────┘  └──────────────┘
 
-External APIs:
-├─ UVOstat (Slovak procurements)
-├─ Ekosystem Datahub (CRZ contracts)
+External sources:
+├─ UVO Vestník (Slovak procurement notices, XML)
+├─ Ekosystem Datahub / CRZ (Slovak contracts)
+├─ ITMS (EU structural funds)
 ├─ TED API (EU procurements)
-└─ RPVS/OpenSanctions (beneficial ownership)
+└─ NKOD (national open data catalog)
 ```
 
 **Why two processes?**
@@ -89,7 +90,6 @@ existing data. The MCP server creates Atlas Search indexes on startup.
 
 - **Python 3.12+**
 - **uv** package manager (install from https://docs.astral.sh/uv/getting-started/)
-- **UVOstat API token** (request at https://www.uvostat.sk/api or use CSV bulk download as fallback)
 
 ### Local Development Setup
 
@@ -98,9 +98,9 @@ existing data. The MCP server creates Atlas Search indexes on startup.
 git clone https://github.com/your-org/uvo-search.git
 cd uvo-search
 
-# Create .env with your API token
+# Create .env from template
 cp .env.example .env
-# Edit .env and set UVOSTAT_API_TOKEN=your-actual-token
+# Edit .env and set STORAGE_SECRET, MONGO_PASSWORD, NEO4J_PASSWORD
 
 # Install Python dependencies
 uv sync --all-extras
@@ -155,7 +155,6 @@ cd uvo-search
 
 # Create .env file
 cat > .env << 'EOF'
-UVOSTAT_API_TOKEN=your-actual-token
 STORAGE_SECRET=change-this-to-a-random-string
 MCP_SERVER_URL=http://mcp-server:8000/mcp
 EOF
@@ -225,9 +224,7 @@ All settings come from environment variables (via `.env` file):
 
 | Variable | Required? | Default | Description |
 |----------|-----------|---------|-------------|
-| `UVOSTAT_API_TOKEN` | ✓ | — | API token for UVOstat.sk (get from https://www.uvostat.sk/api) |
 | `STORAGE_SECRET` | ✓ | — | Secret key for NiceGUI session storage |
-| `UVOSTAT_BASE_URL` | — | `https://www.uvostat.sk` | UVOstat API base URL |
 | `EKOSYSTEM_BASE_URL` | — | `https://datahub.ekosystem.slovensko.digital` | Ekosystem Datahub base URL |
 | `EKOSYSTEM_API_TOKEN` | — | `` | Optional token for Ekosystem (not required for public endpoints) |
 | `MCP_SERVER_URL` | — | `http://localhost:8000/mcp` | URL where GUI reaches MCP server |
@@ -373,18 +370,19 @@ The application integrates with multiple Slovak and EU data sources:
 
 | Source | Type | Access | Used For |
 |--------|------|--------|----------|
-| [UVOstat.sk](https://www.uvostat.sk) | Procurement API | REST (token required) | Primary source: completed & announced procurements |
-| [Ekosystem Datahub](https://datahub.ekosystem.slovensko.digital) | Government data | REST API (free, rate-limited) | CRZ contracts, legal entities, accounting data |
+| [UVO Vestník](https://www.uvo.gov.sk/vestnik) | Procurement notices (XML) | Anonymous download | Primary source: announced & completed procurements |
+| [Ekosystem Datahub / CRZ](https://datahub.ekosystem.slovensko.digital) | Government data | REST API (free, rate-limited) | CRZ contracts, legal entities, accounting data |
+| [ITMS](https://www.itms2014.sk/) | EU structural funds | Open data / REST | ITMS-funded projects and contracts |
 | [TED API](https://ted.europa.eu/api/) | EU procurement | REST (anonymous) | EU-wide procurements (cross-reference) |
-| [RPVS/OpenSanctions](https://www.opensanctions.org/datasets/sk_rpvs/) | Beneficial ownership | Download/API | Corporate beneficial owners |
-| [CRZ](https://crz.gov.sk) | Government contracts | Via Ekosystem | All government contracts above threshold |
+| [NKOD](https://data.gov.sk) | National Open Data Catalog | CKAN / DCAT | Catalog metadata and dataset discovery |
 
 ### Data Freshness
 
-- **UVOstat** — Updated daily, delay ~24 hours from publication
+- **UVO Vestník** — Published on the official UVO schedule (several times per week)
 - **CRZ** — Updated daily via Ekosystem Datahub
+- **ITMS** — Updated on the ITMS open-data publication cadence
 - **TED** — Updated daily, international standardization lag
-- **Beneficial ownership** — Updated quarterly via RPVS
+- **NKOD** — Catalog refreshed by the publisher
 
 ## Error Handling
 
@@ -413,4 +411,4 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines, testing 
 
 ---
 
-**Questions or Issues?** Open a GitHub issue or discussion. For API-related questions, check the [UVOstat API documentation](https://github.com/MiroBabic/uvostat_api).
+**Questions or Issues?** Open a GitHub issue or discussion.

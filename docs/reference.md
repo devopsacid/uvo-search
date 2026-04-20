@@ -181,10 +181,10 @@ my_view.refresh()
 
 | Variable | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
-| `UVOSTAT_API_TOKEN` | string | — | Yes | API token for UVOstat.sk |
 | `STORAGE_SECRET` | string | — | Yes | Secret key for NiceGUI session storage |
-| `UVOSTAT_BASE_URL` | string | `https://www.uvostat.sk` | No | UVOstat API base URL |
-| `EKOSYSTEM_BASE_URL` | string | `https://datahub.ekosystem.slovensko.digital` | No | Ekosystem Datahub URL (future use) |
+| `MONGO_PASSWORD` | string | — | Yes | Password for MongoDB |
+| `NEO4J_PASSWORD` | string | — | Yes | Password for Neo4j |
+| `EKOSYSTEM_BASE_URL` | string | `https://datahub.ekosystem.slovensko.digital` | No | Ekosystem Datahub URL |
 | `EKOSYSTEM_API_TOKEN` | string | `` | No | Ekosystem API token (future use) |
 | `TED_BASE_URL` | string | `https://api.ted.europa.eu` | No | TED API URL (future use) |
 | `MCP_SERVER_URL` | string | `http://localhost:8000/mcp` | No | URL for GUI to reach MCP server |
@@ -277,7 +277,7 @@ uv sync --all-extras
 
 # Copy configuration
 cp .env.example .env
-# Edit .env and set UVOSTAT_API_TOKEN and STORAGE_SECRET
+# Edit .env and set STORAGE_SECRET, MONGO_PASSWORD, NEO4J_PASSWORD
 ```
 
 ### Run Local
@@ -412,8 +412,9 @@ ui.button(
 
 | Resource | Link |
 |----------|------|
-| **UVOstat API** | https://www.uvostat.sk |
-| **UVOstat GitHub** | https://github.com/MiroBabic/uvostat_api |
+| **UVO Vestník** | https://www.uvo.gov.sk/vestnik |
+| **NKOD (data.gov.sk)** | https://data.gov.sk |
+| **ITMS Open Data** | https://www.itms2014.sk/ |
 | **NiceGUI** | https://nicegui.io |
 | **FastMCP** | https://github.com/anthropics/mcp-py-server |
 | **TED API** | https://ted.europa.eu/api |

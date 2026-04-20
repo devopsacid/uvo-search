@@ -6,7 +6,7 @@ UVO Search is a **two-process Python application** designed to search and browse
 
 1. **NiceGUI Frontend** — Web interface for browsing and searching procurements
 2. **FastMCP Server** — API layer providing structured tools for data access
-3. **External APIs** — Integration with UVOstat, Ekosystem Datahub, and TED
+3. **Data sources** — Pipeline ingests from UVO Vestník (XML), CRZ (Ekosystem), ITMS, TED and NKOD
 
 The two processes communicate over HTTP using the **streamable-http MCP protocol**, allowing independent scaling, deployment, and multiple client types.
 
@@ -36,11 +36,11 @@ The two processes communicate over HTTP using the **streamable-http MCP protocol
    └─────────────────┘ └───────────────┘
 
 External Data Sources:
-├─ UVOstat.sk API (Slovak procurements, 2014+)
-├─ Vestník NKOD SPARQL (Slovak bulletin, 2016+)
-├─ Ekosystem Datahub (CRZ contracts, 2011+)
+├─ UVO Vestník (Slovak procurement notices, XML)
+├─ Ekosystem Datahub (CRZ contracts)
+├─ ITMS (EU structural funds)
 ├─ TED API (EU procurements)
-└─ RPVS/OpenSanctions (Beneficial ownership)
+└─ NKOD (national open data catalog, DCAT/CKAN)
 ```
 
 ## Process Architecture
@@ -102,7 +102,7 @@ External Data Sources:
 
 **Key Responsibilities**:
 - Execute MCP tools (search, detail lookup, entity search)
-- Call external APIs (UVOstat, Ekosystem, TED)
+- Query MongoDB (Atlas Search) and Neo4j for pre-ingested data
 - Return structured JSON responses
 - Handle errors and timeouts gracefully
 
@@ -118,8 +118,8 @@ External Data Sources:
 2. Frontend component calls `mcp_client.call_tool("search_completed_procurements", {...})`
 3. Client establishes HTTP connection to MCP server via streamable-http protocol
 4. MCP server receives tool call, validates arguments
-5. MCP server calls UVOstat API with httpx client
-6. UVOstat API returns JSON response
+5. MCP server queries MongoDB (Atlas Search) / Neo4j
+6. Storage returns matched documents / subgraphs
 7. MCP server wraps result in JSON and returns to frontend
 8. Frontend parses result, updates state, triggers refresh
 9. Component re-renders with new data
@@ -174,11 +174,11 @@ Frontend (search.py)
       ↓
 [MCP Server: search_completed_procurements()]
   ├─ Validate arguments (limit <= max_page_size, offset >= 0)
-  ├─ Build params dict for UVOstat API
-  └─ Call: httpx GET /api/ukoncene_obstaravania?text=stavebnictvom&limit=20&offset=0
+  ├─ Build Atlas Search compound query (sk_folding analyzer)
+  └─ Execute MongoDB aggregation on `notices` collection
       ↓
-[UVOstat API]
-  └─ Returns: {"data": [...], "total": 1234, ...}
+[MongoDB Atlas Local]
+  └─ Returns: matched notices + total count
       ↓
 [MCP Server: process response]
   ├─ Check HTTP status (200 OK)
@@ -204,21 +204,22 @@ All settings are environment variables (loaded from `.env`):
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `UVOSTAT_API_TOKEN` | *(required)* | API token for UVOstat.sk |
 | `STORAGE_SECRET` | *(required)* | Secret key for NiceGUI session storage |
+| `MONGO_PASSWORD` | *(required)* | Password for MongoDB |
+| `NEO4J_PASSWORD` | *(required)* | Password for Neo4j |
 | `GUI_HOST` | `0.0.0.0` | NiceGUI bind address |
 | `GUI_PORT` | `8080` | NiceGUI port |
 | `MCP_HOST` | `0.0.0.0` | MCP server bind address |
 | `MCP_PORT` | `8000` | MCP server port |
 | `MCP_SERVER_URL` | `http://localhost:8000/mcp` | URL frontend uses to reach MCP server |
-| `UVOSTAT_BASE_URL` | `https://www.uvostat.sk` | UVOstat API base URL |
-| `EKOSYSTEM_BASE_URL` | `https://datahub.ekosystem.slovensko.digital` | Ekosystem Datahub URL (unused in MVP) |
+| `EKOSYSTEM_BASE_URL` | `https://datahub.ekosystem.slovensko.digital` | Ekosystem Datahub URL |
+| `EKOSYSTEM_API_TOKEN` | *(optional)* | Token for Ekosystem (not required for public endpoints) |
 | `REQUEST_TIMEOUT` | `30.0` | HTTP request timeout in seconds |
 | `CACHE_TTL_SEARCH` | `300` | Search result cache TTL (seconds) |
 | `CACHE_TTL_ENTITY` | `3600` | Entity lookup cache TTL (seconds) |
 | `CACHE_TTL_DETAIL` | `1800` | Detail view cache TTL (seconds) |
 
-**Note**: Caching is currently a configuration layer but not yet implemented in tools. See [plan.md](plan.md).
+**Note**: Caching is currently a configuration layer but not yet implemented in tools.
 
 ## Deployment
 
@@ -283,18 +284,18 @@ All loggers use Python's `logging` module. Set `LOG_LEVEL` env var:
 
 ## Data Pipeline
 
-A separate **pipeline service** ingests from four sources into MongoDB + Neo4j:
+A separate **pipeline service** ingests from five sources into MongoDB + Neo4j:
 
 ```
-SPARQL        UVOstat       Ekosystem      TED
-(NKOD)        API           Datahub        API
-  │             │             │             │
-  └─────────────┼─────────────┼─────────────┘
+NKOD (CKAN)   UVO Vestník   Ekosystem/CRZ   ITMS         TED
+  │             (XML)         │               │           API
+  │             │             │               │           │
+  └─────────────┼─────────────┼───────────────┼───────────┘
                 │
          Pipeline Container
-         ├─ discover_vestnik_datasets() — SPARQL catalog
-         ├─ fetch_bulletin() — Download + parse Vestník JSON
-         ├─ transform_* → CanonicalNotice
+         ├─ extractors/ (uvo, crz, itms, ted, vestnik_xml, vestnik_nkod)
+         ├─ catalog/ (ckan, nkod) — source discovery
+         ├─ transformers/ → CanonicalNotice
          ├─ Cross-source deduplication
          └─ Load to MongoDB + Neo4j
                 │
@@ -311,19 +312,11 @@ SPARQL        UVOstat       Ekosystem      TED
 
 **Modes**:
 - `recent` (default) — Last 365 days, checkpoint-based incremental
-- `historical` — Full backfill from 2014/2016 (one-time)
+- `historical` — Full backfill (one-time)
 - `dry-run` — Validate config without DB writes
 
 **Deduplication**:
 - Per-source: `(source, source_id)` unique constraint
 - Cross-source: Hash matching on `(procurer_ico, cpv_code)` links notices
 
-See [data-pipeline.md](data-pipeline.md) and [plan-vestnik-nkod.md](plan-vestnik-nkod.md) for details.
-
-## Future Enhancements
-
-See [plan.md](plan.md) for:
-- Additional MCP tools (announced procurements, entity profiles)
-- Multi-lot support in Vestník extractor
-- Performance optimizations (pagination benchmarks, query optimization)
-- Beneficial ownership integration and compliance analysis
+See [data-pipeline.md](data-pipeline.md) for details.

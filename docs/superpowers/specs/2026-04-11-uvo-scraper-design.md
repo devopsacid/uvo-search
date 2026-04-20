@@ -10,7 +10,7 @@
 
 uvo.gov.sk is the official Slovak public procurement portal. It has no public API — it runs on TYPO3 CMS and returns server-rendered HTML. The contract search at `/vyhladavanie/vyhladavanie-zakaziek` supports pagination via `limit` and `page` query parameters and contains enough structured data in both listing rows and detail pages to populate the canonical notice model.
 
-This integration replaces the removed UVOstat extractor as the primary source of Slovak procurement notices.
+This integration is the primary source of Slovak procurement notices.
 
 ---
 

@@ -6,7 +6,7 @@ from nicegui.testing import User
 
 async def test_graph_page_shows_labels(user: User):
     mock = AsyncMock(return_value={"nodes": [], "edges": []})
-    with patch.dict(os.environ, {"STORAGE_SECRET": "test", "UVOSTAT_API_TOKEN": "dummy"}):
+    with patch.dict(os.environ, {"STORAGE_SECRET": "test"}):
         with patch("uvo_gui.mcp_client.call_tool", mock):
             import uvo_gui.pages.graph  # noqa: F401  # ensure route registered
 

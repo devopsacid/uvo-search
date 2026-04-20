@@ -10,7 +10,7 @@ import pytest
 class TestCallTool:
     @pytest.fixture(autouse=True)
     def _set_env(self):
-        env = {"STORAGE_SECRET": "test-secret", "UVOSTAT_API_TOKEN": "dummy"}
+        env = {"STORAGE_SECRET": "test-secret"}
         with patch.dict(os.environ, env, clear=False):
             yield
 

@@ -72,7 +72,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
 mcp = FastMCP(
     "UVO Search",
-    instructions="Search Slovak government procurement data from UVOstat.sk and related sources",
+    instructions="Search Slovak government procurement data from UVO, CRZ, ITMS, TED and NKOD",
     lifespan=app_lifespan,
     json_response=True,
     host="0.0.0.0",

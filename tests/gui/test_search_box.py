@@ -10,7 +10,7 @@ async def test_search_box_shows_dropdown_on_input(user: User):
     mock = AsyncMock(return_value={"results": [
         {"type": "procurer", "id": "111", "label": "Fakulta A", "sublabel": "IČO 111"},
     ]})
-    with patch.dict(os.environ, {"STORAGE_SECRET": "test", "UVOSTAT_API_TOKEN": "dummy"}):
+    with patch.dict(os.environ, {"STORAGE_SECRET": "test"}):
         with patch("uvo_gui.mcp_client.call_tool", mock):
             from uvo_gui.components.search_box import _flush_for_tests, search_box
 
@@ -28,7 +28,7 @@ async def test_search_box_shows_dropdown_on_input(user: User):
 
 async def test_search_box_empty_query_clears_results(user: User):
     mock = AsyncMock(return_value={"results": []})
-    with patch.dict(os.environ, {"STORAGE_SECRET": "test", "UVOSTAT_API_TOKEN": "dummy"}):
+    with patch.dict(os.environ, {"STORAGE_SECRET": "test"}):
         with patch("uvo_gui.mcp_client.call_tool", mock):
             from uvo_gui.components.search_box import _flush_for_tests, search_box
 

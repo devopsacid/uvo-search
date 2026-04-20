@@ -2,7 +2,7 @@
 
 ## Overview
 
-The UVO Search backend is a **FastMCP server** (Anthropic's Model Context Protocol) running on port 8000. It provides tools for searching and retrieving Slovak government procurement data from the UVOstat API.
+The UVO Search backend is a **FastMCP server** (Anthropic's Model Context Protocol) running on port 8000. It provides tools for searching and retrieving Slovak government procurement data from MongoDB (Atlas Search) and Neo4j, which are populated by the `uvo_pipeline` from UVO Vestník, CRZ, ITMS, TED and NKOD.
 
 **Key Files**:
 - `src/uvo_mcp/__main__.py` — Entry point
@@ -53,22 +53,22 @@ mcp = FastMCP(
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     settings = Settings()
-    async with httpx.AsyncClient(
-        base_url=settings.uvostat_base_url,
-        headers={"ApiToken": settings.uvostat_api_token},
-        timeout=settings.request_timeout,
-    ) as client:
-        logger.info("MCP server starting, httpx client ready")
-        yield AppContext(http_client=client, settings=settings)
-        logger.info("MCP server shutting down")
+    mongo_client = AsyncMongoClient(settings.mongodb_uri)
+    neo4j_driver = AsyncGraphDatabase.driver(
+        settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password)
+    )
+    # Atlas Search indexes are ensured on startup
+    yield AppContext(mongo=mongo_client, neo4j=neo4j_driver, settings=settings)
+    await mongo_client.close()
+    await neo4j_driver.close()
 ```
 
 **What it does**:
-1. On startup: Create httpx AsyncClient with default headers (API token) and timeout
+1. On startup: Connect to MongoDB Atlas Local and Neo4j; ensure Atlas Search indexes
 2. Yield context to server (available to all tools)
-3. On shutdown: Close client automatically
+3. On shutdown: Close both clients
 
-**Why?** Single client instance for all tools avoids creating new connections on each request.
+**Why?** Single client instance per store avoids creating new connections on each request.
 
 ## Configuration
 
@@ -76,8 +76,6 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
 ```python
 class Settings(BaseSettings):
-    uvostat_api_token: str                          # Required
-    uvostat_base_url: str = "https://www.uvostat.sk"
     ekosystem_base_url: str = "https://datahub.ekosystem.slovensko.digital"
     ekosystem_api_token: str = ""
     ted_base_url: str = "https://api.ted.europa.eu"
@@ -86,9 +84,15 @@ class Settings(BaseSettings):
     cache_ttl_detail: int = 1800
     request_timeout: float = 30.0
     max_page_size: int = 100
+
+    mongodb_uri: str | None = None
+    mongodb_database: str = "uvo_search"
+    neo4j_uri: str | None = None
+    neo4j_user: str = "neo4j"
+    neo4j_password: str | None = None
 ```
 
-All settings come from environment variables (via `.env`). Unused URLs/tokens (ekosystem, ted) are for future expansion.
+All settings come from environment variables (via `.env`). Pipeline-side sources (CRZ, ITMS, TED, NKOD) use the pipeline's own configuration; the MCP server reads from MongoDB and Neo4j.
 
 ## API Schema & Response Models
 
@@ -112,7 +116,7 @@ def map_contract_row(item: dict) -> ContractRow:
     )
 ```
 
-Handles field name variations across UVOstat, Ekosystem, and TED APIs. All routers (`contracts`, `dashboard`, `procurers`, `suppliers`) use these helpers.
+Handles field name variations across CRZ, ITMS, TED and Vestník documents stored in MongoDB. All routers (`contracts`, `dashboard`, `procurers`, `suppliers`) use these helpers.
 
 ## Data Models
 
@@ -167,13 +171,13 @@ class Subject(BaseModel):
     total_value: float | None
 ```
 
-**Note**: These models are defined for type clarity but the MVP returns raw UVOstat API responses (dicts). Future versions will use these models for validation and documentation.
+**Note**: These models are defined for type clarity but current tools return raw MongoDB documents (dicts). Future versions will use these models for validation and documentation.
 
 ## MCP Tools
 
 ### 1. search_completed_procurements
 
-Search awarded government contracts from the UVOstat registry.
+Search awarded government contracts from the MongoDB `notices` collection (Atlas Search).
 
 **Tool Name**: `search_completed_procurements`
 
@@ -233,11 +237,11 @@ async def search_completed_procurements(
     }
     if text_query:
         params["text"] = text_query
-    # ... map other parameters to UVOstat API query names ...
-    
-    response = await app_ctx.http_client.get("/api/ukoncene_obstaravania", params=params)
-    response.raise_for_status()
-    return response.json()
+    # ... build Atlas Search compound query + pagination ...
+
+    pipeline = build_search_pipeline(params)
+    cursor = app_ctx.mongo[settings.mongodb_database]["notices"].aggregate(pipeline)
+    return {"data": [doc async for doc in cursor], "total": ...}
 ```
 
 ### 2. get_procurement_detail
@@ -282,15 +286,11 @@ Get full details of a specific procurement.
 @mcp.tool()
 async def get_procurement_detail(ctx: Context, procurement_id: str) -> dict:
     app_ctx = _get_app_context(ctx)
-    response = await app_ctx.http_client.get(
-        "/api/ukoncene_obstaravania",
-        params={"id[]": procurement_id}
-    )
-    response.raise_for_status()
-    data = response.json()
-    if not data.get("data"):
+    coll = app_ctx.mongo[settings.mongodb_database]["notices"]
+    doc = await coll.find_one({"_id": procurement_id})
+    if not doc:
         return {"error": f"Procurement {procurement_id} not found", "status_code": 404}
-    return data["data"][0]
+    return doc
 ```
 
 ### 3. find_procurer
@@ -500,31 +500,21 @@ Caching is configured but not yet implemented. Configuration available:
 - `CACHE_TTL_ENTITY` — Cache procurer/supplier lookups for N seconds
 - `CACHE_TTL_DETAIL` — Cache detail views for N seconds
 
-Implementation will likely use `cachetools` (already in dependencies). See [plan.md](plan.md).
+Implementation will likely use `cachetools` (already in dependencies).
 
-## External API Mapping
+## Storage Mapping
 
-### UVOstat
+The MCP server reads from MongoDB and Neo4j; the `uvo_pipeline` writes to both from upstream sources. See [data-pipeline.md](data-pipeline.md) for the full source list and schema.
 
-**Base URL**: `https://www.uvostat.sk` (configurable via `UVOSTAT_BASE_URL`)
+**MongoDB collections used by MCP tools**:
+| Tool | Collection | Query shape |
+|------|------------|-------------|
+| `search_completed_procurements` | `notices` | Atlas Search compound query (`sk_folding` analyzer), filters on `procurer.ico`, `cpv_code`, `publication_date` |
+| `get_procurement_detail` | `notices` | `find_one({"_id": ...})` |
+| `find_procurer` | `procurers` | Atlas Search on `name` (autocomplete edgeGram) + `ico` equality |
+| `find_supplier` | `suppliers` | Atlas Search on `name` (autocomplete edgeGram) + `ico` equality |
 
-**Authentication**: Header `ApiToken: {UVOSTAT_API_TOKEN}`
-
-**Endpoints**:
-| Tool | Endpoint | Query Params |
-|------|----------|-------------|
-| `search_completed_procurements` | `/api/ukoncene_obstaravania` | `text`, `cpv[]`, `obstaravatel_id`, `dodavatel_ico`, `datum_zverejnenia_od`, `datum_zverejnenia_do`, `limit`, `offset` |
-| `get_procurement_detail` | `/api/ukoncene_obstaravania` | `id[]` |
-| `find_procurer` | `/api/obstaravatelia` | `text`, `ico`, `limit`, `offset` |
-| `find_supplier` | `/api/dodavatelia` | `text`, `ico`, `limit`, `offset` |
-
-### Future Integrations
-
-- **Ekosystem Datahub** — CRZ contracts, legal entities
-- **TED API** — EU-wide procurements (cross-reference)
-- **RPVS/OpenSanctions** — Beneficial ownership data
-
-See [plan.md](plan.md) and `docs/data-sources-research.md`.
+**Neo4j** is used by the graph tools (`graph_ego_network`, `graph_cpv_network`).
 
 ## Testing
 
@@ -532,33 +522,19 @@ See [plan.md](plan.md) and `docs/data-sources-research.md`.
 
 ### Test Setup
 
-Mock external API responses with `respx`:
+Unit tests mock the MongoDB and Neo4j clients via the `AppContext`:
 
 ```python
-import respx
-
 @pytest.mark.asyncio
-async def test_search_completed_procurements():
-    with respx.mock(base_url="https://www.uvostat.sk") as mock_api:
-        mock_api.get("/api/ukoncene_obstaravania").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "data": [
-                        {
-                            "id": "1",
-                            "nazov": "Test Procurement",
-                            "konecna_hodnota": 10000,
-                        }
-                    ],
-                    "total": 1,
-                },
-            )
-        )
-        
-        # Call tool (may need to mock context)
-        result = await search_completed_procurements(ctx, text_query="test")
-        assert result["total"] == 1
+async def test_search_completed_procurements(mock_ctx):
+    # mock_ctx provides an AppContext with stubbed mongo / neo4j
+    mock_ctx.mongo_coll("notices").set_result(
+        [{"_id": "1", "title": "Test Procurement", "value": 10000}],
+        total=1,
+    )
+
+    result = await search_completed_procurements(mock_ctx, text_query="test")
+    assert result["total"] == 1
 ```
 
 ### Run Tests

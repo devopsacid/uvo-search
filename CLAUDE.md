@@ -11,7 +11,7 @@ Five Python packages under `src/` + one Vue app:
 | `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` | FastMCP server — search, detail, graph tools |
 | `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (admin-gui → MCP) |
 | `uvo_gui` | 8080 | `uv run python -m uvo_gui` | NiceGUI public frontend (Slovak UI) |
-| `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | One-shot ingestion (UVOstat/Ekosystem → Mongo/Neo4j) |
+| `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | One-shot ingestion (UVO/CRZ/ITMS/TED/NKOD → Mongo/Neo4j) |
 | `uvo-gui-vuejs` | 5173 dev / 3000 prod | `cd src/uvo-gui-vuejs && npm run dev` | Vue 3 admin dashboard |
 
 **Storage:** MongoDB Atlas Local (27017, with `mongot` for Atlas Search) + Neo4j 5 with APOC (7474/7687). Both required for `uvo_mcp` to start.
