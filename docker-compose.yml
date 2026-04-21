@@ -43,6 +43,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.admin-gui
+    environment:
+      NGINX_WORKER_PROCESSES: "4"
     ports:
       - "3000:3000"
     depends_on:
@@ -82,6 +84,8 @@ services:
     build:
       context: ./src/uvo-gui-react
       dockerfile: Dockerfile
+    environment:
+      NGINX_WORKER_PROCESSES: "4"
     ports:
       - "8080:80"
     depends_on:
