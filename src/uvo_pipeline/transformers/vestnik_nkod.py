@@ -179,10 +179,13 @@ def _build_tender_map(components: list[dict]) -> dict[str, dict]:
         if not ten_id:
             continue
         flat = _flatten_eforms(panel.get("components", []))
+        # OPT-310-Tender holds the TPA-XXXX identifier. BT-3201-Tender is a
+        # user-facing Slovak label ("Ponuka č. 1") in many bulletins, so
+        # linking through it fails for ~99% of real data.
         ten_map[ten_id] = {
             "value": _parse_float(flat.get("BT-720-Tender_value")),
             "currency": flat.get("BT-720-Tender_currency", "EUR"),
-            "tp_id": flat.get("BT-3201-Tender"),
+            "tp_id": flat.get("OPT-310-Tender") or flat.get("BT-3201-Tender"),
         }
     return ten_map
 
