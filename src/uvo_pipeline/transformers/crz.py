@@ -6,6 +6,7 @@ from datetime import date
 from slugify import slugify
 
 from uvo_pipeline.models import (
+    CanonicalAttachment,
     CanonicalAward,
     CanonicalNotice,
     CanonicalProcurer,
@@ -34,6 +35,27 @@ def _build_procurer(objednavatel: dict) -> CanonicalProcurer:
         name_slug=slugify(name),
         sources=["crz"],
     )
+
+
+_CRZ_ATTACHMENT_BASE = "https://www.crz.gov.sk/data/att"
+
+
+def _build_attachments(raw: dict) -> list[CanonicalAttachment]:
+    result = []
+    for att in raw.get("attachments") or []:
+        file_name = att.get("file_name")
+        if not file_name:
+            continue
+        result.append(
+            CanonicalAttachment(
+                attachment_id=str(att["id"]),
+                title=att.get("title"),
+                url=f"{_CRZ_ATTACHMENT_BASE}/{file_name}",
+                file_name=file_name,
+                file_size=att.get("file_size"),
+            )
+        )
+    return result
 
 
 def _build_awards(raw: dict) -> list[CanonicalAward]:
@@ -71,4 +93,5 @@ def transform_contract(raw: dict) -> CanonicalNotice:
         currency=raw.get("mena") or "EUR",
         publication_date=_parse_date(raw.get("datum_podpisu")),
         crz_contract_id=contract_id,
+        attachments=_build_attachments(raw),
     )
