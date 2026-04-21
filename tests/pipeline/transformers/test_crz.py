@@ -12,6 +12,10 @@ RAW = {
     "datum_podpisu": "2024-03-01",
     "celkova_hodnota": 80000.0,
     "mena": "EUR",
+    "attachments": [
+        {"id": 1001, "title": "Zmluva", "file_name": "1001.pdf", "file_size": 102400},
+        {"id": 1002, "title": "Príloha č. 1", "file_name": "1002.pdf", "file_size": 51200},
+    ],
 }
 
 
@@ -83,3 +87,26 @@ def test_transform_integer_id():
     r = transform_contract(raw)
     assert r.source_id == "42"
     assert r.crz_contract_id == "42"
+
+
+def test_transform_maps_attachments():
+    r = transform_contract(RAW)
+    assert len(r.attachments) == 2
+    att = r.attachments[0]
+    assert att.attachment_id == "1001"
+    assert att.title == "Zmluva"
+    assert att.url == "https://www.crz.gov.sk/data/att/1001.pdf"
+    assert att.file_name == "1001.pdf"
+    assert att.file_size == 102400
+
+
+def test_transform_no_attachments_gives_empty_list():
+    raw = {k: v for k, v in RAW.items() if k != "attachments"}
+    r = transform_contract(raw)
+    assert r.attachments == []
+
+
+def test_transform_attachment_missing_file_name_skipped():
+    raw = {**RAW, "attachments": [{"id": 9, "title": "Bad", "file_name": None, "file_size": 0}]}
+    r = transform_contract(raw)
+    assert r.attachments == []
