@@ -2,7 +2,7 @@
 
 **React 18 + Vite 5 + TypeScript** single-page application (SPA) for browsing Slovak government procurement data.
 
-Replaces the legacy NiceGUI public frontend. All data flows through the `uvo_api` backend (port 8001), which proxies to the MCP server (port 8000).
+All data flows through the `uvo_api` backend (port 8001), which proxies to the MCP server (port 8000).
 
 ## Quick Start
 

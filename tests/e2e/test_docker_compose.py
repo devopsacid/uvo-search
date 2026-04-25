@@ -1,6 +1,6 @@
 """End-to-end tests that run against docker-compose services.
 
-These tests build and start the full stack (MCP server + NiceGUI GUI) via
+These tests build and start the full stack (MCP server + React GUI) via
 docker compose, then verify both services are healthy and the GUI can
 communicate with the MCP server.
 
@@ -44,7 +44,7 @@ class TestMCPServerHealth:
 
 @pytest.mark.e2e
 class TestGUIHealth:
-    """Verify NiceGUI frontend is running and serves pages."""
+    """Verify React frontend is running and serves pages."""
 
     def test_root_page_loads(self, compose_stack):
         resp = httpx.get(GUI_URL, timeout=10, follow_redirects=True)

@@ -4,10 +4,10 @@ Provides a session-scoped ``compose_stack`` fixture that builds + starts the
 full docker-compose stack and tears it down after the session.  All four
 services must be healthy before the fixture yields:
 
-- MCP server   http://localhost:8000/health
+- MCP server    http://localhost:8000/health
 - Analytics API http://localhost:8001/health
-- Admin GUI    http://localhost:3000
-- NiceGUI GUI  http://localhost:8080
+- Admin GUI     http://localhost:3000
+- React GUI     http://localhost:8080
 
 Also overrides pytest-playwright's ``browser_context_args`` to set a
 reasonable viewport and silence https errors on localhost.
@@ -25,7 +25,7 @@ HEALTH_CHECKS = [
     ("MCP server", "http://localhost:8000/health"),
     ("Analytics API", "http://localhost:8001/health"),
     ("Admin GUI", "http://localhost:3000"),
-    ("NiceGUI GUI", "http://localhost:8080"),
+    ("React GUI", "http://localhost:8080"),
 ]
 
 STARTUP_TIMEOUT = 120
