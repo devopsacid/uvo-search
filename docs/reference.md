@@ -128,68 +128,20 @@ Returns:
   }
 ```
 
-## Frontend Routes
+## Frontends
 
-| Route | Page Function | State Class | Purpose |
-|-------|---------------|-------------|---------|
-| `/` | `search_page()` | `SearchState` | Main search with split-panel (left: results, right: detail) |
-| `/procurers` | `procurers_page()` | `ProcurersState` | Browse contracting authorities (3-column grid) |
-| `/suppliers` | `suppliers_page()` | `SuppliersState` | Browse suppliers (3-column grid) |
-| `/about` | `about_page()` | None | Information page with data source attribution |
-
-## Frontend Components
-
-### layout(current_path: str)
-
-**File**: `src/uvo_gui/components/layout.py`
-
-Context manager providing header + sidebar + page container.
-
-```python
-@ui.page("/my-page")
-async def my_page() -> None:
-    with layout(current_path="/my-page"):
-        # Your content here
-        ui.label("Hello")
-```
-
-**Navigation Items**:
-```
-🔍 Vyhľadávanie     /
-🏢 Obstaravatelia   /procurers
-🤝 Dodavatelia      /suppliers
-ℹ️  O aplikácii      /about
-```
-
-### @ui.refreshable
-
-Decorator from NiceGUI for conditional re-rendering.
-
-```python
-@ui.refreshable
-def my_view() -> None:
-    if _state.loading:
-        ui.spinner()
-        return
-    ui.label(_state.query)
-
-# Trigger re-render
-my_view.refresh()
-```
+The public SPA lives in [`src/uvo-gui-react/`](../src/uvo-gui-react/) (React 18 + Vite + TanStack Query) and the admin dashboard in [`src/uvo-gui-vuejs/`](../src/uvo-gui-vuejs/) (Vue 3 + Pinia). Both call the FastAPI bridge on port 8001, which fans out to the MCP server. See each package's `README.md` for routes, components, and dev instructions.
 
 ## Environment Variables
 
 | Variable | Type | Default | Required | Description |
 |----------|------|---------|----------|-------------|
-| `STORAGE_SECRET` | string | — | Yes | Secret key for NiceGUI session storage |
 | `MONGO_PASSWORD` | string | — | Yes | Password for MongoDB |
 | `NEO4J_PASSWORD` | string | — | Yes | Password for Neo4j |
 | `EKOSYSTEM_BASE_URL` | string | `https://datahub.ekosystem.slovensko.digital` | No | Ekosystem Datahub URL |
 | `EKOSYSTEM_API_TOKEN` | string | `` | No | Ekosystem API token (future use) |
 | `TED_BASE_URL` | string | `https://api.ted.europa.eu` | No | TED API URL (future use) |
-| `MCP_SERVER_URL` | string | `http://localhost:8000/mcp` | No | URL for GUI to reach MCP server |
-| `GUI_HOST` | string | `0.0.0.0` | No | NiceGUI bind address |
-| `GUI_PORT` | int | `8080` | No | NiceGUI port |
+| `MCP_SERVER_URL` | string | `http://localhost:8000/mcp` | No | URL for API bridge to reach MCP server |
 | `MCP_HOST` | string | `0.0.0.0` | No | MCP server bind address |
 | `MCP_PORT` | int | `8000` | No | MCP server port |
 | `CACHE_TTL_SEARCH` | int | `300` | No | Search result cache TTL (seconds) |
@@ -214,42 +166,24 @@ uvo-search/
 │   │       ├── procurements.py           # search_completed_procurements, get_procurement_detail
 │   │       └── subjects.py               # find_procurer, find_supplier
 │   │
-│   └── uvo_gui/                          # Frontend (NiceGUI)
-│       ├── __main__.py                   # Entry point: main()
-│       ├── main.py                       # (deprecated, use __main__)
-│       ├── app.py                        # NiceGUI app setup: start()
-│       ├── config.py                     # GuiSettings (pydantic-settings)
-│       ├── mcp_client.py                 # HTTP MCP client: call_tool()
-│       ├── pages/
-│       │   ├── __init__.py
-│       │   ├── search.py                 # Route: /, State: SearchState
-│       │   ├── procurers.py              # Route: /procurers, State: ProcurersState
-│       │   ├── suppliers.py              # Route: /suppliers, State: SuppliersState
-│       │   └── about.py                  # Route: /about (no state)
-│       └── components/
-│           ├── __init__.py
-│           └── layout.py                 # Shared layout shell: layout()
+│   ├── uvo_api/                          # FastAPI bridge (port 8001)
+│   ├── uvo_pipeline/                     # Ingestion pipeline (one-shot)
+│   ├── uvo-gui-react/                    # React 18 SPA public frontend
+│   └── uvo-gui-vuejs/                    # Vue 3 admin dashboard
 │
 ├── tests/
-│   ├── conftest.py                       # pytest_plugins = ["nicegui.testing.general_fixtures"]
-│   ├── mcp/
-│   │   ├── test_procurements.py
-│   │   └── test_subjects.py
-│   └── gui/
-│       ├── layout_test_app.py            # Minimal test app for layout testing
-│       ├── test_search.py
-│       ├── test_procurers.py
-│       ├── test_suppliers.py
-│       └── test_about.py
+│   ├── conftest.py                       # Shared pytest fixtures
+│   ├── mcp/                              # Unit tests (mocked)
+│   ├── api/                              # API bridge unit tests
+│   ├── pipeline/                         # Pipeline unit tests
+│   └── e2e/                              # End-to-end (requires docker compose)
 │
 ├── docs/
 │   ├── architecture.md                   # System design and data flow
-│   ├── frontend.md                       # Frontend (NiceGUI) guide
 │   ├── backend.md                        # Backend (MCP) guide
 │   ├── reference.md                      # This file
 │   ├── plan.md                           # Project roadmap
 │   ├── data-sources-research.md          # API documentation
-│   ├── nicegui-research.md               # NiceGUI patterns
 │   └── superpowers/
 │
 ├── .github/workflows/
@@ -257,7 +191,7 @@ uvo-search/
 │   └── docker-publish.yml                # Push to registry on tag
 │
 ├── Dockerfile.mcp                        # MCP server image
-├── Dockerfile.gui                        # GUI image
+├── Dockerfile.api                        # API bridge image
 ├── docker-compose.yml                    # Local deployment
 ├── pyproject.toml                        # Dependencies, tooling config
 ├── uv.lock                               # Locked dependency versions
@@ -277,7 +211,7 @@ uv sync --all-extras
 
 # Copy configuration
 cp .env.example .env
-# Edit .env and set STORAGE_SECRET, MONGO_PASSWORD, NEO4J_PASSWORD
+# Edit .env and set MONGO_PASSWORD, NEO4J_PASSWORD
 ```
 
 ### Run Local
@@ -286,10 +220,13 @@ cp .env.example .env
 # Terminal 1: MCP server
 uv run python -m uvo_mcp
 
-# Terminal 2: GUI
-uv run python -m uvo_gui
+# Terminal 2: API bridge
+uv run python -m uvo_api
 
-# Open http://localhost:8080
+# Terminal 3: React SPA (Vite dev server)
+cd src/uvo-gui-react && npm install && npm run dev
+
+# Open http://localhost:5174
 ```
 
 ### Run with Hot Reload
@@ -298,18 +235,15 @@ uv run python -m uvo_gui
 # MCP server (auto-restarts on code change)
 uv run watchfiles 'python -m uvo_mcp' src/uvo_mcp
 
-# GUI (auto-reloads via NiceGUI)
-uv run python -m uvo_gui
+# React SPA (Vite HMR is the default `npm run dev`)
+cd src/uvo-gui-react && npm run dev
 ```
 
 ### Test
 
 ```bash
-# All tests (gui and mcp)
-uv run pytest tests/gui/ tests/mcp/ -v
-
-# GUI tests only
-uv run pytest tests/gui/ -v
+# All Python unit tests
+uv run pytest tests/mcp/ tests/api/ tests/pipeline/ -v
 
 # MCP tests only
 uv run pytest tests/mcp/ -v
@@ -352,61 +286,26 @@ docker compose down -v
 
 ## Common Patterns
 
-### Call MCP Tool from Frontend
+### Call an MCP Tool from a Frontend
 
-```python
-from uvo_gui import mcp_client
+The React SPA and Vue admin go through the FastAPI bridge — they call REST endpoints, not the MCP server directly. Example (TanStack Query in React):
 
-# In async function
-data = await mcp_client.call_tool(
-    "search_completed_procurements",
-    {"text_query": "software", "limit": 20, "offset": 0}
-)
-# data = {"data": [...], "total": N}
+```ts
+import { useQuery } from "@tanstack/react-query";
+
+export function useContracts(query: string) {
+  return useQuery({
+    queryKey: ["contracts", query],
+    queryFn: async () => {
+      const r = await fetch(`/api/contracts?query=${encodeURIComponent(query)}`);
+      if (!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+  });
+}
 ```
 
-### Module-Level State + Refreshable
-
-```python
-from dataclasses import dataclass, field
-from nicegui import ui
-
-@dataclass
-class MyState:
-    query: str = ""
-    results: list = field(default_factory=list)
-    
-    async def search(self) -> None:
-        my_view.refresh()  # Show loading
-        try:
-            data = await mcp_client.call_tool(...)
-            self.results = data.get("items", [])
-        finally:
-            my_view.refresh()  # Show results
-
-_state = MyState()
-
-@ui.refreshable
-def my_view() -> None:
-    for item in _state.results:
-        ui.label(item.get("nazov"))
-
-@ui.page("/my")
-async def my_page() -> None:
-    with layout(current_path="/my"):
-        my_view()
-```
-
-### Async Button Click
-
-```python
-import asyncio
-
-ui.button(
-    "Next",
-    on_click=lambda: asyncio.ensure_future(_state.goto_page(_state.page + 1))
-)
-```
+The API bridge translates that request into an MCP tool call (`search_completed_procurements`) and returns JSON.
 
 ## URLs & External Resources
 
@@ -415,7 +314,6 @@ ui.button(
 | **UVO Vestník** | https://www.uvo.gov.sk/vestnik |
 | **NKOD (data.gov.sk)** | https://data.gov.sk |
 | **ITMS Open Data** | https://www.itms2014.sk/ |
-| **NiceGUI** | https://nicegui.io |
 | **FastMCP** | https://github.com/anthropics/mcp-py-server |
 | **TED API** | https://ted.europa.eu/api |
 | **Ekosystem Datahub** | https://datahub.ekosystem.slovensko.digital |
@@ -424,7 +322,6 @@ ui.button(
 
 **Runtime**:
 - `mcp[cli]>=1.0.0` — Model Context Protocol (Anthropic)
-- `nicegui>=3.9.0` — Web UI framework
 - `httpx>=0.27.0` — Async HTTP client
 - `pydantic>=2.0.0` — Data validation
 - `pydantic-settings>=2.0.0` — Configuration management

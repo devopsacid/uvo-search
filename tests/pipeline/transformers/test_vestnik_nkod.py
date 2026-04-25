@@ -150,7 +150,9 @@ def test_transform_procurer_name_slug():
 def test_transform_procurer_sources():
     r = transform_notice(_raw())
     assert r.procurer is not None
-    assert r.procurer.sources == ["vestnik"]
+    # Vestník is UVO's official gazette; mark both provenances so
+    # cross-source dedup can link to legacy UVO-sourced entities.
+    assert r.procurer.sources == ["vestnik", "uvo"]
 
 
 def test_transform_procurer_none_when_missing():
@@ -194,3 +196,194 @@ def test_transform_first_occurrence_of_duplicate_codes():
     raw = _raw(components=[_component("metadataWrapper", sub=[]), tabs])
     r = transform_notice(raw)
     assert r.cpv_code == "72000000"
+
+
+# ---------------------------------------------------------------------------
+# Award extraction helpers
+# ---------------------------------------------------------------------------
+
+def _org_panel(org_id, name, ico=None, country="SVK"):
+    """Build a GR-Organisations_panel component."""
+    label_text = f"Zoznam organizácii uvedených v oznámení (GR-Organisations) ({org_id})"
+    children = [
+        _component("GR-Company", sub=[
+            _component("BT-500-Organization-Company", name),
+        ]),
+    ]
+    if ico:
+        children[0]["components"].append(
+            _component("BT-501-Organization-Company-CIN", ico)
+        )
+    return {
+        "key": "GR-Organisations_panel",
+        "lang": {"sk": {"group|name|ND-Organization": label_text}},
+        "components": children,
+    }
+
+
+def _tp_panel(tp_id, org_id):
+    """Build a GR-TenderingParty_panel component."""
+    label_text = f"Zoznam uchádzačov (GR-TenderingParty) ({tp_id})"
+    return {
+        "key": "GR-TenderingParty_panel",
+        "lang": {"sk": {"group|name|ND-TenderingParty": label_text}},
+        "components": [_component("OPT-300-Tenderer", org_id)],
+    }
+
+
+def _lot_tender_panel(ten_id, tp_id, value=None, currency="EUR"):
+    """Build a GR-LotTender_panel component."""
+    label_text = f"Zoznam ponúk (GR-LotTender) ({ten_id})"
+    subs = [_component("BT-3201-Tender", tp_id)]
+    if value is not None:
+        subs.append(_component("BT-720-Tender_value", str(value)))
+        subs.append(_component("BT-720-Tender_currency", currency))
+    return {
+        "key": "GR-LotTender_panel",
+        "lang": {"sk": {"group|name|ND-LotTender": label_text}},
+        "components": subs,
+    }
+
+
+def _lot_result_panel(res_id, ten_id, selected=True, lot_value=None, lot_currency="EUR"):
+    """Build a GR-LotResult_panel component."""
+    label_text = f"Zoznam výsledkov častí (GR-LotResult) ({res_id})"
+    subs = []
+    if selected:
+        subs.append(_component("GR-Winner", sub=[
+            _component("BT-142-LotResult", "selec-w"),
+        ]))
+    subs.append(_component("GR-LotResult-1", sub=[
+        _component("OPT-320-LotResult", f"['{ten_id}']"),
+    ]))
+    if lot_value is not None:
+        subs.append(_component("GR-LotResult-TenderValue", sub=[
+            _component("BT-710-LotResult_currencyWrapper", sub=[
+                _component("BT-710-LotResult_value", str(lot_value)),
+                _component("BT-710-LotResult_currency", lot_currency),
+            ]),
+        ]))
+    return {
+        "key": "GR-LotResult_panel",
+        "lang": {"sk": {"group|name|ND-LotResult": label_text}},
+        "components": subs,
+    }
+
+
+def _raw_with_awards(org_panels, tp_panels, lot_tender_panels, lot_result_panels):
+    """Build a raw notice dict with full award tree embedded in components."""
+    metadata = _component("metadataWrapper", sub=[
+        _component("BT-04-notice", "test-uuid"),
+        _component("BT-03-notice", "result"),
+        _component("DL-Metadata-Partner", "Test Procurer (ID: 1)"),
+        _component("DL-Metadata-Order", "Test Order (ID: 2)"),
+    ])
+    award_components = [
+        _component("GR-Organisations", sub=org_panels),
+        _component("GR-TenderingParty", sub=tp_panels),
+        _component("GR-LotTender", sub=lot_tender_panels),
+        _component("GR-LotResult", sub=lot_result_panels),
+    ]
+    return {
+        "id": 9000001,
+        "name": "Test notice",
+        "components": [metadata] + award_components,
+        "_bulletin_year": 2026,
+        "_bulletin_number": 1,
+        "_bulletin_publish_date": "2026-01-01T00:00:00",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Award tests
+# ---------------------------------------------------------------------------
+
+def test_award_basic_single_lot_single_winner():
+    raw = _raw_with_awards(
+        org_panels=[_org_panel("ORG-0001", "Dodávateľ s.r.o.", ico="12345678")],
+        tp_panels=[_tp_panel("TPA-0001", "ORG-0001")],
+        lot_tender_panels=[_lot_tender_panel("TEN-0001", "TPA-0001", value="44 774.70")],
+        lot_result_panels=[_lot_result_panel("RES-0001", "TEN-0001", selected=True)],
+    )
+    r = transform_notice(raw)
+    assert len(r.awards) == 1
+    a = r.awards[0]
+    assert a.supplier.name == "Dodávateľ s.r.o."
+    assert a.supplier.ico == "12345678"
+    assert a.value == pytest.approx(44774.70)
+    assert a.currency == "EUR"
+    assert a.supplier.sources == ["vestnik", "uvo"]
+
+
+def test_award_multi_lot():
+    raw = _raw_with_awards(
+        org_panels=[
+            _org_panel("ORG-0001", "Firma A s.r.o.", ico="11111111"),
+            _org_panel("ORG-0002", "Firma B a.s.", ico="22222222"),
+        ],
+        tp_panels=[
+            _tp_panel("TPA-0001", "ORG-0001"),
+            _tp_panel("TPA-0002", "ORG-0002"),
+        ],
+        lot_tender_panels=[
+            _lot_tender_panel("TEN-0001", "TPA-0001", value="10000.00"),
+            _lot_tender_panel("TEN-0002", "TPA-0002", value="20000.00"),
+        ],
+        lot_result_panels=[
+            _lot_result_panel("RES-0001", "TEN-0001", selected=True),
+            _lot_result_panel("RES-0002", "TEN-0002", selected=True),
+        ],
+    )
+    r = transform_notice(raw)
+    assert len(r.awards) == 2
+    names = {a.supplier.name for a in r.awards}
+    assert names == {"Firma A s.r.o.", "Firma B a.s."}
+
+
+def test_award_ico_valid_8digit():
+    raw = _raw_with_awards(
+        org_panels=[_org_panel("ORG-0001", "Firma", ico="87654321")],
+        tp_panels=[_tp_panel("TPA-0001", "ORG-0001")],
+        lot_tender_panels=[_lot_tender_panel("TEN-0001", "TPA-0001", value="1000")],
+        lot_result_panels=[_lot_result_panel("RES-0001", "TEN-0001")],
+    )
+    r = transform_notice(raw)
+    assert r.awards[0].supplier.ico == "87654321"
+
+
+def test_award_ico_non_8digit_rejected():
+    """TIN (10-digit) must not be accepted as ICO."""
+    raw = _raw_with_awards(
+        org_panels=[_org_panel("ORG-0001", "Firma", ico="2021511008")],  # 10-digit DIC
+        tp_panels=[_tp_panel("TPA-0001", "ORG-0001")],
+        lot_tender_panels=[_lot_tender_panel("TEN-0001", "TPA-0001", value="1000")],
+        lot_result_panels=[_lot_result_panel("RES-0001", "TEN-0001")],
+    )
+    r = transform_notice(raw)
+    assert r.awards[0].supplier.ico is None
+
+
+def test_award_fallback_to_bt710_when_no_bt720():
+    """When BT-720 tender value is absent, use BT-710 lot result value."""
+    raw = _raw_with_awards(
+        org_panels=[_org_panel("ORG-0001", "Firma")],
+        tp_panels=[_tp_panel("TPA-0001", "ORG-0001")],
+        # No value in tender panel
+        lot_tender_panels=[_lot_tender_panel("TEN-0001", "TPA-0001")],
+        lot_result_panels=[_lot_result_panel("RES-0001", "TEN-0001", lot_value="99\xa0999.99", lot_currency="EUR")],
+    )
+    r = transform_notice(raw)
+    assert len(r.awards) == 1
+    assert r.awards[0].value == pytest.approx(99999.99)
+
+
+def test_award_lot_result_without_selec_w_yields_no_award():
+    """LotResult with BT-142 != selec-w must be skipped."""
+    raw = _raw_with_awards(
+        org_panels=[_org_panel("ORG-0001", "Firma")],
+        tp_panels=[_tp_panel("TPA-0001", "ORG-0001")],
+        lot_tender_panels=[_lot_tender_panel("TEN-0001", "TPA-0001", value="5000")],
+        lot_result_panels=[_lot_result_panel("RES-0001", "TEN-0001", selected=False)],
+    )
+    r = transform_notice(raw)
+    assert r.awards == []

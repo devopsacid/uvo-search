@@ -26,10 +26,6 @@ class PipelineSettings(BaseSettings):
     batch_size: int = 500
     neo4j_batch_size: int = 100
     crz_rate_limit: int = 55
-    uvo_base_url: str = "https://www.uvo.gov.sk"
-    uvo_rate_limit: float = 1.0
-    uvo_request_delay: float = 0.5
-    uvo_fetch_details: bool = True
     itms_base_url: str = "https://opendata.itms2014.sk"
     itms_rate_limit: float = 5.0
     nkod_sparql_url: str = "https://data.slovensko.sk/api/sparql"

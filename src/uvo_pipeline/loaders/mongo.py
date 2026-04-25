@@ -14,14 +14,20 @@ logger = logging.getLogger(__name__)
 
 
 async def _ensure_index(collection: AsyncIOMotorCollection, keys: Any, **kwargs: Any) -> None:
-    """create_index, but if a same-named index exists with a different spec, drop and recreate."""
+    """create_index, but if a same-named index exists with a different spec, drop and recreate.
+
+    Handles both IndexKeySpecsConflict (86) and IndexOptionsConflict (85) so legacy
+    indexes (e.g. the old sparse ico_unique) can be migrated to a new spec in place.
+    """
     name = kwargs.get("name")
     try:
         await collection.create_index(keys, **kwargs)
     except OperationFailure as exc:
-        if exc.code == 86 and name:  # IndexKeySpecsConflict
+        if exc.code in (85, 86) and name:
             logger.warning(
-                "Index %s.%s spec changed; dropping and recreating", collection.name, name
+                "Index %s.%s spec/options changed; dropping and recreating",
+                collection.name,
+                name,
             )
             await collection.drop_index(name)
             await collection.create_index(keys, **kwargs)
@@ -48,33 +54,27 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         default_language="none",
     )
 
-    # procurers: unique on ico (string-typed only) and name_slug
-    await _ensure_index(
-        db.procurers,
-        [("ico", 1)],
-        unique=True,
-        partialFilterExpression={"ico": {"$type": "string"}},
-        name="ico_unique",
-    )
-    # name_slug is non-unique: historical data has dupes from a prior pipeline
-    # version that did not enforce uniqueness; ICO is the real identity.
-    await _ensure_index(
-        db.procurers, [("name_slug", 1)], name="name_slug_unique"
-    )
-    await _ensure_index(db.procurers, [("name", "text")], name="text_search")
-
-    # suppliers: same as procurers
-    await _ensure_index(
-        db.suppliers,
-        [("ico", 1)],
-        unique=True,
-        partialFilterExpression={"ico": {"$type": "string"}},
-        name="ico_unique",
-    )
-    await _ensure_index(
-        db.suppliers, [("name_slug", 1)], name="name_slug_unique"
-    )
-    await _ensure_index(db.suppliers, [("name", "text")], name="text_search")
+    # procurers / suppliers:
+    # - ico_unique uses partialFilterExpression rather than sparse. MongoDB
+    #   "sparse" still indexes null-valued fields, so two records with ico=null
+    #   violate uniqueness; partialFilterExpression only indexes docs whose
+    #   ico is an actual string.
+    # - name_slug is indexed for lookup but NOT unique: real procurement data
+    #   contains distinct legal entities sharing a name (different ICOs), and
+    #   also inconsistent ICO reporting across sources for the same name.
+    #   Dedup is driven by ico when present; name_slug fallback in upserts
+    #   finds the first matching doc, which is acceptable for null-ico cases.
+    ico_partial = {"ico": {"$type": "string"}}
+    for coll in (db.procurers, db.suppliers):
+        await _ensure_index(
+            coll,
+            [("ico", 1)],
+            unique=True,
+            partialFilterExpression=ico_partial,
+            name="ico_unique",
+        )
+        await _ensure_index(coll, [("name_slug", 1)], name="name_slug_unique")
+        await _ensure_index(coll, [("name", "text")], name="text_search")
 
     # pipeline_state: unique on source
     await _ensure_index(
@@ -117,16 +117,26 @@ async def upsert_notice(db: AsyncIOMotorDatabase, notice: CanonicalNotice) -> st
     return str(result["_id"])
 
 
+def _entity_filter(ico: str | None, name_slug: str) -> dict[str, Any]:
+    """Match key for procurer/supplier upsert.
+
+    With ICO: uniquely keyed on the ICO itself.
+    Without ICO: keyed on (name_slug, ico=None) — the ico=None clause prevents
+    the null-ico upsert from clobbering an existing ICO-bearing doc that
+    happens to share a name_slug (real data has multiple distinct legal
+    entities with identical slugified names).
+    """
+    if ico:
+        return {"ico": ico}
+    return {"name_slug": name_slug, "ico": None}
+
+
 async def upsert_procurer(db: AsyncIOMotorDatabase, procurer: CanonicalProcurer) -> str:
     """Upsert a procurer by ico (preferred) or name_slug fallback."""
     doc = procurer.model_dump(mode="json")
     sources = doc.pop("sources", []) or []
-    if procurer.ico:
-        filter_: dict[str, Any] = {"ico": procurer.ico}
-    else:
-        filter_ = {"name_slug": procurer.name_slug}
     result = await db.procurers.find_one_and_update(
-        filter_,
+        _entity_filter(procurer.ico, procurer.name_slug),
         {"$set": doc, "$addToSet": {"sources": {"$each": sources}}},
         upsert=True,
         return_document=True,
@@ -138,12 +148,8 @@ async def upsert_supplier(db: AsyncIOMotorDatabase, supplier: CanonicalSupplier)
     """Upsert a supplier by ico (preferred) or name_slug fallback."""
     doc = supplier.model_dump(mode="json")
     sources = doc.pop("sources", []) or []
-    if supplier.ico:
-        filter_: dict[str, Any] = {"ico": supplier.ico}
-    else:
-        filter_ = {"name_slug": supplier.name_slug}
     result = await db.suppliers.find_one_and_update(
-        filter_,
+        _entity_filter(supplier.ico, supplier.name_slug),
         {"$set": doc, "$addToSet": {"sources": {"$each": sources}}},
         upsert=True,
         return_document=True,
@@ -164,7 +170,17 @@ async def upsert_batch(
     inserted = updated = skipped = errors = 0
 
     for i in range(0, len(notices), batch_size):
-        batch = notices[i : i + batch_size]
+        raw_batch = notices[i : i + batch_size]
+
+        # Dedupe within the batch on (source, source_id). Callers may emit the
+        # same notice twice when a source exposes the same payload via multiple
+        # distributions (e.g. Vestník datasets have several format rows in the
+        # NKOD SPARQL result). Without this, the first occurrence inserts and
+        # the second collides on the ingested_docs unique index.
+        deduped: dict[tuple[str, str], CanonicalNotice] = {}
+        for notice in raw_batch:
+            deduped[(notice.source, notice.source_id)] = notice
+        batch = list(deduped.values())
 
         # Compute hashes for all notices in this batch
         for notice in batch:

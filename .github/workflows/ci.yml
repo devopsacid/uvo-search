@@ -25,8 +25,6 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Run pytest (unit tests only)
-        env:
-          STORAGE_SECRET: test-secret
         run: uv run pytest tests/ -v --tb=short -m "not e2e and not integration"
 
   lint:
@@ -70,15 +68,6 @@ jobs:
           cache-from: type=gha,scope=mcp
           cache-to: type=gha,mode=max,scope=mcp
 
-      - name: Build GUI image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.gui
-          push: false
-          cache-from: type=gha,scope=gui
-          cache-to: type=gha,mode=max,scope=gui
-
   docker-compose:
     name: Docker Compose Build & E2E
     runs-on: ubuntu-latest
@@ -88,9 +77,7 @@ jobs:
 
       - name: Create .env file for docker compose
         run: |
-          cat > .env << 'EOF'
-          STORAGE_SECRET=ci-test-secret
-          EOF
+          : > .env
 
       - name: Build and start services
         run: docker compose up -d --build --wait --wait-timeout 120
@@ -100,11 +87,11 @@ jobs:
           curl -sf http://localhost:8000/health | jq .
           echo "MCP server healthy"
 
-      - name: Verify GUI is serving
+      - name: Verify React GUI is serving
         run: |
           curl -sf http://localhost:8080/ -o /dev/null -w "%{http_code}"
           echo ""
-          echo "GUI is serving"
+          echo "React GUI is serving"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -118,8 +105,6 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Run E2E tests
-        env:
-          STORAGE_SECRET: test-secret
         run: uv run pytest tests/e2e/ -v --tb=short -m e2e
 
       - name: Show logs on failure

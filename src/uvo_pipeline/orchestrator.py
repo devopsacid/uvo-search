@@ -1,7 +1,6 @@
 """Pipeline orchestrator — coordinates all ETL steps."""
 
 import logging
-import math
 import uuid
 from datetime import datetime, timedelta, date
 from pathlib import Path
@@ -328,61 +327,10 @@ async def run(
         report.source_counts["ted"] = ted_count
         logger.info("TED: %d notices extracted", ted_count)
 
-        # Step 9: UVO.gov.sk extractor
-        from uvo_pipeline.extractors.uvo import fetch_notices as fetch_uvo_notices
-        from uvo_pipeline.transformers.uvo import transform_notice as transform_uvo_notice
-
-        logger.info("Extracting from UVO.gov.sk (from=%s)...", from_date)
-        uvo_rate_limiter = RateLimiter(rate=max(1, math.ceil(settings.uvo_rate_limit)), per=1.0)
-        uvo_count = 0
-        uvo_to_date = datetime.utcnow().date()
-
-        async with httpx.AsyncClient(
-            base_url=settings.uvo_base_url,
-            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0"},
-            timeout=settings.request_timeout,
-        ) as uvo_client:
-            if mode == "historical":
-                # Year-by-year to avoid huge in-memory batches
-                from_year = settings.historical_from_year
-                current_year = uvo_to_date.year
-                for year in range(from_year, current_year + 1):
-                    year_from = date(year, 1, 1)
-                    year_to = date(year, 12, 31)
-                    async for raw in fetch_uvo_notices(
-                        uvo_client,
-                        uvo_rate_limiter,
-                        from_date=year_from,
-                        to_date=year_to,
-                        fetch_details=settings.uvo_fetch_details,
-                        request_delay=settings.uvo_request_delay,
-                    ):
-                        try:
-                            notice = transform_uvo_notice(raw)
-                            notice.pipeline_run_id = run_id
-                            all_notices.append(notice)
-                            uvo_count += 1
-                        except Exception as exc:
-                            logger.warning("UVO transform error: %s", exc)
-            else:
-                async for raw in fetch_uvo_notices(
-                    uvo_client,
-                    uvo_rate_limiter,
-                    from_date=from_date,
-                    to_date=uvo_to_date,
-                    fetch_details=settings.uvo_fetch_details,
-                    request_delay=settings.uvo_request_delay,
-                ):
-                    try:
-                        notice = transform_uvo_notice(raw)
-                        notice.pipeline_run_id = run_id
-                        all_notices.append(notice)
-                        uvo_count += 1
-                    except Exception as exc:
-                        logger.warning("UVO transform error: %s", exc)
-
-        report.source_counts["uvo"] = uvo_count
-        logger.info("UVO: %d notices extracted", uvo_count)
+        # UVO.gov.sk has no public API — its listing endpoint moved behind
+        # Oracle Access Manager SSO. UVO notices enter the pipeline via the
+        # Vestník NKOD extractor instead (Vestník is UVO's official gazette
+        # and the NKOD SPARQL feed is filtered on the UVO publisher URI).
 
         # Step N: ITMS2014+
         from uvo_pipeline.extractors.itms import fetch_procurements as fetch_itms_procurements

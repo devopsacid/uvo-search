@@ -6,7 +6,7 @@ from datetime import date
 
 from slugify import slugify
 
-from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer
+from uvo_pipeline.models import CanonicalAddress, CanonicalAward, CanonicalNotice, CanonicalProcurer, CanonicalSupplier
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,10 @@ STATUS_MAP = {
 }
 
 _ID_RE = re.compile(r"\(ID:\s*([^)]+)\)\s*$")
+# eForms panel labels embed entity IDs in parens at the end, e.g. "(ORG-0001)", "(TEN-0002)".
+# This regex extracts that ID from the Slovak label text.
+_PANEL_ID_RE = re.compile(r"\(([A-Z]+-\d+)\)\s*$")
+_ICO_RE = re.compile(r"^\d{8}$")
 
 
 def _flatten_eforms(components: list[dict]) -> dict[str, str]:
@@ -87,10 +91,153 @@ def _parse_date(value: str | None) -> date | None:
 def _parse_float(value) -> float | None:
     if value is None:
         return None
-    try:
+    if isinstance(value, (int, float)):
         return float(value)
+    # Slovak-formatted values use non-breaking spaces as thousand separators.
+    cleaned = str(value).replace("\xa0", "").replace(" ", "")
+    try:
+        return float(cleaned)
     except (ValueError, TypeError):
         return None
+
+
+def _panel_id(panel: dict) -> str | None:
+    """Extract entity ID (e.g. ORG-0001) from a panel's Slovak label text."""
+    lang_text = panel.get("lang", {}).get("sk", {})
+    for text in lang_text.values():
+        m = _PANEL_ID_RE.search(str(text))
+        if m:
+            return m.group(1)
+    return None
+
+
+def _collect_panels(components: list[dict], panel_key: str) -> list[dict]:
+    """Return all direct children of the group with key=panel_key's parent that match *_panel."""
+    # Walk the tree to find the group, then return its panel children.
+    for c in (components or []):
+        if not isinstance(c, dict):
+            continue
+        if c.get("key") == panel_key:
+            return [p for p in c.get("components", []) if isinstance(p, dict) and p.get("key", "").endswith("_panel")]
+        found = _collect_panels(c.get("components", []), panel_key)
+        if found is not None and found != []:
+            return found
+    return []
+
+
+def _build_org_map(components: list[dict]) -> dict[str, dict]:
+    """Build ORG-id -> org-info dict from GR-Organisations panels."""
+    org_map: dict[str, dict] = {}
+    panels = _collect_panels(components, "GR-Organisations")
+    for panel in panels:
+        org_id = _panel_id(panel)
+        if not org_id:
+            continue
+        flat = _flatten_eforms(panel.get("components", []))
+        name = flat.get("BT-500-Organization-Company")
+        if not name:
+            continue
+        cin = flat.get("BT-501-Organization-Company-CIN")
+        ico = cin if (cin and _ICO_RE.fullmatch(cin)) else None
+        org_map[org_id] = {
+            "name": name,
+            "ico": ico,
+            "address": CanonicalAddress(
+                street=" ".join(filter(None, [
+                    flat.get("BT-510(a)-Organization-Company"),
+                    flat.get("BT-510(b)-Organization-Company"),
+                ])) or None,
+                city=flat.get("BT-513-Organization-Company"),
+                postal_code=flat.get("BT-512-Organization-Company"),
+                country_code=flat.get("BT-514-Organization-Company", "SK"),
+            ),
+        }
+    return org_map
+
+
+def _build_tp_map(components: list[dict]) -> dict[str, str]:
+    """Build TPA-id -> ORG-id dict from GR-TenderingParty panels."""
+    tp_map: dict[str, str] = {}
+    panels = _collect_panels(components, "GR-TenderingParty")
+    for panel in panels:
+        tp_id = _panel_id(panel)
+        if not tp_id:
+            continue
+        flat = _flatten_eforms(panel.get("components", []))
+        org_id = flat.get("OPT-300-Tenderer")
+        if org_id:
+            tp_map[tp_id] = org_id
+    return tp_map
+
+
+def _build_tender_map(components: list[dict]) -> dict[str, dict]:
+    """Build TEN-id -> {value, currency, tp_id} dict from GR-LotTender panels."""
+    ten_map: dict[str, dict] = {}
+    panels = _collect_panels(components, "GR-LotTender")
+    for panel in panels:
+        ten_id = _panel_id(panel)
+        if not ten_id:
+            continue
+        flat = _flatten_eforms(panel.get("components", []))
+        ten_map[ten_id] = {
+            "value": _parse_float(flat.get("BT-720-Tender_value")),
+            "currency": flat.get("BT-720-Tender_currency", "EUR"),
+            "tp_id": flat.get("BT-3201-Tender"),
+        }
+    return ten_map
+
+
+def _build_awards(components: list[dict]) -> list[CanonicalAward]:
+    """Walk eForms tree to extract awards from LotResults with BT-142=selec-w."""
+    org_map = _build_org_map(components)
+    tp_map = _build_tp_map(components)
+    ten_map = _build_tender_map(components)
+
+    awards: list[CanonicalAward] = []
+    panels = _collect_panels(components, "GR-LotResult")
+    for panel in panels:
+        flat = _flatten_eforms(panel.get("components", []))
+        if flat.get("BT-142-LotResult") != "selec-w":
+            continue
+        opt_320 = flat.get("OPT-320-LotResult")
+        if not opt_320:
+            continue
+        # OPT-320-LotResult may be stored as a string list repr "['TEN-0001']"
+        # or as a plain string "TEN-0001".
+        if isinstance(opt_320, str) and opt_320.startswith("["):
+            ten_ids = re.findall(r"TEN-\d+", opt_320)
+        elif isinstance(opt_320, list):
+            ten_ids = [str(x) for x in opt_320]
+        else:
+            ten_ids = [opt_320]
+
+        # Fallback lot-result value (BT-710) when tender value is absent.
+        lot_value = _parse_float(flat.get("BT-710-LotResult_value"))
+        lot_currency = flat.get("BT-710-LotResult_currency", "EUR")
+
+        for ten_id in ten_ids:
+            ten = ten_map.get(ten_id)
+            if not ten:
+                continue
+            tp_id = ten.get("tp_id")
+            org_id = tp_map.get(tp_id) if tp_id else None
+            org = org_map.get(org_id) if org_id else None
+            if not org:
+                continue
+            value = ten.get("value") if ten.get("value") is not None else lot_value
+            currency = ten.get("currency") or lot_currency
+            awards.append(CanonicalAward(
+                supplier=CanonicalSupplier(
+                    name=org["name"],
+                    name_slug=slugify(org["name"]),
+                    ico=org.get("ico"),
+                    address=org.get("address"),
+                    sources=["vestnik", "uvo"],
+                ),
+                value=value,
+                currency=currency,
+            ))
+    return awards
 
 
 def transform_notice(raw: dict) -> CanonicalNotice:
@@ -115,12 +262,14 @@ def transform_notice(raw: dict) -> CanonicalNotice:
     partner_name, _partner_id = _parse_partner(_lookup(flat, "DL-Metadata-Partner"))
     procurer = None
     if partner_name:
+        # Vestník is UVO's official gazette; mark procurer provenance as both
+        # so cross-source dedup links vestnik notices to any legacy UVO data.
         procurer = CanonicalProcurer(
             name=partner_name,
             name_slug=slugify(partner_name),
             ico=None,
             organisation_type=None,
-            sources=["vestnik"],
+            sources=["vestnik", "uvo"],
         )
 
     publication_date = _parse_date(raw.get("_bulletin_publish_date"))
@@ -133,6 +282,9 @@ def transform_notice(raw: dict) -> CanonicalNotice:
     final_value = _parse_float(_lookup(flat, "BT-720-Tender"))
     estimated_value = _parse_float(_lookup(flat, "BT-27-Lot", "BT-27-Procedure"))
     currency = _lookup(flat, "BT-720-Tender-Currency", "BT-27-Lot-Currency") or "EUR"
+
+    all_components = raw.get("components", [])
+    awards = _build_awards(all_components)
 
     return CanonicalNotice(
         source="vestnik",
@@ -148,4 +300,5 @@ def transform_notice(raw: dict) -> CanonicalNotice:
         publication_date=publication_date,
         vestnik_number=vestnik_number,
         ted_notice_id=ted_notice_id,
+        awards=awards,
     )

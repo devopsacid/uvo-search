@@ -1,11 +1,12 @@
 """Tests for the ITMS2014+ transformer."""
 
-import pytest
 from datetime import date
+
 from uvo_pipeline.transformers.itms import transform_procurement
 
 PROCUREMENT_1 = {
-    "id": 36674224, "kod": "VO36674224",
+    "id": 36674224,
+    "kod": "VO36674224",
     "nazov": "Dodávka kancelárskeho materiálu",
     "predpokladanaHodnotaZakazky": 15000.0,
     "stav": "Ukoncene",
@@ -13,10 +14,16 @@ PROCUREMENT_1 = {
     "hlavnyPredmetHlavnySlovnik": {"id": 101, "kod": "30192000-1"},
     "obstaravatelSubjekt": {"id": 5, "nazov": "Ministerstvo financií SR", "ico": "00151742"},
 }
+# Real ITMS contract shape (confirmed by API probe)
 CONTRACT_1 = {
     "id": 1001,
-    "dodavatel": {"id": 200, "nazov": "Office supplies s.r.o.", "ico": "12345678"},
-    "celkovaHodnotaZmluvy": 14500.0, "mena": "EUR",
+    "hlavnyDodavatelDodavatelObstaravatel": {
+        "href": "/v2/dodavatelia/200",
+        "ico": "12345678",
+        "id": 200,
+    },
+    "celkovaSumaZmluvy": 14500.0,
+    "_supplier": {"id": 200, "nazov": "Office supplies s.r.o.", "ico": "12345678"},
 }
 
 
@@ -131,17 +138,68 @@ def test_transform_awards_empty_when_no_contracts():
     assert r.awards == []
 
 
-def test_transform_award_missing_mena_defaults_to_eur():
-    contract_no_mena = {
+def test_transform_award_currency_always_eur():
+    """ITMS has no currency field — EUR is hard-coded by policy."""
+    contract = {
         "id": 1002,
-        "dodavatel": {"id": 201, "nazov": "Test s.r.o.", "ico": "99999999"},
-        "celkovaHodnotaZmluvy": 5000.0,
+        "hlavnyDodavatelDodavatelObstaravatel": {"ico": "99999999", "id": 201},
+        "celkovaSumaZmluvy": 5000.0,
+        "_supplier": {"id": 201, "nazov": "Test s.r.o.", "ico": "99999999"},
     }
-    r = transform_procurement(_raw(_contracts=[contract_no_mena]))
+    r = transform_procurement(_raw(_contracts=[contract]))
     assert r.awards[0].currency == "EUR"
 
 
+def test_transform_award_ico_only_when_no_supplier_enrichment():
+    """Contract with only inline ICO ref (no _supplier) still emits an award."""
+    contract = {
+        "id": 1003,
+        "hlavnyDodavatelDodavatelObstaravatel": {"ico": "11111111", "id": 301},
+        "celkovaSumaZmluvy": 1000.0,
+    }
+    r = transform_procurement(_raw(_contracts=[contract]))
+    assert len(r.awards) == 1
+    assert r.awards[0].supplier.ico == "11111111"
+    assert r.awards[0].supplier.name == ""
+
+
+def test_transform_award_skipped_when_no_supplier_info():
+    """Contract with no supplier info at all is skipped."""
+    contract = {"id": 1004, "celkovaSumaZmluvy": 500.0}
+    r = transform_procurement(_raw(_contracts=[contract]))
+    assert r.awards == []
+
+
+def test_transform_awards_multi_supplier_via_suppliers_list():
+    """_suppliers list (detail-endpoint shape) produces one award per supplier."""
+    contract = {
+        "id": 1005,
+        "celkovaSumaZmluvy": 2000.0,
+        "_suppliers": [
+            {"id": 401, "nazov": "Alpha s.r.o.", "ico": "44444444"},
+            {"id": 402, "nazov": "Beta s.r.o.", "ico": "55555555"},
+        ],
+    }
+    r = transform_procurement(_raw(_contracts=[contract]))
+    assert len(r.awards) == 2
+    assert {a.supplier.ico for a in r.awards} == {"44444444", "55555555"}
+    assert all(a.value == 2000.0 for a in r.awards)
+
+
+def test_transform_award_uses_celkova_suma_zmluvy():
+    """Value comes from celkovaSumaZmluvy, not the old celkovaHodnotaZmluvy field."""
+    contract = {
+        "id": 1006,
+        "hlavnyDodavatelDodavatelObstaravatel": {"ico": "77777777", "id": 501},
+        "celkovaSumaZmluvy": 637287.0,
+        "_supplier": {"id": 501, "nazov": "Stavba a.s.", "ico": "77777777"},
+    }
+    r = transform_procurement(_raw(_contracts=[contract]))
+    assert r.awards[0].value == 637287.0
+
+
 # --- New-shape tests: detail endpoint with reference-only obstaravatelSubjekt + _subject enrichment ---
+
 
 def _raw_new_shape(**overrides):
     """Realistic payload: detail endpoint shape, no inline procurer fields, _subject enrichment."""

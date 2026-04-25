@@ -17,20 +17,27 @@ from datetime import date
 from slugify import slugify
 
 from uvo_pipeline.models import (
+    CanonicalAward,
     CanonicalNotice,
     CanonicalProcurer,
+    CanonicalSupplier,
 )
 
 logger = logging.getLogger(__name__)
 
-_ND_TO_NOTICE_TYPE: dict[str, str] = {
-    "24": "contract_notice",
-    "25": "contract_award",
-}
-_ND_TO_STATUS: dict[str, str] = {
-    "24": "announced",
-    "25": "awarded",
-}
+# TED v3 notice-type values → canonical notice_type / status.
+# Full list at https://docs.ted.europa.eu/eforms/latest/codelists/notice-type.html;
+# we map the ones relevant to SK procurement here, defaulting to "other"/"unknown".
+_CAN_TYPES = {"can-standard", "can-modif", "can-social", "can-desg", "can-tran"}
+_CN_TYPES = {"cn-standard", "cn-social", "cn-desg"}
+
+
+def _map_notice_type(notice_type_value: str) -> tuple[str, str]:
+    if notice_type_value in _CAN_TYPES:
+        return "contract_award", "awarded"
+    if notice_type_value in _CN_TYPES:
+        return "contract_notice", "announced"
+    return "other", "unknown"
 
 # Preferred language order when TED returns a multilingual dict like {"slk": ..., "eng": ...}
 _LANG_PREFERENCE = ("slk", "eng", "ces", "deu", "fra")
@@ -53,13 +60,23 @@ def _pick_lang(value: object) -> str | None:
                 return picked
         return None
     if isinstance(value, dict):
+        # TED often wraps each language value in a list: {"slk": ["Name"]}
+        def _as_str(v: object) -> str | None:
+            if isinstance(v, str) and v:
+                return v
+            if isinstance(v, list) and v:
+                first = v[0]
+                return first if isinstance(first, str) and first else None
+            return None
+
         for lang in _LANG_PREFERENCE:
-            v = value.get(lang)
-            if isinstance(v, str) and v:
-                return v
+            picked = _as_str(value.get(lang))
+            if picked:
+                return picked
         for v in value.values():
-            if isinstance(v, str) and v:
-                return v
+            picked = _as_str(v)
+            if picked:
+                return picked
     return None
 
 
@@ -106,11 +123,107 @@ def _parse_ted_date(value: str | None) -> date | None:
     return None
 
 
+_SK_ICO_RE = re.compile(r"\d{8}")
+
+
+def _extract_name_list(value: object) -> list[str]:
+    """Extract a list of names from a TED field that may be:
+    - list[str]            → as-is
+    - dict[lang, list[str]] → the list from the preferred language
+    - dict[lang, str]      → [that string]
+    - list[dict]           → one _pick_lang per entry
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        if all(isinstance(x, str) for x in value):
+            return [x for x in value if x]
+        out = []
+        for item in value:
+            picked = _pick_lang(item)
+            if picked:
+                out.append(picked)
+        return out
+    if isinstance(value, dict):
+        for lang in _LANG_PREFERENCE:
+            v = value.get(lang)
+            if isinstance(v, list):
+                return [x for x in v if isinstance(x, str) and x]
+            if isinstance(v, str) and v:
+                return [v]
+        for v in value.values():
+            if isinstance(v, list):
+                strs = [x for x in v if isinstance(x, str) and x]
+                if strs:
+                    return strs
+            elif isinstance(v, str) and v:
+                return [v]
+    return []
+
+
+def _build_awards(raw: dict) -> list[CanonicalAward]:
+    """Build CanonicalAward list from TED v3 winner/result fields.
+
+    TED v3 shape (confirmed live): winner-name is a multilingual dict whose
+    language values are lists (one per awarded lot), e.g. {"slk": ["A", "B"]}.
+    winner-identifier is a flat list of identifiers for the winner(s) — may
+    contain ICO + VAT + other schemes for a single winner, so don't index
+    it in lock-step with names. Per-lot values live in result-value-lot,
+    with tender-value as a notice-level fallback.
+    """
+    names = _extract_name_list(raw.get("winner-name"))
+    # Fallback: some SK notices populate only organisation-name-tenderer
+    if not names:
+        names = _extract_name_list(raw.get("organisation-name-tenderer"))
+    if not names:
+        return []
+
+    # Pick the first 8-digit identifier as the Slovak ICO (if any).
+    raw_ids = raw.get("winner-identifier") or raw.get("organisation-identifier-tenderer") or []
+    ico: str | None = None
+    for ident in raw_ids:
+        s = str(ident) if ident is not None else ""
+        if _SK_ICO_RE.fullmatch(s):
+            ico = s
+            break
+
+    lot_values: list = raw.get("result-value-lot") or []
+    lot_currencies: list = raw.get("result-value-cur-lot") or []
+    notice_value = _first_float(raw.get("result-value-notice") or raw.get("tender-value"))
+    notice_currency = (
+        _first_str(raw.get("result-value-cur-notice") or raw.get("tender-value-cur")) or "EUR"
+    )
+
+    awards: list[CanonicalAward] = []
+    for i, name in enumerate(names):
+        value_raw = lot_values[i] if i < len(lot_values) else None
+        value = _first_float(value_raw) if value_raw is not None else notice_value
+
+        currency_raw = lot_currencies[i] if i < len(lot_currencies) else None
+        currency = (
+            _first_str(currency_raw) if currency_raw is not None else notice_currency
+        ) or "EUR"
+
+        awards.append(
+            CanonicalAward(
+                supplier=CanonicalSupplier(
+                    name=name,
+                    ico=ico,
+                    name_slug=slugify(name),
+                    sources=["ted"],
+                ),
+                value=value,
+                currency=currency,
+            )
+        )
+
+    return awards
+
+
 def transform_ted_notice(raw: dict) -> CanonicalNotice:
     """Map a raw TED API v3 notice dict → CanonicalNotice."""
     nd = str(raw.get("publication-number", ""))
-    notice_type = _ND_TO_NOTICE_TYPE.get(nd, "other")
-    status = _ND_TO_STATUS.get(nd, "unknown")
+    notice_type, status = _map_notice_type(_first_str(raw.get("notice-type")) or "")
 
     pub_date_str = _first_str(raw.get("publication-date")) or ""
     ted_id = raw.get("ND_OJ") or f"ted-{pub_date_str}-{nd}"
@@ -141,7 +254,7 @@ def transform_ted_notice(raw: dict) -> CanonicalNotice:
         status=status,  # type: ignore[arg-type]
         title=title,
         procurer=procurer,
-        awards=[],  # v3 basic search response has no winner field
+        awards=_build_awards(raw),
         final_value=final_value,
         currency=currency,
         cpv_code=cpv_code,

@@ -7,7 +7,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_MCP: ghcr.io/${{ github.repository }}/uvo-mcp
-  IMAGE_GUI: ghcr.io/${{ github.repository }}/uvo-gui
 
 jobs:
   publish:
@@ -49,23 +48,3 @@ jobs:
           labels: ${{ steps.meta-mcp.outputs.labels }}
           cache-from: type=gha,scope=mcp
           cache-to: type=gha,mode=max,scope=mcp
-
-      - name: Extract metadata for GUI image
-        id: meta-gui
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_GUI }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=short
-
-      - name: Build and push GUI image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.gui
-          push: true
-          tags: ${{ steps.meta-gui.outputs.tags }}
-          labels: ${{ steps.meta-gui.outputs.labels }}
-          cache-from: type=gha,scope=gui
-          cache-to: type=gha,mode=max,scope=gui

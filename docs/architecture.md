@@ -32,11 +32,11 @@ The system allows multiple clients to share a single data backend.
 └───┬──────────────────────┘    └─────────────┘
     ├──────────────────┬──────────────────┐
     │                  │                  │
-┌───┴────────────┐ ┌──┴──────────┐ ┌────┴─────────┐
-│ React SPA      │ │ Vue Admin   │ │ (legacy)     │
-│ (port 8080)    │ │ (port 5173) │ │ NiceGUI 8090 │
-│ Vite+React+TS  │ │ Vue 3+TS    │ │ retiring soon│
-├────────────────┤ ├─────────────┤ └──────────────┘
+┌───┴────────────┐ ┌──┴──────────┐
+│ React SPA      │ │ Vue Admin   │
+│ (port 8080)    │ │ (port 5173) │
+│ Vite+React+TS  │ │ Vue 3+TS    │
+├────────────────┤ ├─────────────┤
 │ • Search       │ │ • Dashboard │
 │ • Procurers    │ │ • Contracts │
 │ • Suppliers    │ │ • Analytics │
@@ -76,15 +76,6 @@ External Data Sources:
 **Port**: 8080 (Docker host) / 5174 (dev)
 
 **Bind Host**: `0.0.0.0` (configurable in Dockerfile)
-
-### Legacy NiceGUI Frontend (port 8090, retiring)
-
-- **Framework**: NiceGUI 3.9 (FastAPI + Vue/Quasar + Tailwind CSS)
-- **Language**: Python
-- **Status**: Deprecated — use React SPA above
-- **Migration plan**: Delete after 2-week soak on gui-react
-
-**Port**: 8090 (post-cutover rollback)
 
 ### FastAPI Bridge (port 8001)
 
@@ -200,28 +191,18 @@ External Data Sources:
 - **Future-Proof** — MCP is the standard for AI tool integration; easy to add new clients later.
 - **Framework Agnostic** — Frontend can be rebuilt in any framework without touching the data layer.
 
-### Why NiceGUI?
-
-- **Server-Side** — No separate frontend build; Python developer friendly.
-- **Fast Development** — Reactive components, built-in UI library (Quasar).
-- **Full Stack** — One language (Python) for backend and frontend.
-
 ## Data Flow: Search Example
 
 **User enters "stavebnictvom" and clicks search:**
 
 ```
-Frontend (search.py)
+React SPA (Search page, TanStack Query)
   ↓
-[SearchState.search()] 
-  ├─ Set loading = True
-  ├─ Clear results
-  └─ Call mcp_client.call_tool()
+[useQuery -> api.search({...})]
+  └─ GET http://localhost:8001/contracts?query=...
       ↓
-[mcp_client.py: call_tool()]
-  ├─ Create streamable-http connection to MCP server
-  ├─ Initialize ClientSession
-  └─ Call tool: "search_completed_procurements"
+[FastAPI bridge]
+  └─ Call MCP tool: "search_completed_procurements"
       ↓
 [MCP Server: search_completed_procurements()]
   ├─ Validate arguments (limit <= max_page_size, offset >= 0)
@@ -231,22 +212,10 @@ Frontend (search.py)
 [MongoDB Atlas Local]
   └─ Returns: matched notices + total count
       ↓
-[MCP Server: process response]
-  ├─ Check HTTP status (200 OK)
-  ├─ Parse JSON
-  └─ Return raw response to client
+[MCP Server -> API bridge -> JSON response]
       ↓
-[mcp_client: parse result]
-  └─ Extract content.text from result
-      ↓
-[Frontend: SearchState._fetch()]
-  ├─ Parse JSON response
-  ├─ Update results, total, page
-  ├─ Set loading = False
-  └─ Call list_view.refresh() + detail_view.refresh()
-      ↓
-[NiceGUI rendering]
-  └─ Render updated UI with results and pagination
+[React: TanStack Query updates cache]
+  └─ Component re-renders results + pagination
 ```
 
 ## Configuration & Environment
@@ -255,11 +224,8 @@ All settings are environment variables (loaded from `.env`):
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `STORAGE_SECRET` | *(required)* | Secret key for NiceGUI session storage |
 | `MONGO_PASSWORD` | *(required)* | Password for MongoDB |
 | `NEO4J_PASSWORD` | *(required)* | Password for Neo4j |
-| `GUI_HOST` | `0.0.0.0` | NiceGUI bind address |
-| `GUI_PORT` | `8080` | NiceGUI port |
 | `MCP_HOST` | `0.0.0.0` | MCP server bind address |
 | `MCP_PORT` | `8000` | MCP server port |
 | `MCP_SERVER_URL` | `http://localhost:8000/mcp` | URL frontend uses to reach MCP server |
@@ -281,12 +247,17 @@ All settings are environment variables (loaded from `.env`):
 uv run python -m uvo_mcp
 ```
 
-**Terminal 2 — GUI**:
+**Terminal 2 — API bridge**:
 ```bash
-uv run python -m uvo_gui
+uv run python -m uvo_api
 ```
 
-The GUI connects to `http://localhost:8000/mcp` by default.
+**Terminal 3 — React GUI**:
+```bash
+cd src/uvo-gui-react && npm run dev
+```
+
+The React SPA reaches the API bridge on port 8001 (and indirectly the MCP server on 8000).
 
 ### Docker Compose
 
@@ -296,7 +267,8 @@ docker compose up -d --build
 
 Services:
 - `mcp-server` (port 8000) — Fast boot, health check every 10s
-- `gui` (port 8080) — Waits for mcp-server to be healthy before starting
+- `api` (port 8001) — FastAPI bridge
+- `gui-react` (port 8080) — Waits for mcp-server to be healthy before starting
 
 ### Kubernetes (Future)
 
@@ -311,7 +283,7 @@ The two services can be deployed as separate pods with:
 ### Health Checks
 
 - **MCP Server**: `GET http://localhost:8000/health` → `{"status": "ok", "service": "uvo-mcp"}`
-- **GUI**: `GET http://localhost:8080/` → HTTP 200
+- **React GUI**: `GET http://localhost:8080/` → HTTP 200 (nginx-served static SPA)
 
 ### Logging
 

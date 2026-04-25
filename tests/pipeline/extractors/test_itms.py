@@ -48,10 +48,14 @@ SUBJECT_100076 = {
 
 CONTRACT_1 = {
     "id": 1001,
-    "dodavatel": {"id": 200, "nazov": "Office supplies s.r.o.", "ico": "12345678"},
-    "celkovaHodnotaZmluvy": 14500.0,
-    "mena": "EUR",
+    "hlavnyDodavatelDodavatelObstaravatel": {
+        "href": "/v2/dodavatelia/200",
+        "ico": "12345678",
+        "id": 200,
+    },
+    "celkovaSumaZmluvy": 14500.0,
 }
+SUPPLIER_200 = {"id": 200, "nazov": "Office supplies s.r.o.", "ico": "12345678"}
 
 
 def _list_side_effect(*pages):
@@ -80,26 +84,31 @@ async def test_fetch_enriches_with_detail_contracts_and_subject():
         mock.get(f"/v2/subjekty/{SUBJECT_100184['id']}").mock(
             return_value=httpx.Response(200, json=SUBJECT_100184)
         )
+        mock.get(f"/v2/dodavatelia/{SUPPLIER_200['id']}").mock(
+            return_value=httpx.Response(200, json=SUPPLIER_200)
+        )
         async with httpx.AsyncClient(base_url=BASE) as client:
             results = [r async for r in fetch_procurements(client, rate_limiter)]
 
     assert len(results) == 1
     r = results[0]
     assert r["nazov"] == "Rozšírenie kapacity ČOV Lozorno"
-    assert r["_contracts"] == [CONTRACT_1]
     assert r["_subject"]["nazov"] == "Obec Lozorno"
     assert r["_subject"]["ico"] == "00304905"
+    # Supplier name enrichment
+    assert r["_contracts"][0]["_supplier"]["nazov"] == "Office supplies s.r.o."
+    assert r["_contracts"][0]["_supplier"]["ico"] == "12345678"
 
 
 @pytest.mark.asyncio
 async def test_fetch_paginates_across_two_pages():
     rate_limiter = RateLimiter(rate=10000)
     with respx.mock(base_url=BASE, assert_all_called=False) as mock:
-        mock.get("/v2/verejneObstaravania").mock(
-            side_effect=_list_side_effect([STUB_1], [STUB_2])
-        )
+        mock.get("/v2/verejneObstaravania").mock(side_effect=_list_side_effect([STUB_1], [STUB_2]))
         for sid in (STUB_1["id"], STUB_2["id"]):
-            mock.get(f"/v2/verejneObstaravania/{sid}").mock(return_value=httpx.Response(200, json={"id": sid, "stav": "Prebieha"}))
+            mock.get(f"/v2/verejneObstaravania/{sid}").mock(
+                return_value=httpx.Response(200, json={"id": sid, "stav": "Prebieha"})
+            )
             mock.get(f"/v2/verejneObstaravania/{sid}/zmluvyVerejneObstaravanie").mock(
                 return_value=httpx.Response(200, json=[])
             )
@@ -175,7 +184,7 @@ async def test_subject_cache_avoids_repeat_fetches():
         mock.get("/v2/verejneObstaravania").mock(side_effect=_list_side_effect([STUB_1, shared]))
         for sid in (STUB_1["id"], shared["id"]):
             mock.get(f"/v2/verejneObstaravania/{sid}").mock(
-                return_value=httpx.Response(200, json={"id": sid, "stav": "Prebieha", **STUB_1, "id": sid})
+                return_value=httpx.Response(200, json={"stav": "Prebieha", **STUB_1, "id": sid})
             )
             mock.get(f"/v2/verejneObstaravania/{sid}/zmluvyVerejneObstaravanie").mock(
                 return_value=httpx.Response(200, json=[])

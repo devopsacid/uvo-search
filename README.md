@@ -102,7 +102,7 @@ cd uvo-search
 
 # Create .env from template
 cp .env.example .env
-# Edit .env and set STORAGE_SECRET, MONGO_PASSWORD, NEO4J_PASSWORD
+# Edit .env and set MONGO_PASSWORD, NEO4J_PASSWORD
 
 # Install Python dependencies
 uv sync --all-extras
@@ -169,7 +169,6 @@ cd uvo-search
 
 # Create .env file
 cat > .env << 'EOF'
-STORAGE_SECRET=change-this-to-a-random-string
 MCP_SERVER_URL=http://mcp-server:8000/mcp
 EOF
 
@@ -243,12 +242,9 @@ All settings come from environment variables (via `.env` file):
 
 | Variable | Required? | Default | Description |
 |----------|-----------|---------|-------------|
-| `STORAGE_SECRET` | ✓ | — | Secret key for NiceGUI session storage |
 | `EKOSYSTEM_BASE_URL` | — | `https://datahub.ekosystem.slovensko.digital` | Ekosystem Datahub base URL |
 | `EKOSYSTEM_API_TOKEN` | — | `` | Optional token for Ekosystem (not required for public endpoints) |
 | `MCP_SERVER_URL` | — | `http://localhost:8000/mcp` | URL where GUI reaches MCP server |
-| `GUI_HOST` | — | `0.0.0.0` | NiceGUI bind host |
-| `GUI_PORT` | — | `8080` | NiceGUI port |
 | `MCP_HOST` | — | `0.0.0.0` | MCP server bind host |
 | `MCP_PORT` | — | `8000` | MCP server port |
 | `CACHE_TTL_SEARCH` | — | `300` | TTL in seconds for search results cache |
@@ -345,11 +341,8 @@ uvo-search/
 │   │   ├── vitest.config.ts          # Vitest test config
 │   │   └── package.json              # npm dependencies
 │   │
-│   ├── uvo-gui-vuejs/                # Vue 3 admin dashboard (optional)
-│   │   └── [Vue app structure]
-│   │
-│   └── uvo_gui/                      # Legacy NiceGUI (retiring)
-│       └── [Legacy Python app]
+│   └── uvo-gui-vuejs/                # Vue 3 admin dashboard (optional)
+│       └── [Vue app structure]
 │
 ├── tests/
 │   ├── mcp/                          # Unit tests for MCP server
@@ -360,7 +353,6 @@ uvo-search/
 │   ├── plan.md                       # Project overview
 │   ├── architecture.md               # Architecture documentation
 │   ├── backend.md                    # Backend (MCP) documentation
-│   ├── frontend.md                   # Frontend documentation
 │   ├── superpowers/specs/            # Full design specifications
 │   └── data-sources-research.md      # API documentation and research
 │
@@ -384,9 +376,9 @@ uvo-search/
 uv run watchfiles 'python -m uvo_mcp' src/uvo_mcp
 ```
 
-**GUI** (auto-reloads via NiceGUI):
+**React GUI** (Vite dev server with HMR):
 ```bash
-uv run python -m uvo_gui
+cd src/uvo-gui-react && npm run dev
 ```
 
 ### Code Style
@@ -416,12 +408,11 @@ Configuration in `pyproject.toml`:
 **ci.yml** — Runs on every push and PR:
 1. **Unit Tests** — pytest with mocked API responses
 2. **Lint** — ruff check and format validation
-3. **Docker Build** — build both images (MCP and GUI)
+3. **Docker Build** — build the MCP image
 4. **Docker Compose** — start full stack and run E2E tests
 
 **docker-publish.yml** — Publishes images on tag:
 - Builds and pushes `your-registry/uvo-search-mcp:latest`
-- Builds and pushes `your-registry/uvo-search-gui:latest`
 
 ## Data Sources
 
@@ -461,7 +452,6 @@ MIT (or see LICENSE file in repository)
 For more details, see:
 - **[Design Specification](docs/superpowers/specs/2026-04-03-uvo-search-design.md)** — Full architecture, data models, deployment
 - **[Data Sources Research](docs/data-sources-research.md)** — API endpoints, data structure, open source projects
-- **[NiceGUI Research](docs/nicegui-research.md)** — UI patterns, pagination, component structure
 - **[Project Plan](docs/plan.md)** — Phased implementation roadmap, risks, and mitigations
 
 ## Contributing

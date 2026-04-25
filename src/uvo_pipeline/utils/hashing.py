@@ -11,6 +11,9 @@ def compute_notice_hash(notice: CanonicalNotice) -> str:
     Only fields that indicate a meaningful content change are included.
     Metadata fields (ingested_at, pipeline_run_id, canonical_id) are excluded.
     """
+    award_key = "|".join(
+        f"{a.supplier.ico or a.supplier.name_slug}:{a.value or ''}" for a in notice.awards
+    )
     parts = [
         notice.source,
         notice.source_id,
@@ -19,6 +22,8 @@ def compute_notice_hash(notice: CanonicalNotice) -> str:
         notice.cpv_code or "",
         str(notice.publication_date) if notice.publication_date else "",
         str(notice.estimated_value) if notice.estimated_value is not None else "",
+        str(notice.final_value) if notice.final_value is not None else "",
+        award_key,
     ]
     raw = "|".join(parts).encode("utf-8")
     digest = hashlib.sha256(raw).hexdigest()
