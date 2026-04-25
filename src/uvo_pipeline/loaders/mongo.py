@@ -4,7 +4,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
+from pymongo.errors import OperationFailure
 
 from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
 from uvo_pipeline.utils.hashing import compute_notice_hash
@@ -12,61 +13,91 @@ from uvo_pipeline.utils.hashing import compute_notice_hash
 logger = logging.getLogger(__name__)
 
 
+async def _ensure_index(collection: AsyncIOMotorCollection, keys: Any, **kwargs: Any) -> None:
+    """create_index, but if a same-named index exists with a different spec, drop and recreate."""
+    name = kwargs.get("name")
+    try:
+        await collection.create_index(keys, **kwargs)
+    except OperationFailure as exc:
+        if exc.code == 86 and name:  # IndexKeySpecsConflict
+            logger.warning(
+                "Index %s.%s spec changed; dropping and recreating", collection.name, name
+            )
+            await collection.drop_index(name)
+            await collection.create_index(keys, **kwargs)
+        else:
+            raise
+
+
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     """Create all required indexes and unique constraints."""
     # notices: unique on (source, source_id)
-    await db.notices.create_index(
+    await _ensure_index(
+        db.notices,
         [("source", 1), ("source_id", 1)], unique=True, name="source_source_id_unique"
     )
-    await db.notices.create_index([("publication_date", -1)], name="publication_date_desc")
-    await db.notices.create_index([("procurer.ico", 1)], name="procurer_ico")
-    await db.notices.create_index([("cpv_code", 1)], name="cpv_code")
-    await db.notices.create_index([("awards.supplier.ico", 1)], name="supplier_ico")
-    await db.notices.create_index([("canonical_id", 1)], name="canonical_id", sparse=True)
-    await db.notices.create_index(
+    await _ensure_index(db.notices, [("publication_date", -1)], name="publication_date_desc")
+    await _ensure_index(db.notices, [("procurer.ico", 1)], name="procurer_ico")
+    await _ensure_index(db.notices, [("cpv_code", 1)], name="cpv_code")
+    await _ensure_index(db.notices, [("awards.supplier.ico", 1)], name="supplier_ico")
+    await _ensure_index(db.notices, [("canonical_id", 1)], name="canonical_id", sparse=True)
+    await _ensure_index(
+        db.notices,
         [("title", "text"), ("description", "text")],
         name="text_search",
         default_language="none",
     )
 
-    # procurers: unique on ico (sparse) and name_slug
-    await db.procurers.create_index(
-        [("ico", 1)], unique=True, sparse=True, name="ico_unique"
+    # procurers: unique on ico (string-typed only) and name_slug
+    await _ensure_index(
+        db.procurers,
+        [("ico", 1)],
+        unique=True,
+        partialFilterExpression={"ico": {"$type": "string"}},
+        name="ico_unique",
     )
-    await db.procurers.create_index(
-        [("name_slug", 1)], unique=True, name="name_slug_unique"
+    # name_slug is non-unique: historical data has dupes from a prior pipeline
+    # version that did not enforce uniqueness; ICO is the real identity.
+    await _ensure_index(
+        db.procurers, [("name_slug", 1)], name="name_slug_unique"
     )
-    await db.procurers.create_index([("name", "text")], name="text_search")
+    await _ensure_index(db.procurers, [("name", "text")], name="text_search")
 
     # suppliers: same as procurers
-    await db.suppliers.create_index(
-        [("ico", 1)], unique=True, sparse=True, name="ico_unique"
+    await _ensure_index(
+        db.suppliers,
+        [("ico", 1)],
+        unique=True,
+        partialFilterExpression={"ico": {"$type": "string"}},
+        name="ico_unique",
     )
-    await db.suppliers.create_index(
-        [("name_slug", 1)], unique=True, name="name_slug_unique"
+    await _ensure_index(
+        db.suppliers, [("name_slug", 1)], name="name_slug_unique"
     )
-    await db.suppliers.create_index([("name", "text")], name="text_search")
+    await _ensure_index(db.suppliers, [("name", "text")], name="text_search")
 
     # pipeline_state: unique on source
-    await db.pipeline_state.create_index(
-        [("source", 1)], unique=True, name="source_unique"
+    await _ensure_index(
+        db.pipeline_state, [("source", 1)], unique=True, name="source_unique"
     )
 
     # ckan_packages: unique on package_id
-    await db.ckan_packages.create_index(
-        [("package_id", 1)], unique=True, name="package_id_unique"
+    await _ensure_index(
+        db.ckan_packages, [("package_id", 1)], unique=True, name="package_id_unique"
     )
-    await db.ckan_packages.create_index([("last_modified", -1)], name="last_modified_desc")
+    await _ensure_index(db.ckan_packages, [("last_modified", -1)], name="last_modified_desc")
 
     # ingested_docs: fast lookup + audit trail
-    await db.ingested_docs.create_index(
+    await _ensure_index(
+        db.ingested_docs,
         [("source", 1), ("source_id", 1)], unique=True, name="source_source_id_unique"
     )
-    await db.ingested_docs.create_index([("pipeline_run_id", 1)], name="pipeline_run_id")
-    await db.ingested_docs.create_index(
+    await _ensure_index(db.ingested_docs, [("pipeline_run_id", 1)], name="pipeline_run_id")
+    await _ensure_index(
+        db.ingested_docs,
         [("source", 1), ("ingested_at", -1)], name="source_ingested_at_desc"
     )
-    await db.ingested_docs.create_index([("ingested_at", -1)], name="ingested_at_desc")
+    await _ensure_index(db.ingested_docs, [("ingested_at", -1)], name="ingested_at_desc")
 
     logger.info("MongoDB indexes ensured")
 

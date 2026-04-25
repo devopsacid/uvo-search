@@ -104,6 +104,7 @@ services:
       MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
     volumes:
       - mongo_data:/data/db
+      - mongo_configdb:/data/configdb
     ports:
       - "27017:27017"
     healthcheck:
@@ -167,6 +168,7 @@ services:
 
 volumes:
   mongo_data:
+  mongo_configdb:
   neo4j_data:
   neo4j_logs:
   pipeline_cache:
