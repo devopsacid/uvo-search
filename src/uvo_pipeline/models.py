@@ -44,6 +44,14 @@ class CanonicalAward(BaseModel):
     signing_date: date | None = None
 
 
+class CanonicalAttachment(BaseModel):
+    attachment_id: str
+    title: str | None = None
+    url: str
+    file_name: str
+    file_size: int | None = None
+
+
 class CanonicalNotice(BaseModel):
     """One procurement notice/contract award, source-independent."""
 
@@ -67,6 +75,7 @@ class CanonicalNotice(BaseModel):
 
     procurer: CanonicalProcurer | None = None
     awards: list[CanonicalAward] = []
+    attachments: list[CanonicalAttachment] = []
 
     cpv_code: str | None = None
     cpv_codes_additional: list[str] = []
