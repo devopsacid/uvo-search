@@ -7,9 +7,7 @@ Search and browse Slovak government procurement data via a dual-interface applic
 - **Full-text search** across Slovak government procurement records (UVO Vestník, CRZ, ITMS, TED, NKOD)
 - **Structured filtering** by CPV codes (EU product classification), date ranges, procurement authorities, and suppliers
 - **MCP server** with 4 tools for AI agent integration — search procurements, find procurers and suppliers
-- **Two frontends**:
-  - **React SPA** (Vite 5 + React 18 + TypeScript) — Public web UI with client-side routing, advanced filtering, and graphs
-  - **Vue Admin GUI** (Vue 3 + TypeScript) — Internal dashboard with Grafana-style layout, light/dark theme, and analytics
+- **React SPA frontend** (Vite 5 + React 18 + TypeScript) — Public web UI with client-side routing, advanced filtering, and graphs
 - **Dual access** — use the same backend with Claude Desktop/Code (via stdio) or in your browser (via HTTP)
 - **Caching layer** with configurable TTLs to respect API rate limits
 - **Docker Compose deployment** with health checks for all services
@@ -27,22 +25,22 @@ UVO Search is a **three-process application** with shared MCP backend:
 │ ├─ TTL caching via cachetools               │
 │ └─ REST clients for external APIs           │
 └──────────────────────────────────────────────┘
-            ↑                      ↑                   ↑
-    ┌───────┴──────┐      ┌──────┴──────┐      ┌────┴────┐
-    │              │      │             │      │ (stdio) │
-    │ (HTTP)       │ (HTTP)             │      │         │
-    │              │                    │      │         │
-┌───┴────────────┐  ┌──────────────┐  ┌──────┴──────┐
-│ React SPA      │  │ Vue Admin    │  │   Claude   │
-│ (port 8080)    │  │ (port 5173)  │  │ Desktop/   │
-│ Vite+React+TS  │  │ Vue 3 + TS   │  │ Code       │
-├────────────────┤  ├──────────────┤  └────────────┘
-│ • Search       │  │ • Dashboard  │
-│ • Procurers    │  │ • Contracts  │
-│ • Suppliers    │  │ • Analytics  │
-│ • Graphs       │  │ • Dark theme │
-│ • CPV trends   │  │ • Command pal│
-└────────────────┘  └──────────────┘
+            ↑                          ↑
+    ┌───────┴──────┐            ┌──────┴────┐
+    │              │            │  (stdio)  │
+    │ (HTTP)       │            │           │
+    │              │            │           │
+┌───┴────────────┐         ┌────┴───────┐
+│ React SPA      │         │  Claude    │
+│ (port 8080)    │         │  Desktop/  │
+│ Vite+React+TS  │         │  Code      │
+├────────────────┤         └────────────┘
+│ • Search       │
+│ • Procurers    │
+│ • Suppliers    │
+│ • Graphs       │
+│ • CPV trends   │
+└────────────────┘
 
 External sources:
 ├─ UVO Vestník (Slovak procurement notices, XML)
@@ -52,7 +50,7 @@ External sources:
 └─ NKOD (national open data catalog)
 ```
 
-**Why two processes?**
+**Why split MCP server and GUI?**
 
 1. **Independent scaling** — MCP server handles API calls and caching; GUI handles WebSocket connections
 2. **Independent deployment** — update frontend without touching data layer
@@ -118,12 +116,6 @@ cd src/uvo-gui-react
 npm install
 npm run dev
 # Open browser to http://localhost:5174
-
-# Run Vue admin GUI (Terminal 4, optional)
-cd src/uvo-gui-vuejs
-npm install
-npm run dev
-# Open browser to http://localhost:5173
 ```
 
 ### Running Tests
@@ -148,10 +140,6 @@ uv run ruff format --check src/ tests/
 
 # React linting
 cd src/uvo-gui-react && npm run lint
-
-# Vue admin GUI unit tests
-cd src/uvo-gui-vuejs
-npm run test
 ```
 
 ## Running with Docker Compose
@@ -253,9 +241,7 @@ All settings come from environment variables (via `.env` file):
 | `REQUEST_TIMEOUT` | — | `30.0` | HTTP request timeout in seconds |
 | `LOG_LEVEL` | — | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
-## Frontend Interfaces
-
-### React SPA (Public, Primary)
+## Frontend
 
 Built with **Vite 5 + React 18 + TypeScript**, modern single-page application:
 
@@ -276,23 +262,6 @@ Built with **Vite 5 + React 18 + TypeScript**, modern single-page application:
 - **Tailwind CSS + shadcn/ui:** Modern, accessible component library
 - **Lazy-loaded graph chunk:** Code splitting for large Cytoscape bundle
 - **Mobile-optimized:** Responsive sidebar and touch-friendly interactions
-
-### Vue Admin GUI (Internal, Optional)
-
-Built with **Vue 3 + TypeScript**, Grafana-style analytics dashboard with dark/light theme:
-
-- **Dashboard** — KPI cards, charts (spend, CPV breakdown)
-- **Contracts** — Full contract table with filtering, sorting, pagination
-- **Suppliers** — Supplier performance and contract history
-- **Procurers** — Authority spending patterns
-- **Costs** — Cost analysis and trends
-- **Search** — Global search across all entities
-
-Features:
-- Command palette (⌘K) for quick navigation
-- Dark/light theme toggle (localStorage-persisted)
-- Keyboard shortcuts (⌘K, Esc to close, arrow keys)
-- Responsive sidebar (collapsible on mobile)
 
 ---
 
@@ -325,24 +294,21 @@ uvo-search/
 │   │       ├── suppliers.py          # Supplier endpoints
 │   │       └── graph.py              # Graph endpoints
 │   │
-│   ├── uvo-gui-react/                # React SPA public frontend
-│   │   ├── src/
-│   │   │   ├── pages/                # Route components (Search, Suppliers, etc.)
-│   │   │   ├── components/           # Reusable UI components
-│   │   │   ├── hooks/                # Custom React hooks
-│   │   │   ├── lib/                  # Utilities (cn, api client)
-│   │   │   ├── i18n/                 # Translations (Slovak)
-│   │   │   ├── test/                 # Vitest unit tests
-│   │   │   ├── router.tsx            # React Router 6 routes
-│   │   │   └── App.tsx               # Root component
-│   │   ├── vite.config.ts            # Vite bundler config
-│   │   ├── tsconfig.json             # TypeScript config
-│   │   ├── tailwind.config.js        # Tailwind CSS config
-│   │   ├── vitest.config.ts          # Vitest test config
-│   │   └── package.json              # npm dependencies
-│   │
-│   └── uvo-gui-vuejs/                # Vue 3 admin dashboard (optional)
-│       └── [Vue app structure]
+│   └── uvo-gui-react/                # React SPA public frontend
+│       ├── src/
+│       │   ├── pages/                # Route components (Search, Suppliers, etc.)
+│       │   ├── components/           # Reusable UI components
+│       │   ├── hooks/                # Custom React hooks
+│       │   ├── lib/                  # Utilities (cn, api client)
+│       │   ├── i18n/                 # Translations (Slovak)
+│       │   ├── test/                 # Vitest unit tests
+│       │   ├── router.tsx            # React Router 6 routes
+│       │   └── App.tsx               # Root component
+│       ├── vite.config.ts            # Vite bundler config
+│       ├── tsconfig.json             # TypeScript config
+│       ├── tailwind.config.js        # Tailwind CSS config
+│       ├── vitest.config.ts          # Vitest test config
+│       └── package.json              # npm dependencies
 │
 ├── tests/
 │   ├── mcp/                          # Unit tests for MCP server
