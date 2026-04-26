@@ -1,6 +1,7 @@
 """Pipeline configuration settings."""
 
 from typing import Literal
+
 from pydantic_settings import BaseSettings
 
 
@@ -28,6 +29,7 @@ class PipelineSettings(BaseSettings):
     crz_rate_limit: int = 30
     itms_base_url: str = "https://opendata.itms2014.sk"
     itms_rate_limit: float = 5.0
+    itms_max_items_per_run: int = 5000
     nkod_sparql_url: str = "https://data.slovensko.sk/api/sparql"
     vestnik_rate_limit: float = 2.0
     uvo_publisher_uri: str = "https://data.gov.sk/id/legal-subject/31797903"

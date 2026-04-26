@@ -72,12 +72,16 @@ async def fetch_procurements(
     rate_limiter: RateLimiter,
     *,
     min_id: int = 0,
+    max_items: int | None = None,
 ) -> AsyncIterator[dict]:
     cursor = min_id
+    yielded = 0
     subject_cache: dict[int, dict] = {}
     supplier_cache: dict[int, dict] = {}
 
     while True:
+        if max_items is not None and yielded >= max_items:
+            return
         await rate_limiter.acquire()
         try:
             response = await client.get(_LIST_PATH, params={"minId": cursor, "limit": 100})
@@ -147,5 +151,8 @@ async def fetch_procurements(
                     item["_subject"] = subject
 
             yield item
+            yielded += 1
+            if max_items is not None and yielded >= max_items:
+                return
 
         cursor = max(item["id"] for item in items) + 1
