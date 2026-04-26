@@ -510,18 +510,22 @@ export function IngestionPage() {
         <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
           <div>
             <dt className="text-xs text-muted-foreground">{sk.ingestion.latestRunId}</dt>
-            <dd
-              className="mt-0.5 cursor-pointer font-mono text-xs text-foreground"
-              title={latest_run.id}
-              onClick={() => void navigator.clipboard?.writeText(latest_run.id)}
-            >
-              {latest_run.id.slice(0, 8)}…
-            </dd>
+            {latest_run.id ? (
+              <dd
+                className="mt-0.5 cursor-pointer font-mono text-xs text-foreground"
+                title={latest_run.id}
+                onClick={() => void navigator.clipboard?.writeText(latest_run.id!)}
+              >
+                {latest_run.id.slice(0, 8)}…
+              </dd>
+            ) : (
+              <dd className="mt-0.5 font-mono text-xs text-muted-foreground">—</dd>
+            )}
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">{sk.ingestion.latestRunStarted}</dt>
             <dd className="mt-0.5 text-xs text-foreground">
-              {formatSlovakDateTime(latest_run.started_at)}
+              {latest_run.started_at ? formatSlovakDateTime(latest_run.started_at) : '—'}
             </dd>
           </div>
           <div>

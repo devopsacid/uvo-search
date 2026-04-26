@@ -261,8 +261,8 @@ export interface IngestionTotals {
 }
 
 export interface IngestionLatestRun {
-  id: string
-  started_at: string
+  id: string | null
+  started_at: string | null
   finished_at: string | null
 }
 
