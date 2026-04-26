@@ -333,13 +333,16 @@ async def run(
                 {"vestnik_last_modified": vestnik_max_modified.isoformat()},
             )
 
-        # Step 7: CRZ extractor
+        # Step 7: CRZ extractor — stream-flushed: every batch_size notices land
+        # in Mongo/Neo4j during extraction so the dashboard sees progress and
+        # an interruption mid-CRZ doesn't lose hours of accumulated work.
         from uvo_pipeline.extractors.crz import fetch_contracts_since
         from uvo_pipeline.transformers.crz import transform_contract
 
         logger.info("Extracting from CRZ (since=%s)...", from_date)
         crz_rate_limiter = RateLimiter(rate=settings.crz_rate_limit, per=60.0)
-        crz_notices: list[CanonicalNotice] = []
+        crz_buffer: list[CanonicalNotice] = []
+        crz_total = 0
         async with httpx.AsyncClient(
             base_url=settings.ekosystem_base_url,
             timeout=settings.request_timeout,
@@ -353,17 +356,27 @@ async def run(
                 try:
                     notice = transform_contract(raw)
                     notice.pipeline_run_id = run_id
-                    crz_notices.append(notice)
+                    crz_buffer.append(notice)
+                    crz_total += 1
                 except Exception as exc:
                     logger.warning("CRZ transform error: %s", exc)
+                if len(crz_buffer) >= settings.batch_size:
+                    await _persist_source(
+                        db, neo4j_driver, "crz", crz_buffer,
+                        settings=settings, report=report,
+                    )
+                    crz_buffer.clear()
 
-        report.source_counts["crz"] = len(crz_notices)
-        logger.info("CRZ: %d contracts extracted", len(crz_notices))
-        await _persist_source(
-            db, neo4j_driver, "crz", crz_notices,
-            settings=settings, report=report,
-        )
-        total_persisted += len(crz_notices)
+        if crz_buffer:
+            await _persist_source(
+                db, neo4j_driver, "crz", crz_buffer,
+                settings=settings, report=report,
+            )
+            crz_buffer.clear()
+
+        report.source_counts["crz"] = crz_total
+        logger.info("CRZ: %d contracts extracted (streamed)", crz_total)
+        total_persisted += crz_total
 
         # Step 8: TED extractor
         from uvo_pipeline.extractors.ted import search_sk_notices
@@ -408,8 +421,13 @@ async def run(
             itms_max_items if itms_max_items > 0 else "unbounded",
         )
         itms_rate_limiter = RateLimiter(rate=int(settings.itms_rate_limit), per=1.0)
-        itms_notices: list[CanonicalNotice] = []
+        itms_buffer: list[CanonicalNotice] = []
+        itms_total = 0
         itms_max_seen = itms_min_id - 1  # track highest id yielded for checkpoint
+        # ITMS is the slowest source (~3 req/item with detail+contracts+subject
+        # lookups) so stream-flush every batch_size items AND advance the
+        # min_id checkpoint after each flush — that way an interruption only
+        # loses the partial buffer, not the whole run.
         async with httpx.AsyncClient(
             base_url=settings.itms_base_url,
             timeout=settings.request_timeout,
@@ -423,23 +441,34 @@ async def run(
                 try:
                     notice = transform_itms(raw)
                     notice.pipeline_run_id = run_id
-                    itms_notices.append(notice)
+                    itms_buffer.append(notice)
+                    itms_total += 1
                     itms_max_seen = max(itms_max_seen, int(raw["id"]))
                 except Exception as exc:
                     logger.warning("ITMS transform error: %s", exc)
-        report.source_counts["itms"] = len(itms_notices)
-        logger.info("ITMS: %d procurements extracted", len(itms_notices))
-        await _persist_source(
-            db, neo4j_driver, "itms", itms_notices,
-            settings=settings, report=report,
-        )
-        total_persisted += len(itms_notices)
-        if itms_notices:
-            # Only advance checkpoint if we actually yielded something; otherwise
-            # leave it untouched so the next run retries the same min_id.
+                if len(itms_buffer) >= settings.batch_size:
+                    await _persist_source(
+                        db, neo4j_driver, "itms", itms_buffer,
+                        settings=settings, report=report,
+                    )
+                    itms_buffer.clear()
+                    await save_checkpoint(
+                        db, "pipeline", {"itms_min_id": str(itms_max_seen + 1)},
+                    )
+
+        if itms_buffer:
+            await _persist_source(
+                db, neo4j_driver, "itms", itms_buffer,
+                settings=settings, report=report,
+            )
+            itms_buffer.clear()
             await save_checkpoint(
                 db, "pipeline", {"itms_min_id": str(itms_max_seen + 1)},
             )
+
+        report.source_counts["itms"] = itms_total
+        logger.info("ITMS: %d procurements extracted (streamed)", itms_total)
+        total_persisted += itms_total
 
         # Final pipeline-wide checkpoint summary
         await save_checkpoint(
