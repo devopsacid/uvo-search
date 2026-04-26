@@ -60,13 +60,15 @@ async def _run_entity_search(
         "$search": {"index": "default", **build_search_stage(name_query or "", ["name"])}
     }
 
-    pipeline: list[dict] = [search_stage]
-    pipeline += [
+    lookup_stages: list[dict] = [
         {
             "$lookup": {
                 "from": "notices",
-                "localField": "ico",
-                "foreignField": lookup_match_field,
+                "let": {"ico": "$ico"},
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": [f"${lookup_match_field}", "$$ico"]}}},
+                    {"$project": {"_id": 0, "final_value": 1}},
+                ],
                 "as": "_notices",
             }
         },
@@ -86,18 +88,21 @@ async def _run_entity_search(
         },
         {"$project": {"_notices": 0}},
     ]
-    pipeline += [
-        {
-            "$facet": {
-                "items": [
-                    {"$sort": _sort_spec(sort_by)},
-                    {"$skip": offset},
-                    {"$limit": limit},
-                ],
-                "total": [{"$count": "count"}],
-            }
-        }
-    ]
+
+    items_stages: list[dict] = [{"$sort": _sort_spec(sort_by)}]
+    if sort_by == "name":
+        # Sorting by name doesn't depend on lookup output — paginate first,
+        # run the expensive lookup only on the page we return.
+        items_stages += [{"$skip": offset}, {"$limit": limit}, *lookup_stages]
+        pipeline = [search_stage, {"$facet": {"items": items_stages, "total": [{"$count": "count"}]}}]
+    else:
+        # Sorting by aggregate fields requires the lookup before $sort.
+        items_stages += [{"$skip": offset}, {"$limit": limit}]
+        pipeline = [
+            search_stage,
+            *lookup_stages,
+            {"$facet": {"items": items_stages, "total": [{"$count": "count"}]}},
+        ]
 
     cursor = db[collection].aggregate(pipeline)
     result_list = await cursor.to_list(1)
