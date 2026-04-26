@@ -470,13 +470,16 @@ async def run(
         logger.info("ITMS: %d procurements extracted (streamed)", itms_total)
         total_persisted += itms_total
 
-        # Final pipeline-wide checkpoint summary
+        # Final pipeline-wide checkpoint summary. `last_run_at` is stamped
+        # ONLY here so a partially-completed prior run can't advance the
+        # next run's `from_date` past data that was never actually fetched.
         await save_checkpoint(
             db, "pipeline",
             {
                 "last_mode": mode,
                 "from_date": from_date.isoformat(),
                 "notices_processed": total_persisted,
+                "last_run_at": datetime.utcnow(),
             },
         )
 
