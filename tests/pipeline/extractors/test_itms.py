@@ -176,6 +176,38 @@ async def test_fetch_list_http_error_yields_nothing():
 
 
 @pytest.mark.asyncio
+async def test_fetch_stops_when_max_items_reached():
+    """max_items caps yields and prevents an extra list page request."""
+    rate_limiter = RateLimiter(rate=10000)
+    with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+        list_route = mock.get("/v2/verejneObstaravania").mock(
+            side_effect=_list_side_effect([STUB_1, STUB_2])
+        )
+        for sid in (STUB_1["id"], STUB_2["id"]):
+            mock.get(f"/v2/verejneObstaravania/{sid}").mock(
+                return_value=httpx.Response(200, json={"id": sid, "stav": "Prebieha"})
+            )
+            mock.get(f"/v2/verejneObstaravania/{sid}/zmluvyVerejneObstaravanie").mock(
+                return_value=httpx.Response(200, json=[])
+            )
+        mock.get(f"/v2/subjekty/{SUBJECT_100184['id']}").mock(
+            return_value=httpx.Response(200, json=SUBJECT_100184)
+        )
+        mock.get(f"/v2/subjekty/{SUBJECT_100076['id']}").mock(
+            return_value=httpx.Response(200, json=SUBJECT_100076)
+        )
+        async with httpx.AsyncClient(base_url=BASE) as client:
+            results = [
+                r async for r in fetch_procurements(client, rate_limiter, max_items=1)
+            ]
+
+    assert len(results) == 1
+    assert results[0]["id"] == STUB_1["id"]
+    # Only the first list page should have been fetched.
+    assert list_route.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_subject_cache_avoids_repeat_fetches():
     """Two procurements sharing a procurer should trigger only one subject fetch."""
     rate_limiter = RateLimiter(rate=10000)

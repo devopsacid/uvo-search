@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import datetime, timedelta, date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -16,9 +16,10 @@ from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.extractors.vestnik_nkod import fetch_bulletin
 from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
-from uvo_pipeline.models import PipelineReport
+from uvo_pipeline.models import CanonicalNotice, PipelineReport
 from uvo_pipeline.transformers.vestnik_nkod import transform_notice as transform_vestnik_notice
 from uvo_pipeline.utils.checkpoint import get_checkpoint, save_checkpoint
+from uvo_pipeline.utils.hashing import compute_notice_hash
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,54 @@ async def _run_cross_source_dedup(db: AsyncIOMotorDatabase, run_id: str) -> int:
     return match_count
 
 
+async def _persist_source(
+    db: AsyncIOMotorDatabase,
+    neo4j_driver: "AsyncGraphDatabase",  # type: ignore[name-defined]
+    source_name: str,
+    notices: list[CanonicalNotice],
+    *,
+    settings: PipelineSettings,
+    report: PipelineReport,
+) -> None:
+    """Compute hashes, write notices to Mongo + Neo4j, accumulate report counters.
+
+    Called once per source so that a long run (or a crash mid-run) doesn't lose
+    the work of already-extracted sources. Mongo upsert is idempotent on
+    (source, source_id), so a re-run of a partially-completed source is safe.
+    """
+    if not notices:
+        logger.info("%s: nothing to persist", source_name)
+        return
+
+    for notice in notices:
+        notice.content_hash = compute_notice_hash(notice)
+
+    mongo_result = await upsert_batch(db, notices, batch_size=settings.batch_size)
+    report.notices_inserted += mongo_result["inserted"]
+    report.notices_updated += mongo_result["updated"]
+    report.notices_skipped += mongo_result["skipped"]
+    if mongo_result["errors"]:
+        report.errors.append(
+            f"MongoDB ({source_name}): {mongo_result['errors']} upsert errors"
+        )
+
+    async with neo4j_driver.session() as neo4j_session:
+        neo4j_result = await merge_notice_batch(neo4j_session, notices)
+        if neo4j_result["errors"]:
+            report.errors.append(
+                f"Neo4j ({source_name}): {neo4j_result['errors']} merge errors"
+            )
+
+    logger.info(
+        "%s: persisted %d notices (inserted=%d updated=%d skipped=%d)",
+        source_name,
+        len(notices),
+        mongo_result["inserted"],
+        mongo_result["updated"],
+        mongo_result["skipped"],
+    )
+
+
 async def run(
     mode: Literal["recent", "historical"],
     *,
@@ -219,12 +268,11 @@ async def run(
             except Exception:
                 pass
 
-        # Collect notices from all active sources
-        all_notices = []
-
-        # Step 6: Vestník NKOD extractor (SPARQL discovery + bulletin download)
         from uvo_pipeline.utils.rate_limiter import RateLimiter
 
+        total_persisted = 0
+
+        # Step 6: Vestník NKOD extractor (SPARQL discovery + bulletin download)
         vestnik_checkpoint = checkpoint.get("vestnik_last_modified")
         vestnik_since: date | None
         if mode == "historical":
@@ -240,7 +288,7 @@ async def run(
         logger.info("Extracting from Vestník NKOD (since=%s)...", vestnik_since)
         cache_dir = Path(settings.cache_dir)
         vestnik_rate_limiter = RateLimiter(rate=max(1, int(settings.vestnik_rate_limit)), per=1.0)
-        vestnik_count = 0
+        vestnik_notices: list[CanonicalNotice] = []
         vestnik_max_modified: datetime | None = None
         async with httpx.AsyncClient(timeout=settings.request_timeout) as sparql_client:
             async with httpx.AsyncClient(
@@ -264,8 +312,7 @@ async def run(
                         try:
                             notice = transform_vestnik_notice(raw)
                             notice.pipeline_run_id = run_id
-                            all_notices.append(notice)
-                            vestnik_count += 1
+                            vestnik_notices.append(notice)
                         except Exception as exc:
                             logger.warning(
                                 "Vestník transform error (item id=%s): %s",
@@ -273,17 +320,26 @@ async def run(
                                 str(exc).splitlines()[0],
                             )
 
-        report.source_counts["vestnik"] = vestnik_count
-        logger.info("Vestník: %d notices extracted", vestnik_count)
+        report.source_counts["vestnik"] = len(vestnik_notices)
+        logger.info("Vestník: %d notices extracted", len(vestnik_notices))
+        await _persist_source(
+            db, neo4j_driver, "vestnik", vestnik_notices,
+            settings=settings, report=report,
+        )
+        total_persisted += len(vestnik_notices)
+        if vestnik_max_modified is not None:
+            await save_checkpoint(
+                db, "pipeline",
+                {"vestnik_last_modified": vestnik_max_modified.isoformat()},
+            )
 
         # Step 7: CRZ extractor
         from uvo_pipeline.extractors.crz import fetch_contracts_since
         from uvo_pipeline.transformers.crz import transform_contract
-        from uvo_pipeline.utils.rate_limiter import RateLimiter
 
         logger.info("Extracting from CRZ (since=%s)...", from_date)
         crz_rate_limiter = RateLimiter(rate=settings.crz_rate_limit, per=60.0)
-        crz_count = 0
+        crz_notices: list[CanonicalNotice] = []
         async with httpx.AsyncClient(
             base_url=settings.ekosystem_base_url,
             timeout=settings.request_timeout,
@@ -297,20 +353,24 @@ async def run(
                 try:
                     notice = transform_contract(raw)
                     notice.pipeline_run_id = run_id
-                    all_notices.append(notice)
-                    crz_count += 1
+                    crz_notices.append(notice)
                 except Exception as exc:
                     logger.warning("CRZ transform error: %s", exc)
 
-        report.source_counts["crz"] = crz_count
-        logger.info("CRZ: %d contracts extracted", crz_count)
+        report.source_counts["crz"] = len(crz_notices)
+        logger.info("CRZ: %d contracts extracted", len(crz_notices))
+        await _persist_source(
+            db, neo4j_driver, "crz", crz_notices,
+            settings=settings, report=report,
+        )
+        total_persisted += len(crz_notices)
 
         # Step 8: TED extractor
         from uvo_pipeline.extractors.ted import search_sk_notices
         from uvo_pipeline.transformers.ted import transform_ted_notice
 
         logger.info("Extracting from TED EU (from=%s)...", from_date)
-        ted_count = 0
+        ted_notices: list[CanonicalNotice] = []
         async with httpx.AsyncClient(
             base_url=settings.ted_base_url,
             timeout=settings.request_timeout,
@@ -319,13 +379,17 @@ async def run(
                 try:
                     notice = transform_ted_notice(raw)
                     notice.pipeline_run_id = run_id
-                    all_notices.append(notice)
-                    ted_count += 1
+                    ted_notices.append(notice)
                 except Exception as exc:
                     logger.warning("TED transform error: %s", exc)
 
-        report.source_counts["ted"] = ted_count
-        logger.info("TED: %d notices extracted", ted_count)
+        report.source_counts["ted"] = len(ted_notices)
+        logger.info("TED: %d notices extracted", len(ted_notices))
+        await _persist_source(
+            db, neo4j_driver, "ted", ted_notices,
+            settings=settings, report=report,
+        )
+        total_persisted += len(ted_notices)
 
         # UVO.gov.sk has no public API — its listing endpoint moved behind
         # Oracle Access Manager SSO. UVO notices enter the pipeline via the
@@ -337,60 +401,58 @@ async def run(
         from uvo_pipeline.transformers.itms import transform_procurement as transform_itms
 
         itms_min_id = int(checkpoint.get("itms_min_id") or 0)
-        logger.info("Extracting from ITMS2014+ (min_id=%d)...", itms_min_id)
+        itms_max_items = settings.itms_max_items_per_run
+        logger.info(
+            "Extracting from ITMS2014+ (min_id=%d, max_items_per_run=%s)...",
+            itms_min_id,
+            itms_max_items if itms_max_items > 0 else "unbounded",
+        )
         itms_rate_limiter = RateLimiter(rate=int(settings.itms_rate_limit), per=1.0)
-        itms_count = 0
+        itms_notices: list[CanonicalNotice] = []
         itms_max_seen = itms_min_id - 1  # track highest id yielded for checkpoint
         async with httpx.AsyncClient(
             base_url=settings.itms_base_url,
             timeout=settings.request_timeout,
         ) as itms_client:
-            async for raw in fetch_itms_procurements(itms_client, itms_rate_limiter, min_id=itms_min_id):
+            async for raw in fetch_itms_procurements(
+                itms_client,
+                itms_rate_limiter,
+                min_id=itms_min_id,
+                max_items=itms_max_items if itms_max_items > 0 else None,
+            ):
                 try:
                     notice = transform_itms(raw)
                     notice.pipeline_run_id = run_id
-                    all_notices.append(notice)
-                    itms_count += 1
+                    itms_notices.append(notice)
                     itms_max_seen = max(itms_max_seen, int(raw["id"]))
                 except Exception as exc:
                     logger.warning("ITMS transform error: %s", exc)
-        report.source_counts["itms"] = itms_count
-        logger.info("ITMS: %d procurements extracted", itms_count)
+        report.source_counts["itms"] = len(itms_notices)
+        logger.info("ITMS: %d procurements extracted", len(itms_notices))
+        await _persist_source(
+            db, neo4j_driver, "itms", itms_notices,
+            settings=settings, report=report,
+        )
+        total_persisted += len(itms_notices)
+        if itms_notices:
+            # Only advance checkpoint if we actually yielded something; otherwise
+            # leave it untouched so the next run retries the same min_id.
+            await save_checkpoint(
+                db, "pipeline", {"itms_min_id": str(itms_max_seen + 1)},
+            )
 
-        if all_notices:
-            # Compute content hashes before writing
-            from uvo_pipeline.utils.hashing import compute_notice_hash
-            for notice in all_notices:
-                notice.content_hash = compute_notice_hash(notice)
-
-            # Write to MongoDB
-            mongo_result = await upsert_batch(db, all_notices, batch_size=settings.batch_size)
-            report.notices_inserted = mongo_result["inserted"]
-            report.notices_updated = mongo_result["updated"]
-            report.notices_skipped = mongo_result["skipped"]
-            if mongo_result["errors"]:
-                report.errors.append(f"MongoDB: {mongo_result['errors']} upsert errors")
-
-            # Write to Neo4j
-            async with neo4j_driver.session() as neo4j_session:
-                neo4j_result = await merge_notice_batch(neo4j_session, all_notices)
-                if neo4j_result["errors"]:
-                    report.errors.append(f"Neo4j: {neo4j_result['errors']} merge errors")
-
-            # Save checkpoint
-            checkpoint_state = {
+        # Final pipeline-wide checkpoint summary
+        await save_checkpoint(
+            db, "pipeline",
+            {
                 "last_mode": mode,
                 "from_date": from_date.isoformat(),
-                "notices_processed": len(all_notices),
-                "itms_min_id": str(itms_max_seen + 1),
-            }
-            if vestnik_max_modified is not None:
-                checkpoint_state["vestnik_last_modified"] = vestnik_max_modified.isoformat()
-            elif vestnik_checkpoint:
-                checkpoint_state["vestnik_last_modified"] = vestnik_checkpoint
-            await save_checkpoint(db, "pipeline", checkpoint_state)
+                "notices_processed": total_persisted,
+            },
+        )
 
-            # Cross-source deduplication
+        # Cross-source deduplication runs once over everything written by this run
+        if total_persisted:
             logger.info("Running cross-source deduplication...")
             match_groups = await _run_cross_source_dedup(db, run_id)
             logger.info("Cross-source dedup found %d match groups", match_groups)
