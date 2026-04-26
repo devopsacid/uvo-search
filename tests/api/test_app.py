@@ -20,5 +20,5 @@ def test_health_check(client):
 
 
 def test_cors_header_present(client):
-    response = client.get("/health", headers={"Origin": "http://localhost:3000"})
+    response = client.get("/health", headers={"Origin": "http://localhost:5174"})
     assert "access-control-allow-origin" in response.headers

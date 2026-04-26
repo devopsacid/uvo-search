@@ -1,22 +1,21 @@
 # UVO Search — Claude Context
 
-Search and browse Slovak government procurement data. Shared MCP backend, multiple frontends.
+Search and browse Slovak government procurement data. Shared MCP backend, single React frontend.
 
 ## Architecture
 
-Five Python packages under `src/` + two frontends (React + Vue):
+Four Python packages under `src/` + one React frontend:
 
 | Package | Port | Entrypoint | Role |
 | ------- | ---- | ---------- | ---- |
 | `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` | FastMCP server — search, detail, graph tools |
-| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (frontends → MCP) |
+| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (frontend → MCP) |
 | `uvo-gui-react` | 8080 host / 5174 dev | `cd src/uvo-gui-react && npm run dev` | React 18 SPA public frontend (Slovak UI) |
 | `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | One-shot ingestion (UVO/CRZ/ITMS/TED/NKOD → Mongo/Neo4j) |
-| `uvo-gui-vuejs` | 5173 dev / 3000 prod | `cd src/uvo-gui-vuejs && npm run dev` | Vue 3 admin dashboard |
 
 **Storage:** MongoDB Atlas Local (27017, with `mongot` for Atlas Search) + Neo4j 5 with APOC (7474/7687). Both required for `uvo_mcp` to start.
 
-**Frontend ↔ backend:** all GUIs go through `mcp_client.call_tool(name, args)`. Don't bypass it.
+**Frontend ↔ backend:** the GUI goes through `mcp_client.call_tool(name, args)`. Don't bypass it.
 
 ## Dev commands
 
@@ -31,7 +30,6 @@ cp .env.example .env                        # edit secrets before first run
 uv run python -m uvo_mcp
 uv run python -m uvo_api
 cd src/uvo-gui-react && npm run dev         # React public frontend (5174 dev, 8080 prod)
-cd src/uvo-gui-vuejs && npm install && npm run dev  # Vue admin dashboard (5173)
 
 # Tests
 uv run pytest tests/mcp/ -v                  # unit (mocked) — run these, not `tests/`
@@ -45,14 +43,11 @@ uv run ruff format src/ tests/
 
 # React public GUI
 cd src/uvo-gui-react && npm install && npm test
-
-# Vue admin dashboard
-cd src/uvo-gui-vuejs && npm run test
 ```
 
 ## Docker (local deploy)
 
-Full stack (mcp + api + gui-react + admin-gui + mongo + neo4j + pipeline) lives in `docker-compose.yml`. For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j volume-init gotchas, service-name URIs, and nuclear-reset tiers.
+Full stack (mcp + api + gui-react + mongo + neo4j + pipeline) lives in `docker-compose.yml`. For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j volume-init gotchas, service-name URIs, and nuclear-reset tiers.
 
 ## Workflow
 

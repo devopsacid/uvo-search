@@ -130,7 +130,7 @@ Returns:
 
 ## Frontends
 
-The public SPA lives in [`src/uvo-gui-react/`](../src/uvo-gui-react/) (React 18 + Vite + TanStack Query) and the admin dashboard in [`src/uvo-gui-vuejs/`](../src/uvo-gui-vuejs/) (Vue 3 + Pinia). Both call the FastAPI bridge on port 8001, which fans out to the MCP server. See each package's `README.md` for routes, components, and dev instructions.
+The public SPA lives in [`src/uvo-gui-react/`](../src/uvo-gui-react/) (React 18 + Vite + TanStack Query). It calls the FastAPI bridge on port 8001, which fans out to the MCP server. See the package's `README.md` for routes, components, and dev instructions.
 
 ## Environment Variables
 
@@ -168,8 +168,7 @@ uvo-search/
 │   │
 │   ├── uvo_api/                          # FastAPI bridge (port 8001)
 │   ├── uvo_pipeline/                     # Ingestion pipeline (one-shot)
-│   ├── uvo-gui-react/                    # React 18 SPA public frontend
-│   └── uvo-gui-vuejs/                    # Vue 3 admin dashboard
+│   └── uvo-gui-react/                    # React 18 SPA public frontend
 │
 ├── tests/
 │   ├── conftest.py                       # Shared pytest fixtures
@@ -288,7 +287,7 @@ docker compose down -v
 
 ### Call an MCP Tool from a Frontend
 
-The React SPA and Vue admin go through the FastAPI bridge — they call REST endpoints, not the MCP server directly. Example (TanStack Query in React):
+The React SPA goes through the FastAPI bridge — it calls REST endpoints, not the MCP server directly. Example (TanStack Query in React):
 
 ```ts
 import { useQuery } from "@tanstack/react-query";
