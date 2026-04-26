@@ -8,6 +8,7 @@ The sync endpoint returns full contract objects directly (not just IDs).
 Pagination is cursor-based via the Link header (rel='next') or last_id param.
 """
 
+import asyncio
 import logging
 import re
 from datetime import date
@@ -23,6 +24,18 @@ _SYNC_PATH = "/api/data/crz/contracts/sync"
 
 _LINK_NEXT_RE = re.compile(r'<([^>]+)>;\s*rel=["\']next["\']')
 
+_MAX_429_RETRIES = 8
+_DEFAULT_RETRY_AFTER_SEC = 60
+
+
+def _parse_retry_after(value: str | None) -> int:
+    if not value:
+        return _DEFAULT_RETRY_AFTER_SEC
+    try:
+        return max(1, int(value))
+    except (ValueError, TypeError):
+        return _DEFAULT_RETRY_AFTER_SEC
+
 
 async def fetch_contracts_since(
     client: httpx.AsyncClient,
@@ -34,8 +47,10 @@ async def fetch_contracts_since(
 ) -> AsyncIterator[dict]:
     """Yield CRZ contract dicts for all contracts modified since *since*.
 
-    Paginates the sync endpoint using Link header cursor.
-    If the sync endpoint fails, logs the error and stops iteration.
+    Paginates the sync endpoint using Link header cursor. On HTTP 429 the
+    request is retried after the server-supplied ``Retry-After`` interval
+    (or 60s default), up to ``_MAX_429_RETRIES`` times before giving up.
+    Other errors stop iteration.
     """
     params: dict = {}
     if since is not None:
@@ -47,23 +62,47 @@ async def fetch_contracts_since(
     page = 0
 
     while url is not None:
-        await rate_limiter.acquire()
-        try:
-            if page == 0:
-                response = await client.get(url, params=params)
-            else:
-                # Subsequent pages: url is already the full next URL from Link header
-                response = await client.get(url)
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            logger.error(
-                "CRZ sync endpoint returned HTTP %s: %s",
-                exc.response.status_code,
-                exc.response.text[:200],
-            )
-            return
-        except httpx.RequestError as exc:
-            logger.error("CRZ sync request failed: %s", exc)
+        response: httpx.Response | None = None
+        for attempt in range(_MAX_429_RETRIES + 1):
+            await rate_limiter.acquire()
+            try:
+                if page == 0:
+                    resp = await client.get(url, params=params)
+                else:
+                    # Subsequent pages: url is already the full next URL
+                    resp = await client.get(url)
+            except httpx.RequestError as exc:
+                logger.error("CRZ sync request failed: %s", exc)
+                return
+
+            if resp.status_code == 429:
+                wait = _parse_retry_after(resp.headers.get("Retry-After"))
+                if attempt >= _MAX_429_RETRIES:
+                    logger.error(
+                        "CRZ sync: HTTP 429 after %d retries — giving up", attempt
+                    )
+                    return
+                logger.warning(
+                    "CRZ sync: HTTP 429 (page %d, attempt %d/%d) — sleeping %ds",
+                    page, attempt + 1, _MAX_429_RETRIES, wait,
+                )
+                await asyncio.sleep(wait)
+                continue
+
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                logger.error(
+                    "CRZ sync endpoint returned HTTP %s: %s",
+                    exc.response.status_code,
+                    exc.response.text[:200],
+                )
+                return
+
+            response = resp
+            break
+
+        if response is None:
             return
 
         contracts = response.json()
