@@ -201,6 +201,59 @@ class ConcentrationResponse(BaseModel):
     hhi: float  # Herfindahl-Hirschman Index 0..10000
 
 
+# --- Ingestion dashboard ---
+
+
+class IngestionSourceStatus(BaseModel):
+    name: str
+    notices: int
+    last_24h: int
+    last_7d: int
+    registry: int
+    skips: int
+    last_ingest_at: str | None  # ISO 8601 UTC with Z, or null
+    age_seconds: float | None
+    status: str  # "healthy" | "warning" | "stale" | "unknown"
+
+
+class IngestionTotals(BaseModel):
+    notices: int
+    registry_entries: int
+    cross_source_matches: int
+    canonical_linked: int
+    sources_healthy: int
+    sources_total: int
+    last_run_age_seconds: float | None
+    dedup_match_rate: float
+
+
+class IngestionLatestRun(BaseModel):
+    id: str | None
+    started_at: str | None  # ISO 8601 UTC with Z, or null
+    finished_at: str | None  # always null (not tracked)
+
+
+class DailyBucket(BaseModel):
+    date: str  # YYYY-MM-DD
+    vestnik: int
+    crz: int
+    ted: int
+    uvo: int
+    itms: int
+
+
+class IngestionTimeseries(BaseModel):
+    daily_ingestion: list[DailyBucket]
+
+
+class IngestionDashboard(BaseModel):
+    generated_at: str  # ISO 8601 UTC with Z
+    totals: IngestionTotals
+    latest_run: IngestionLatestRun
+    sources: list[IngestionSourceStatus]
+    timeseries: IngestionTimeseries
+
+
 # --- Graph (Cytoscape-compatible) ---
 
 

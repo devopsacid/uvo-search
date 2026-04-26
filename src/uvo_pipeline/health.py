@@ -13,8 +13,11 @@ SOURCES = ["vestnik", "crz", "ted", "uvo", "itms"]
 
 async def collect(db: AsyncIOMotorDatabase) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
-    day_ago = now - timedelta(days=1)
-    week_ago = now - timedelta(days=7)
+    # `ingested_at` is stored as ISO-8601 string; ISO lex-sorts chronologically,
+    # so string-vs-string comparisons work. Build ISO thresholds.
+    now_naive = now.replace(tzinfo=None)
+    day_ago_iso = (now_naive - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
+    week_ago_iso = (now_naive - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
 
     # Per-source aggregates from notices collection
     pipeline = [
@@ -23,8 +26,8 @@ async def collect(db: AsyncIOMotorDatabase) -> dict[str, Any]:
             "total": {"$sum": 1},
             "last_ingested": {"$max": "$ingested_at"},
             "last_publication": {"$max": "$publication_date"},
-            "last_24h": {"$sum": {"$cond": [{"$gte": ["$ingested_at", day_ago]}, 1, 0]}},
-            "last_7d": {"$sum": {"$cond": [{"$gte": ["$ingested_at", week_ago]}, 1, 0]}},
+            "last_24h": {"$sum": {"$cond": [{"$gte": ["$ingested_at", day_ago_iso]}, 1, 0]}},
+            "last_7d": {"$sum": {"$cond": [{"$gte": ["$ingested_at", week_ago_iso]}, 1, 0]}},
         }},
     ]
     rows = {r["_id"]: r async for r in db.notices.aggregate(pipeline)}

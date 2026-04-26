@@ -8,6 +8,7 @@ const navItems = [
   { to: '/suppliers', label: sk.nav.suppliers, end: false },
   { to: '/procurers', label: sk.nav.procurers, end: false },
   { to: '/graph', label: sk.nav.graph, end: false },
+  { to: '/ingestion', label: sk.nav.ingestion, end: false },
   { to: '/about', label: sk.nav.about, end: false },
 ] as const
 

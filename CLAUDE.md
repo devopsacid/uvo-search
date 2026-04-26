@@ -9,7 +9,7 @@ Four Python packages under `src/` + one React frontend:
 | Package | Port | Entrypoint | Role |
 | ------- | ---- | ---------- | ---- |
 | `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` | FastMCP server — search, detail, graph tools |
-| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (frontend → MCP) |
+| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (frontend → MCP); dashboard + ingestion endpoints |
 | `uvo-gui-react` | 8080 host / 5174 dev | `cd src/uvo-gui-react && npm run dev` | React 18 SPA public frontend (Slovak UI) |
 | `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | One-shot ingestion (UVO/CRZ/ITMS/TED/NKOD → Mongo/Neo4j) |
 

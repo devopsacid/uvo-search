@@ -233,6 +233,58 @@ export interface GraphResponse {
   edges: CytoEdge[]
 }
 
+// ── Ingestion Dashboard ───────────────────────────────────────────────────────
+
+export type IngestionSourceStatus = 'healthy' | 'warning' | 'stale' | 'unknown'
+
+export interface IngestionSource {
+  name: string
+  notices: number
+  last_24h: number
+  last_7d: number
+  registry: number
+  skips: number
+  last_ingest_at: string | null
+  age_seconds: number | null
+  status: IngestionSourceStatus
+}
+
+export interface IngestionTotals {
+  notices: number
+  registry_entries: number
+  cross_source_matches: number
+  canonical_linked: number
+  sources_healthy: number
+  sources_total: number
+  last_run_age_seconds: number | null
+  dedup_match_rate: number
+}
+
+export interface IngestionLatestRun {
+  id: string
+  started_at: string
+  finished_at: string | null
+}
+
+export interface DailyIngestionBucket {
+  date: string
+  vestnik: number
+  crz: number
+  ted: number
+  uvo: number
+  itms: number
+}
+
+export interface IngestionDashboard {
+  generated_at: string
+  totals: IngestionTotals
+  latest_run: IngestionLatestRun
+  sources: IngestionSource[]
+  timeseries: {
+    daily_ingestion: DailyIngestionBucket[]
+  }
+}
+
 // ── Shared error ──────────────────────────────────────────────────────────────
 
 export interface ApiError {
