@@ -25,7 +25,7 @@ class PipelineSettings(BaseSettings):
     cache_dir: str = "/app/cache"
     batch_size: int = 500
     neo4j_batch_size: int = 100
-    crz_rate_limit: int = 55
+    crz_rate_limit: int = 30
     itms_base_url: str = "https://opendata.itms2014.sk"
     itms_rate_limit: float = 5.0
     nkod_sparql_url: str = "https://data.slovensko.sk/api/sparql"
