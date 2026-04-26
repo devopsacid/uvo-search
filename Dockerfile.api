@@ -11,8 +11,9 @@ COPY pyproject.toml uv.lock ./
 # Sync production dependencies only (no dev extras)
 RUN uv sync --frozen --no-dev
 
-# Copy application sources — api imports mcp_client from uvo_mcp
+# Copy application sources — api imports mcp_client from uvo_mcp and health from uvo_pipeline
 COPY src/uvo_mcp/ src/uvo_mcp/
+COPY src/uvo_pipeline/ src/uvo_pipeline/
 COPY src/uvo_api/ src/uvo_api/
 
 EXPOSE 8001

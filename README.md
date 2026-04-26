@@ -6,6 +6,7 @@ Search and browse Slovak government procurement data via a dual-interface applic
 
 - **Full-text search** across Slovak government procurement records (UVO Vestník, CRZ, ITMS, TED, NKOD)
 - **Structured filtering** by CPV codes (EU product classification), date ranges, procurement authorities, and suppliers
+- **Ingestion dashboard** — Monitor pipeline health, data freshness, cross-source deduplication, and per-source ingestion trends
 - **MCP server** with 4 tools for AI agent integration — search procurements, find procurers and suppliers
 - **React SPA frontend** (Vite 5 + React 18 + TypeScript) — Public web UI with client-side routing, advanced filtering, and graphs
 - **Dual access** — use the same backend with Claude Desktop/Code (via stdio) or in your browser (via HTTP)
@@ -195,6 +196,10 @@ The MCP server provides 6 tools for AI agent integration:
 | `graph_ego_network` | Entity relationship network (procurer/supplier ego graph) | `ico`, `entity_type`, `hops` |
 | `graph_cpv_network` | CPV code procurement network (by year) | `cpv_code`, `year`, `limit` |
 
+### API Dashboard Endpoints
+
+- `GET /api/dashboard/ingestion` — Pipeline health snapshot (source status, per-source daily ingestion, dedup metrics, latest run metadata)
+
 ### Current Implementation Status
 
 Core tools (4) + graph tools (2). Future phases will add:
@@ -249,6 +254,7 @@ Built with **Vite 5 + React 18 + TypeScript**, modern single-page application:
 - **Search** — Full-text and structured filtering (dates, CPV codes, entities)
 - **Suppliers** — Browse awarded contractors by name, ICO, or contract count
 - **Procurers** — Browse contracting authorities and procurement spending
+- **Ingestion** — Monitor pipeline health, data freshness per source, deduplication metrics, and 30-day ingestion trends
 - **Graphs** — Interactive network visualization (Cytoscape.js)
   - Ego network: procurer/supplier relationships (configurable hop depth)
   - CPV network: procurement patterns by product category

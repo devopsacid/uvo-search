@@ -161,6 +161,7 @@ External Data Sources:
 
 - `GET /dashboard/by-month?year=YYYY` — monthly aggregation
 - `GET /dashboard/by-cpv?year_from=Y&year_to=Y` — CPV trends
+- `GET /dashboard/ingestion` — pipeline health snapshot (source status, 30-day ingestion trends, dedup metrics)
 - `GET /graph/ego/{ico}?hops=N` — entity ego network
 - `GET /graph/cpv/{cpv}?year=YYYY` — CPV network
 - `GET /procurers/{ico}/concentration?top_n=N` — HHI supplier concentration
