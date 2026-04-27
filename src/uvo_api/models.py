@@ -276,6 +276,26 @@ class IngestionLogResponse(BaseModel):
     items: list[IngestionLogItem]
 
 
+# --- Worker status ---
+
+
+class WorkerStatus(BaseModel):
+    component: str
+    name: str
+    status: str  # "healthy" | "stale" | "stopped" | "error" | "unknown"
+    last_event: str | None
+    last_level: str | None
+    last_message: str | None
+    last_ts: str | None  # ISO Z
+    age_seconds: float | None
+    events_24h: int
+
+
+class WorkerStatusResponse(BaseModel):
+    workers: list[WorkerStatus]
+    generated_at: str
+
+
 # --- Graph (Cytoscape-compatible) ---
 
 
