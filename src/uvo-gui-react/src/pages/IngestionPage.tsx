@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 import { useIngestionDashboard } from '@/api/queries/ingestion'
 import { IngestionLogPanel } from '@/components/ingestion/IngestionLogPanel'
+import { WorkerStatusTable } from '@/components/ingestion/WorkerStatusTable'
 import type { IngestionSource, IngestionSourceStatus } from '@/api/types'
 import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton'
 import { cn, formatBytes, formatNumber } from '@/lib/utils'
@@ -541,6 +542,9 @@ export function IngestionPage() {
           </div>
         </dl>
       </SectionCard>
+
+      {/* Worker status */}
+      <WorkerStatusTable />
 
       {/* Ingestion event log */}
       <IngestionLogPanel />

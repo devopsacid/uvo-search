@@ -11,6 +11,21 @@ const LEVELS: Array<{ key: IngestionLogLevel | 'all'; label: string }> = [
   { key: 'error', label: sk.ingestionLog.levelError },
 ]
 
+const SOURCES = ['vestnik', 'crz', 'ted', 'itms'] as const
+
+const EVENTS = [
+  'worker_started',
+  'worker_stopped',
+  'cycle_complete',
+  'cycle_failed',
+  'batch_written',
+  'decode_failed',
+  'write_failed',
+  'redis_connect_failed',
+  'notice_invalid_date',
+  'validation_summary',
+] as const
+
 const LEVEL_CLASSES: Record<IngestionLogLevel, string> = {
   info: 'text-slate-600',
   warning: 'text-amber-600',
@@ -30,30 +45,59 @@ function formatTime(iso: string): string {
 
 export function IngestionLogPanel() {
   const [level, setLevel] = useState<IngestionLogLevel | 'all'>('all')
+  const [source, setSource] = useState<string>('')
+  const [event, setEvent] = useState<string>('')
+
   const { data, isLoading, isError } = useIngestionLog({
     level: level === 'all' ? undefined : level,
+    source: source || undefined,
+    event: event || undefined,
     limit: 50,
   })
 
   return (
     <section className="rounded-lg border bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center gap-3 justify-between">
         <h2 className="text-lg font-semibold">{sk.ingestionLog.title}</h2>
-        <div className="flex gap-2">
-          {LEVELS.map((l) => (
-            <button
-              key={l.key}
-              onClick={() => setLevel(l.key as IngestionLogLevel | 'all')}
-              className={cn(
-                'rounded border px-2 py-1 text-sm',
-                level === l.key
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-slate-200 text-slate-600',
-              )}
-            >
-              {l.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-2">
+            {LEVELS.map((l) => (
+              <button
+                key={l.key}
+                onClick={() => setLevel(l.key as IngestionLogLevel | 'all')}
+                className={cn(
+                  'rounded border px-2 py-1 text-sm',
+                  level === l.key
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-slate-200 text-slate-600',
+                )}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <select
+            aria-label={sk.ingestionLog.filterSource}
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            className="rounded border border-slate-200 px-2 py-1 text-sm text-slate-600"
+          >
+            <option value="">{sk.ingestionLog.sourceAll}</option>
+            {SOURCES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <select
+            aria-label={sk.ingestionLog.filterEvent}
+            value={event}
+            onChange={(e) => setEvent(e.target.value)}
+            className="rounded border border-slate-200 px-2 py-1 text-sm text-slate-600"
+          >
+            <option value="">{sk.ingestionLog.eventAll}</option>
+            {EVENTS.map((ev) => (
+              <option key={ev} value={ev}>{ev}</option>
+            ))}
+          </select>
         </div>
       </div>
 

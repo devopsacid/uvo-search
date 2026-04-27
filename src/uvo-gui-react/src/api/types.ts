@@ -314,3 +314,24 @@ export interface IngestionLogResponse {
   total: number
   items: IngestionLogItem[]
 }
+
+// ── Worker status ─────────────────────────────────────────────────────────────
+
+export type WorkerStatusValue = 'healthy' | 'stale' | 'stopped' | 'error' | 'unknown'
+
+export interface WorkerStatus {
+  component: string
+  name: string
+  status: WorkerStatusValue
+  last_event: string | null
+  last_level: string | null
+  last_message: string | null
+  last_ts: string | null
+  age_seconds: number | null
+  events_24h: number
+}
+
+export interface WorkerStatusResponse {
+  workers: WorkerStatus[]
+  generated_at: string
+}
