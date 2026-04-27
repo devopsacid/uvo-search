@@ -13,11 +13,14 @@ because the contracts endpoint only embeds an id reference for the main
 supplier — the name field requires a separate lookup.
 """
 
+from __future__ import annotations
+
 import logging
 from collections.abc import AsyncIterator
 
 import httpx
 
+from uvo_pipeline.cache import CacheBackend, MemoryCache
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -31,23 +34,27 @@ async def _fetch_by_id(
     rate_limiter: RateLimiter,
     path_prefix: str,
     id_: int,
-    cache: dict[int, dict],
+    cache_backend: CacheBackend,
+    key_prefix: str,
+    cache_ttl_seconds: int,
 ) -> dict | None:
-    """Fetch /{path_prefix}/{id_}, caching results; returns {} on 404/error."""
-    if id_ in cache:
-        return cache[id_]
+    """Fetch /{path_prefix}/{id_} via cache_backend; returns {} on 404/error."""
+    key = f"{key_prefix}:{id_}"
+    cached = await cache_backend.get(key)
+    if cached is not None:
+        return cached if cached else None
     await rate_limiter.acquire()
     try:
         resp = await client.get(f"{path_prefix}/{id_}")
         if resp.status_code != 200:
-            cache[id_] = {}
+            await cache_backend.set(key, {}, ttl_seconds=cache_ttl_seconds)
             return None
         data = resp.json() or {}
     except httpx.RequestError as exc:
         logger.warning("ITMS %s/%s fetch failed: %s", path_prefix, id_, exc)
-        cache[id_] = {}
+        await cache_backend.set(key, {}, ttl_seconds=cache_ttl_seconds)
         return None
-    cache[id_] = data
+    await cache_backend.set(key, data, ttl_seconds=cache_ttl_seconds)
     return data
 
 
@@ -55,10 +62,13 @@ async def _fetch_subject(
     client: httpx.AsyncClient,
     rate_limiter: RateLimiter,
     subject_id: int,
-    cache: dict[int, dict],
+    cache_backend: CacheBackend,
+    cache_ttl_seconds: int,
 ) -> dict | None:
     """Resolve a subject by id, caching results across the run."""
-    return await _fetch_by_id(client, rate_limiter, _SUBJECT_PATH, subject_id, cache)
+    return await _fetch_by_id(
+        client, rate_limiter, _SUBJECT_PATH, subject_id, cache_backend, "itms:subject", cache_ttl_seconds
+    )
 
 
 def _extract_subject_id(item: dict) -> int | None:
@@ -73,11 +83,14 @@ async def fetch_procurements(
     *,
     min_id: int = 0,
     max_items: int | None = None,
+    cache_backend: CacheBackend | None = None,
+    cache_ttl_seconds: int = 7 * 24 * 3600,
 ) -> AsyncIterator[dict]:
+    if cache_backend is None:
+        cache_backend = MemoryCache()
+
     cursor = min_id
     yielded = 0
-    subject_cache: dict[int, dict] = {}
-    supplier_cache: dict[int, dict] = {}
 
     while True:
         if max_items is not None and yielded >= max_items:
@@ -124,7 +137,8 @@ async def fetch_procurements(
                 sup_id = hlavny.get("id")
                 if sup_id is not None:
                     supplier = await _fetch_by_id(
-                        client, rate_limiter, _SUPPLIER_PATH, int(sup_id), supplier_cache
+                        client, rate_limiter, _SUPPLIER_PATH, int(sup_id),
+                        cache_backend, "itms:supplier", cache_ttl_seconds,
                     )
                     if supplier:
                         contract["_supplier"] = supplier
@@ -137,7 +151,8 @@ async def fetch_procurements(
                         eid = entry.get("id")
                         if eid is not None:
                             s = await _fetch_by_id(
-                                client, rate_limiter, _SUPPLIER_PATH, int(eid), supplier_cache
+                                client, rate_limiter, _SUPPLIER_PATH, int(eid),
+                                cache_backend, "itms:supplier", cache_ttl_seconds,
                             )
                             enriched.append(s if s else entry)
                         else:
@@ -146,7 +161,7 @@ async def fetch_procurements(
 
             sid = _extract_subject_id(item)
             if sid is not None:
-                subject = await _fetch_subject(client, rate_limiter, sid, subject_cache)
+                subject = await _fetch_subject(client, rate_limiter, sid, cache_backend, cache_ttl_seconds)
                 if subject:
                     item["_subject"] = subject
 

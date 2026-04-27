@@ -111,6 +111,21 @@ services:
       retries: 10
       start_period: 60s
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
   pipeline:
     build:
       context: .
@@ -133,3 +148,4 @@ volumes:
   neo4j_data:
   neo4j_logs:
   pipeline_cache:
+  redis_data:

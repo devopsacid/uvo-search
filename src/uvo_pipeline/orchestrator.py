@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorClient
 from neo4j import AsyncGraphDatabase
 
 from uvo_pipeline.catalog.nkod import discover_vestnik_datasets
 from uvo_pipeline.config import PipelineSettings
+from uvo_pipeline.dedup import run_cross_source_dedup
 from uvo_pipeline.extractors.vestnik_nkod import fetch_bulletin
 from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
@@ -24,151 +24,8 @@ from uvo_pipeline.utils.hashing import compute_notice_hash
 logger = logging.getLogger(__name__)
 
 
-async def _run_cross_source_dedup(db: AsyncIOMotorDatabase, run_id: str) -> int:
-    """
-    Find notices from different sources that likely refer to the same real-world event.
-
-    Pass 1: Match by (procurer.ico, cpv_code) across sources.
-    Pass 2: For notices without ICO, match by (title_slug, publication_date ±7 days) across sources.
-
-    For each group of matches:
-    1. Assign a shared canonical_id (MongoDB _id of oldest notice as string)
-    2. Update all notices with that canonical_id
-    3. Write a record to cross_source_matches collection
-
-    Returns total number of cross-source match groups found.
-    """
-    match_count = 0
-
-    # --- Pass 1: procurer.ico + cpv_code ---
-    pipeline_pass1 = [
-        {"$match": {
-            "procurer.ico": {"$ne": None, "$exists": True},
-            "cpv_code": {"$ne": None, "$exists": True},
-            "pipeline_run_id": run_id,
-        }},
-        {"$group": {
-            "_id": {"procurer_ico": "$procurer.ico", "cpv_code": "$cpv_code"},
-            "notices": {"$push": {"id": "$_id", "source": "$source", "pub_date": "$publication_date"}},
-            "sources": {"$addToSet": "$source"},
-        }},
-        {"$match": {"sources.1": {"$exists": True}}},
-    ]
-
-    groups = await db.notices.aggregate(pipeline_pass1).to_list(length=None)
-
-    for group in groups:
-        notices_in_group = group["notices"]
-        notices_in_group.sort(key=lambda x: x.get("pub_date") or "")
-        canonical_id = str(notices_in_group[0]["id"])
-        notice_ids = [str(n["id"]) for n in notices_in_group]
-
-        await db.notices.update_many(
-            {"_id": {"$in": [ObjectId(nid) for nid in notice_ids]}},
-            {"$set": {"canonical_id": canonical_id}},
-        )
-        await db.cross_source_matches.update_one(
-            {"canonical_id": canonical_id},
-            {"$set": {
-                "canonical_id": canonical_id,
-                "notice_ids": notice_ids,
-                "sources": group["sources"],
-                "procurer_ico": group["_id"]["procurer_ico"],
-                "cpv_code": group["_id"]["cpv_code"],
-                "match_type": "ico_cpv",
-            }},
-            upsert=True,
-        )
-        match_count += 1
-
-    # --- Pass 2: title_slug + publication_date ±7 days (for notices without ICO) ---
-    # Fetch ICO-less notices from this run that have a title_slug and no canonical_id yet
-    ico_less = await db.notices.find({
-        "pipeline_run_id": run_id,
-        "title_slug": {"$ne": None, "$exists": True},
-        "canonical_id": None,
-        "$or": [
-            {"procurer.ico": None},
-            {"procurer.ico": {"$exists": False}},
-        ],
-    }).to_list(length=None)
-
-    # Group by title_slug
-    from collections import defaultdict
-    by_slug: dict[str, list] = defaultdict(list)
-    for n in ico_less:
-        slug = n.get("title_slug")
-        if slug:
-            by_slug[slug].append(n)
-
-    for slug, slug_notices in by_slug.items():
-        if len(slug_notices) < 2:
-            continue
-
-        # Find clusters within ±7 days of each other, across different sources
-        slug_notices.sort(key=lambda x: x.get("publication_date") or "")
-
-        processed: set[str] = set()
-        for i, anchor in enumerate(slug_notices):
-            if str(anchor["_id"]) in processed:
-                continue
-
-            anchor_date_str = anchor.get("publication_date")
-            if not anchor_date_str:
-                continue
-
-            try:
-                from datetime import date as date_type
-                anchor_date = date_type.fromisoformat(str(anchor_date_str))
-            except (ValueError, TypeError):
-                continue
-
-            cluster = [anchor]
-            cluster_sources = {anchor["source"]}
-
-            for other in slug_notices[i + 1:]:
-                if str(other["_id"]) in processed:
-                    continue
-                if other["source"] == anchor["source"]:
-                    continue
-                other_date_str = other.get("publication_date")
-                if not other_date_str:
-                    continue
-                try:
-                    other_date = date_type.fromisoformat(str(other_date_str))
-                except (ValueError, TypeError):
-                    continue
-                if abs((other_date - anchor_date).days) <= 7:
-                    cluster.append(other)
-                    cluster_sources.add(other["source"])
-
-            if len(cluster_sources) < 2:
-                continue  # Same source duplicates — not cross-source
-
-            cluster.sort(key=lambda x: x.get("publication_date") or "")
-            canonical_id = str(cluster[0]["_id"])
-            notice_ids = [str(n["_id"]) for n in cluster]
-
-            await db.notices.update_many(
-                {"_id": {"$in": [ObjectId(nid) for nid in notice_ids]}},
-                {"$set": {"canonical_id": canonical_id}},
-            )
-            await db.cross_source_matches.update_one(
-                {"canonical_id": canonical_id},
-                {"$set": {
-                    "canonical_id": canonical_id,
-                    "notice_ids": notice_ids,
-                    "sources": list(cluster_sources),
-                    "title_slug": slug,
-                    "match_type": "title_slug_date",
-                }},
-                upsert=True,
-            )
-            for n in cluster:
-                processed.add(str(n["_id"]))
-            match_count += 1
-
-    return match_count
+async def _run_cross_source_dedup(db, run_id: str) -> int:
+    return await run_cross_source_dedup(db, run_id=run_id)
 
 
 async def _persist_source(
@@ -486,7 +343,7 @@ async def run(
         # Cross-source deduplication runs once over everything written by this run
         if total_persisted:
             logger.info("Running cross-source deduplication...")
-            match_groups = await _run_cross_source_dedup(db, run_id)
+            match_groups = await run_cross_source_dedup(db, run_id=run_id, window_days=30)
             logger.info("Cross-source dedup found %d match groups", match_groups)
             report.source_counts["cross_source_matches"] = match_groups
 
