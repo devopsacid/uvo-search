@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from neo4j import AsyncGraphDatabase
 
 from uvo_pipeline.catalog.nkod import discover_vestnik_datasets
