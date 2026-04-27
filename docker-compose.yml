@@ -126,6 +126,127 @@ services:
       retries: 5
       start_period: 5s
 
+  extractor-vestnik:
+    build:
+      context: .
+      dockerfile: Dockerfile.workers
+    command: ["uvo_workers.vestnik"]
+    env_file: .env
+    environment:
+      VESTNIK_INTERVAL_SECONDS: ${VESTNIK_INTERVAL_SECONDS:-3600}
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  extractor-crz:
+    build:
+      context: .
+      dockerfile: Dockerfile.workers
+    command: ["uvo_workers.crz"]
+    env_file: .env
+    environment:
+      CRZ_INTERVAL_SECONDS: ${CRZ_INTERVAL_SECONDS:-3600}
+    depends_on:
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8092/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  extractor-ted:
+    build:
+      context: .
+      dockerfile: Dockerfile.workers
+    command: ["uvo_workers.ted"]
+    env_file: .env
+    environment:
+      TED_INTERVAL_SECONDS: ${TED_INTERVAL_SECONDS:-21600}
+    depends_on:
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8093/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  extractor-itms:
+    build:
+      context: .
+      dockerfile: Dockerfile.workers
+    command: ["uvo_workers.itms"]
+    env_file: .env
+    environment:
+      ITMS_INTERVAL_SECONDS: ${ITMS_INTERVAL_SECONDS:-3600}
+      ITMS_CACHE_BACKEND: ${ITMS_CACHE_BACKEND:-redis}
+      ITMS_CACHE_TTL_SECONDS: ${ITMS_CACHE_TTL_SECONDS:-604800}
+    depends_on:
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8094/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  ingestor:
+    build:
+      context: .
+      dockerfile: Dockerfile.workers
+    command: ["uvo_workers.ingestor"]
+    env_file: .env
+    environment:
+      INGESTOR_BATCH_SIZE: ${INGESTOR_BATCH_SIZE:-100}
+    depends_on:
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      neo4j: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8095/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  dedup-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.workers
+    command: ["uvo_workers.dedup"]
+    env_file: .env
+    environment:
+      DEDUP_INTERVAL_SECONDS: ${DEDUP_INTERVAL_SECONDS:-3600}
+      DEDUP_DEBOUNCE_SECONDS: ${DEDUP_DEBOUNCE_SECONDS:-5}
+      DEDUP_WINDOW_DAYS: ${DEDUP_WINDOW_DAYS:-30}
+    depends_on:
+      redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8096/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   pipeline:
     build:
       context: .
