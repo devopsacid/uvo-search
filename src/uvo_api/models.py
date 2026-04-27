@@ -255,6 +255,27 @@ class IngestionDashboard(BaseModel):
     timeseries: IngestionTimeseries
 
 
+# --- Ingestion log ---
+
+
+class IngestionLogItem(BaseModel):
+    ts: str
+    level: str
+    event: str
+    component: str
+    source: str | None = None
+    source_id: str | None = None
+    instance_id: str | None = None
+    pipeline_run_id: str | None = None
+    message: str
+    details: dict = {}
+
+
+class IngestionLogResponse(BaseModel):
+    total: int
+    items: list[IngestionLogItem]
+
+
 # --- Graph (Cytoscape-compatible) ---
 
 
