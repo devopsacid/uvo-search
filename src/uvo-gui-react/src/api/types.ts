@@ -292,3 +292,25 @@ export interface ApiError {
   status: number
   message: string
 }
+
+// ── Ingestion log ─────────────────────────────────────────────────────────────
+
+export type IngestionLogLevel = 'info' | 'warning' | 'error' | 'critical'
+
+export interface IngestionLogItem {
+  ts: string
+  level: IngestionLogLevel
+  event: string
+  component: string
+  source: string | null
+  source_id: string | null
+  instance_id: string | null
+  pipeline_run_id: string | null
+  message: string
+  details: Record<string, unknown>
+}
+
+export interface IngestionLogResponse {
+  total: number
+  items: IngestionLogItem[]
+}

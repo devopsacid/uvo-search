@@ -13,6 +13,7 @@ import {
   Legend,
 } from 'recharts'
 import { useIngestionDashboard } from '@/api/queries/ingestion'
+import { IngestionLogPanel } from '@/components/ingestion/IngestionLogPanel'
 import type { IngestionSource, IngestionSourceStatus } from '@/api/types'
 import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton'
 import { cn, formatBytes, formatNumber } from '@/lib/utils'
@@ -540,6 +541,9 @@ export function IngestionPage() {
           </div>
         </dl>
       </SectionCard>
+
+      {/* Ingestion event log */}
+      <IngestionLogPanel />
     </div>
   )
 }

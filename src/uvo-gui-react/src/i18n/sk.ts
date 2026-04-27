@@ -197,6 +197,21 @@ const sk = {
     sortAsc: 'Vzostupne',
     sortDesc: 'Zostupne',
   },
+  ingestionLog: {
+    title: 'Posledne udalosti',
+    levelAll: 'Vsetky',
+    levelInfo: 'Info',
+    levelWarning: 'Varovania',
+    levelError: 'Chyby',
+    sourceAll: 'Vsetky zdroje',
+    colTime: 'Cas',
+    colLevel: 'Uroven',
+    colEvent: 'Udalost',
+    colSource: 'Zdroj',
+    colMessage: 'Sprava',
+    empty: 'Ziadne udalosti',
+    loading: 'Nacitavam log...',
+  },
 } as const
 
 export type TranslationKey = keyof typeof sk
