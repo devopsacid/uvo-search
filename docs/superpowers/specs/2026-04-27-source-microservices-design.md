@@ -1,6 +1,6 @@
 # Source-per-service ingestion architecture
 
-**Status:** Draft — design approved, plan pending
+**Status:** Implemented (2026-04-27); cutover pending operator action
 **Date:** 2026-04-27
 **Replaces:** the single `pipeline` one-shot container
 
@@ -283,3 +283,35 @@ Three phases, each independently revertable.
 None at design time. All decisions are explicit above; revisit during
 implementation only if a constraint surfaces (e.g. Redis memory ceiling on
 the host, or Neo4j throughput limiting the ingestor).
+
+## Cutover runbook (operator)
+
+Phases 1 and 2 are merged. Phase 3 is the manual cutover the operator runs once
+the new services are observed healthy:
+
+1. Build images:
+   `docker compose build redis extractor-vestnik extractor-crz extractor-ted extractor-itms ingestor dedup-worker`
+2. Start the new stack alongside the legacy `pipeline`:
+   `docker compose up -d redis extractor-vestnik extractor-crz extractor-ted extractor-itms ingestor dedup-worker`
+   Content-hash skip in `upsert_batch` makes any double-write a no-op, so
+   running both in parallel is safe.
+3. Watch one full cadence cycle of every source — ITMS / CRZ / Vestník at 1 h,
+   TED at 6 h. Confirm:
+   - Stream backlog drains to ~0 (`docker compose exec redis redis-cli XLEN notices:vestnik` etc.).
+   - `pipeline_state` checkpoints advance per source.
+   - `cross_source_matches` count grows.
+   - `/health` endpoints on ports 8091–8096 return 200 + JSON snapshots.
+4. `docker compose stop pipeline` — keep the service definition in
+   `docker-compose.yml` for now. Ad-hoc backfills still work via
+   `docker compose run --rm pipeline run --mode historical` (or directly with
+   `uv run python -m uvo_pipeline run` from a host with the source checkout).
+5. After a clean week, optionally remove the `pipeline` block from
+   `docker-compose.yml`. The Python entry point stays.
+
+### Rollback
+
+- Phase 2 rollback: `docker compose stop extractor-* ingestor dedup-worker; docker compose start pipeline`. Streams retain their backlog; the consumer group resumes on next start.
+- Phase 1 rollback: revert the Phase 1 commit on a fresh branch and rebuild the
+  `pipeline` image. ITMS extractor falls back to in-process `MemoryCache` when
+  invoked with no `cache_backend` argument, so the legacy orchestrator path
+  keeps working.
