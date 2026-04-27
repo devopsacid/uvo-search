@@ -99,6 +99,10 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     )
     await _ensure_index(db.ingested_docs, [("ingested_at", -1)], name="ingested_at_desc")
 
+    # ingestion_log: TTL + query indexes
+    from uvo_pipeline.ingestion_log import ensure_log_indexes
+    await ensure_log_indexes(db)
+
     logger.info("MongoDB indexes ensured")
 
 
