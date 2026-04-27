@@ -211,6 +211,7 @@ class IngestionSourceStatus(BaseModel):
     last_7d: int
     registry: int
     skips: int
+    disk_bytes: int  # sum of BSON document sizes for this source's notices
     last_ingest_at: str | None  # ISO 8601 UTC with Z, or null
     age_seconds: float | None
     status: str  # "healthy" | "warning" | "stale" | "unknown"

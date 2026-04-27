@@ -15,7 +15,7 @@ import {
 import { useIngestionDashboard } from '@/api/queries/ingestion'
 import type { IngestionSource, IngestionSourceStatus } from '@/api/types'
 import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton'
-import { cn, formatNumber } from '@/lib/utils'
+import { cn, formatBytes, formatNumber } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -181,6 +181,7 @@ function SourceTable({ sources }: { sources: IngestionSource[] }) {
             <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">{sk.ingestion.tableLast7d}</th>
             <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">{sk.ingestion.tableRegistry}</th>
             <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">{sk.ingestion.tableSkips}</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">{sk.ingestion.tableDiskSize}</th>
             <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">{sk.ingestion.tableLastIngest}</th>
             <SortHeader col="age_seconds" label={sk.ingestion.tableAge} />
           </tr>
@@ -205,6 +206,7 @@ function SourceTable({ sources }: { sources: IngestionSource[] }) {
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(src.last_7d)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(src.registry)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(src.skips)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{formatBytes(src.disk_bytes)}</td>
               <td className="px-3 py-2 text-muted-foreground">
                 {src.last_ingest_at ? formatSlovakDateTime(src.last_ingest_at) : '—'}
               </td>

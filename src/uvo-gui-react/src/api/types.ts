@@ -244,6 +244,7 @@ export interface IngestionSource {
   last_7d: number
   registry: number
   skips: number
+  disk_bytes: number
   last_ingest_at: string | null
   age_seconds: number | null
   status: IngestionSourceStatus

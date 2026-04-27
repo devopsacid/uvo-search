@@ -150,6 +150,7 @@ async def ingestion_dashboard() -> IngestionDashboard:
                 last_7d=s.get("last_7d", 0),
                 registry=s.get("registry_entries", 0),
                 skips=s.get("registry_skips", 0),
+                disk_bytes=s.get("disk_bytes", 0),
                 last_ingest_at=_to_z(last_at),
                 age_seconds=round(age, 1) if age is not None else None,
                 status=status,

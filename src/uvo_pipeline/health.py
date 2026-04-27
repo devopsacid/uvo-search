@@ -1,12 +1,16 @@
 """Source health report — per-source ingestion stats from MongoDB."""
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import OperationFailure
 
 from uvo_pipeline.config import PipelineSettings
+
+logger = logging.getLogger(__name__)
 
 SOURCES = ["vestnik", "crz", "ted", "uvo", "itms"]
 
@@ -32,6 +36,18 @@ async def collect(db: AsyncIOMotorDatabase) -> dict[str, Any]:
     ]
     rows = {r["_id"]: r async for r in db.notices.aggregate(pipeline)}
 
+    # Per-source BSON size — separate pipeline so mongomock environments without
+    # $bsonSize support fall through to 0 instead of breaking the whole report.
+    size_rows: dict[str, int] = {}
+    try:
+        size_pipeline = [
+            {"$group": {"_id": "$source", "disk_bytes": {"$sum": {"$bsonSize": "$$ROOT"}}}},
+        ]
+        async for r in db.notices.aggregate(size_pipeline):
+            size_rows[r["_id"]] = int(r.get("disk_bytes") or 0)
+    except OperationFailure as exc:
+        logger.debug("disk_bytes aggregation unavailable: %s", exc)
+
     # Checkpoint per source
     checkpoints = {
         c["source"]: c async for c in db.pipeline_state.find({})
@@ -49,6 +65,7 @@ async def collect(db: AsyncIOMotorDatabase) -> dict[str, Any]:
             "last_ingested_at": row.get("last_ingested"),
             "last_publication_date": row.get("last_publication"),
             "last_run_at": cp.get("last_run_at"),
+            "disk_bytes": size_rows.get(s, 0),
         })
 
     # Cross-source dedup stats

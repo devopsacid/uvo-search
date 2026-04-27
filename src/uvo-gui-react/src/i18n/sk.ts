@@ -178,6 +178,7 @@ const sk = {
     tableLast7d: 'Poslednych 7 dni',
     tableRegistry: 'Register',
     tableSkips: 'Preskocene',
+    tableDiskSize: 'Velkost dat',
     tableLastIngest: 'Posledna ingesia',
     tableAge: 'Vek',
     chartTitle: 'Denny objem ingescie (30 dni)',
