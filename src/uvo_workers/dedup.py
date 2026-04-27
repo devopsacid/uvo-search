@@ -4,12 +4,14 @@ import asyncio
 import logging
 import signal
 import time
+import uuid
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic_settings import BaseSettings
 
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.dedup import run_cross_source_dedup
+from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.pubsub import subscribe
 from uvo_pipeline.redis_client import RedisSettings, close_redis, get_redis
 from uvo_workers.health import serve_health
@@ -31,8 +33,13 @@ async def run_dedup_worker() -> None:
     settings = DedupWorkerSettings()
     pipeline_settings = PipelineSettings()
     redis_settings = RedisSettings()
+    instance_id = uuid.uuid4().hex
+
+    log_mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
+    log_db = log_mongo_client[pipeline_settings.mongodb_database]
 
     metrics: dict = {
+        "instance_id": instance_id,
         "dedup_runs": 0,
         "last_run_at": None,
         "last_error": None,
@@ -48,7 +55,28 @@ async def run_dedup_worker() -> None:
         metrics["redis_connected"] = True
     except Exception as exc:
         logger.critical("Redis connection failed: %s", exc)
+        try:
+            await log_event(
+                log_db,
+                level="critical",
+                event="redis_connect_failed",
+                component="dedup-worker",
+                instance_id=instance_id,
+                message=str(exc),
+            )
+        except Exception:
+            pass
         raise SystemExit(1) from exc
+
+    await log_event(
+        log_db,
+        level="info",
+        event="worker_started",
+        component="dedup-worker",
+        instance_id=instance_id,
+        message="dedup worker up",
+        details={"window_days": settings.dedup_window_days},
+    )
 
     stop_event = asyncio.Event()
 
@@ -83,10 +111,30 @@ async def run_dedup_worker() -> None:
             metrics["dedup_runs"] += 1
             metrics["last_run_at"] = time.time()
             logger.info("dedup: found %d match groups", match_groups)
+            await log_event(
+                db,
+                level="info",
+                event="cycle_complete",
+                component="dedup-worker",
+                instance_id=instance_id,
+                message=f"dedup found {match_groups} match groups",
+                details={"match_groups": match_groups, "window_days": settings.dedup_window_days},
+            )
         except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"
             logger.error("dedup: run failed: %s", msg)
             metrics["last_error"] = msg
+            try:
+                await log_event(
+                    db,
+                    level="error",
+                    event="cycle_failed",
+                    component="dedup-worker",
+                    instance_id=instance_id,
+                    message=msg,
+                )
+            except Exception:
+                pass
         finally:
             mongo_client.close()
 
@@ -132,6 +180,19 @@ async def run_dedup_worker() -> None:
             except (asyncio.CancelledError, Exception):
                 pass
         await close_redis(redis_client)
+        try:
+            await log_event(
+                log_db,
+                level="info",
+                event="worker_stopped",
+                component="dedup-worker",
+                instance_id=instance_id,
+                message="dedup worker shutting down",
+                details={"dedup_runs": metrics["dedup_runs"]},
+            )
+        except Exception:
+            pass
+        log_mongo_client.close()
         logger.info("dedup worker stopped")
 
 
