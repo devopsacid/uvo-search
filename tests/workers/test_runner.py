@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 import fakeredis.aioredis
 import pytest
+from mongomock_motor import AsyncMongoMockClient
 
 import uvo_workers.runner as runner_mod
 from uvo_pipeline.redis_client import RedisSettings
@@ -13,6 +14,23 @@ from uvo_workers.runner import run_extractor_loop
 
 def _fake_redis_settings() -> RedisSettings:
     return RedisSettings(redis_url="redis://localhost:6379/0", redis_password="")
+
+
+def _patch_mongo():
+    """Context manager that injects AsyncMongoMockClient into the runner module."""
+
+    class _Ctx:
+        def __init__(self):
+            self._orig = runner_mod.AsyncIOMotorClient
+
+        def __enter__(self):
+            runner_mod.AsyncIOMotorClient = AsyncMongoMockClient
+            return self
+
+        def __exit__(self, *_):
+            runner_mod.AsyncIOMotorClient = self._orig
+
+    return _Ctx()
 
 
 async def _patch_redis(fake_redis):
@@ -54,23 +72,24 @@ async def test_runner_runs_two_cycles():
         return counter[0]
 
     ctx = await _patch_redis(fake_redis)
-    async with ctx:
-        loop_task = asyncio.create_task(
-            run_extractor_loop(
-                source="test_source",
-                interval_seconds=0,
-                extract=extract,
-                redis_settings=_fake_redis_settings(),
-                health_port=0,
-                instance_id="test-instance",
+    with _patch_mongo():
+        async with ctx:
+            loop_task = asyncio.create_task(
+                run_extractor_loop(
+                    source="test_source",
+                    interval_seconds=0,
+                    extract=extract,
+                    redis_settings=_fake_redis_settings(),
+                    health_port=0,
+                    instance_id="test-instance",
+                )
             )
-        )
-        await asyncio.wait_for(stop_after.wait(), timeout=5.0)
-        loop_task.cancel()
-        try:
-            await loop_task
-        except (asyncio.CancelledError, SystemExit):
-            pass
+            await asyncio.wait_for(stop_after.wait(), timeout=5.0)
+            loop_task.cancel()
+            try:
+                await loop_task
+            except (asyncio.CancelledError, SystemExit):
+                pass
 
     assert counter[0] == 2
 
@@ -103,23 +122,24 @@ async def test_runner_skips_when_lock_held_by_other():
     ctx = await _patch_redis(fake_redis)
 
     try:
-        async with ctx:
-            loop_task = asyncio.create_task(
-                run_extractor_loop(
-                    source="locked_source",
-                    interval_seconds=0,
-                    extract=extract,
-                    redis_settings=_fake_redis_settings(),
-                    health_port=0,
-                    instance_id="my-instance",
+        with _patch_mongo():
+            async with ctx:
+                loop_task = asyncio.create_task(
+                    run_extractor_loop(
+                        source="locked_source",
+                        interval_seconds=0,
+                        extract=extract,
+                        redis_settings=_fake_redis_settings(),
+                        health_port=0,
+                        instance_id="my-instance",
+                    )
                 )
-            )
-            await asyncio.wait_for(ran_one_cycle.wait(), timeout=5.0)
-            loop_task.cancel()
-            try:
-                await loop_task
-            except (asyncio.CancelledError, SystemExit):
-                pass
+                await asyncio.wait_for(ran_one_cycle.wait(), timeout=5.0)
+                loop_task.cancel()
+                try:
+                    await loop_task
+                except (asyncio.CancelledError, SystemExit):
+                    pass
     finally:
         runner_mod.lock = original_lock
 
@@ -142,23 +162,24 @@ async def test_runner_records_last_error_and_continues():
         return 5
 
     ctx = await _patch_redis(fake_redis)
-    async with ctx:
-        loop_task = asyncio.create_task(
-            run_extractor_loop(
-                source="error_source",
-                interval_seconds=0,
-                extract=extract,
-                redis_settings=_fake_redis_settings(),
-                health_port=0,
-                instance_id="err-instance",
+    with _patch_mongo():
+        async with ctx:
+            loop_task = asyncio.create_task(
+                run_extractor_loop(
+                    source="error_source",
+                    interval_seconds=0,
+                    extract=extract,
+                    redis_settings=_fake_redis_settings(),
+                    health_port=0,
+                    instance_id="err-instance",
+                )
             )
-        )
-        await asyncio.wait_for(two_calls.wait(), timeout=5.0)
-        loop_task.cancel()
-        try:
-            await loop_task
-        except (asyncio.CancelledError, SystemExit):
-            pass
+            await asyncio.wait_for(two_calls.wait(), timeout=5.0)
+            loop_task.cancel()
+            try:
+                await loop_task
+            except (asyncio.CancelledError, SystemExit):
+                pass
 
     # cycle 1 raised, cycle 2 succeeded — runner did not exit on the error
     assert call_count[0] >= 2

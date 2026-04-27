@@ -8,12 +8,46 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import redis.asyncio
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+from uvo_pipeline.config import PipelineSettings
+from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.locks import lock
 from uvo_pipeline.redis_client import RedisSettings, close_redis, get_redis
 from uvo_workers.health import serve_health
 
 logger = logging.getLogger(__name__)
+
+
+async def _log_cycle_result(
+    db: AsyncIOMotorDatabase,
+    *,
+    source: str,
+    instance_id: str,
+    count: int,
+    error: str | None,
+) -> None:
+    if error is None:
+        await log_event(
+            db,
+            level="info",
+            event="cycle_complete",
+            component=f"extractor:{source}",
+            source=source,
+            instance_id=instance_id,
+            message=f"{source}: {count} items XADDed",
+            details={"count": count},
+        )
+    else:
+        await log_event(
+            db,
+            level="error",
+            event="cycle_failed",
+            component=f"extractor:{source}",
+            source=source,
+            instance_id=instance_id,
+            message=error,
+        )
 
 
 async def run_extractor_loop(
@@ -26,6 +60,9 @@ async def run_extractor_loop(
     instance_id: str | None = None,
 ) -> None:
     instance_id = instance_id or uuid.uuid4().hex
+    pipeline_settings = PipelineSettings()
+    mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
+    db = mongo_client[pipeline_settings.mongodb_database]
     started_at = datetime.now(UTC).isoformat()
 
     metrics: dict = {
@@ -47,7 +84,30 @@ async def run_extractor_loop(
         metrics["redis_connected"] = True
     except Exception as exc:
         logger.critical("Redis connection failed for %s: %s", source, exc)
+        try:
+            await log_event(
+                db,
+                level="critical",
+                event="redis_connect_failed",
+                component=f"extractor:{source}",
+                source=source,
+                instance_id=instance_id,
+                message=str(exc),
+            )
+        except Exception:
+            pass
         raise SystemExit(1) from exc
+
+    await log_event(
+        db,
+        level="info",
+        event="worker_started",
+        component=f"extractor:{source}",
+        source=source,
+        instance_id=instance_id,
+        message=f"{source} extractor up",
+        details={"interval_seconds": interval_seconds},
+    )
 
     stop_event = asyncio.Event()
 
@@ -77,14 +137,23 @@ async def run_extractor_loop(
         while not stop_event.is_set():
             async with lock(redis_client, lock_key, instance_id, ttl_seconds=lock_ttl) as acquired:
                 if acquired:
+                    error: str | None = None
+                    count = 0
                     try:
                         count = await extract(redis_client, state)
                         metrics["cycles_completed"] += 1
                         logger.info("%s: cycle complete, %d items XADDed", source, count)
                     except Exception as exc:
-                        msg = f"{type(exc).__name__}: {exc}"
-                        metrics["last_error"] = msg
-                        logger.error("%s: extract error: %s", source, msg)
+                        error = f"{type(exc).__name__}: {exc}"
+                        metrics["last_error"] = error
+                        logger.error("%s: extract error: %s", source, error)
+                    await _log_cycle_result(
+                        db,
+                        source=source,
+                        instance_id=instance_id,
+                        count=count,
+                        error=error,
+                    )
                 else:
                     metrics["cycles_skipped_locked"] += 1
                     logger.debug("%s: lock held by other instance, skipping cycle", source)
@@ -100,5 +169,22 @@ async def run_extractor_loop(
                 await health_task
             except (asyncio.CancelledError, Exception):
                 pass
+        try:
+            await log_event(
+                db,
+                level="info",
+                event="worker_stopped",
+                component=f"extractor:{source}",
+                source=source,
+                instance_id=instance_id,
+                message=f"{source}: worker stopped",
+                details={
+                    "cycles_completed": metrics["cycles_completed"],
+                    "cycles_skipped_locked": metrics["cycles_skipped_locked"],
+                },
+            )
+        except Exception:
+            pass
+        mongo_client.close()
         await close_redis(redis_client)
         logger.info("%s: worker stopped", source)
