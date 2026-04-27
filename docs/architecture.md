@@ -308,7 +308,7 @@ All loggers use Python's `logging` module. Set `LOG_LEVEL` env var:
 
 ## Data Pipeline
 
-A separate **pipeline service** ingests from five sources into MongoDB + Neo4j:
+Seven **long-lived microservices** ingest from five sources into MongoDB + Neo4j via Redis Streams:
 
 ```
 NKOD (CKAN)   UVO Vestník   Ekosystem/CRZ   ITMS         TED
@@ -316,12 +316,17 @@ NKOD (CKAN)   UVO Vestník   Ekosystem/CRZ   ITMS         TED
   │             │             │               │           │
   └─────────────┼─────────────┼───────────────┼───────────┘
                 │
-         Pipeline Container
-         ├─ extractors/ (uvo, crz, itms, ted, vestnik_xml, vestnik_nkod)
-         ├─ catalog/ (ckan, nkod) — source discovery
-         ├─ transformers/ → CanonicalNotice
-         ├─ Cross-source deduplication
-         └─ Load to MongoDB + Neo4j
+         ┌─────────────────────────────────────────────────┐
+         │         Redis (streams + pub/sub + cache)      │
+         └──────────────────────┬──────────────────────────┘
+                                │
+        ┌───────────────────────┼────────────────────────┐
+        │                       │                        │
+    XADD notices:*          SUBSCRIBE                  Cache
+    (extractors)            notices:written           (ITMS)
+        │                  (dedup-worker)               │
+        └─► XREADGROUP ◄──────────────────────────────┘
+            (ingestor)
                 │
          ┌──────┴──────┐
          │             │
@@ -334,13 +339,17 @@ NKOD (CKAN)   UVO Vestník   Ekosystem/CRZ   ITMS         TED
          (reads via queries)
 ```
 
-**Modes**:
-- `recent` (default) — Last 365 days, checkpoint-based incremental
-- `historical` — Full backfill (one-time)
-- `dry-run` — Validate config without DB writes
+**Four independent extractors + ingestor + dedup-worker:**
+- `extractor-vestnik`, `extractor-crz`, `extractor-ted`, `extractor-itms` — each owns its interval and rate-limit budget; emit `CanonicalNotice` batches to `notices:<source>` Redis streams
+- `ingestor` — reads all 4 streams, upserts to Mongo+Neo4j, publishes `notices:written` event on success
+- `dedup-worker` — subscribes `notices:written`, debounces 5s (coalesces multiple writes into one dedup run), with 1h fallback poll
+
+Legacy `pipeline` service is preserved for ad-hoc backfills (`docker compose run --rm pipeline run --mode historical`); new services handle continuous incremental ingestion.
+
+**Per-source health endpoints** (JSON snapshots): 8091 (vestnik), 8092 (crz), 8093 (ted), 8094 (itms), 8095 (ingestor), 8096 (dedup-worker).
 
 **Deduplication**:
 - Per-source: `(source, source_id)` unique constraint
-- Cross-source: Hash matching on `(procurer_ico, cpv_code)` links notices
+- Cross-source: Event-driven on `notices:written`; triggered by new ingestions + 1h fallback poll
 
-See [data-pipeline.md](data-pipeline.md) for details.
+See [data-pipeline.md](data-pipeline.md) and the detailed spec at [docs/superpowers/specs/2026-04-27-source-microservices-design.md](superpowers/specs/2026-04-27-source-microservices-design.md).

@@ -30,6 +30,32 @@ The **FastAPI server** wraps MCP tools with HTTP endpoints for browser clients (
 - `src/uvo_api/routers/suppliers.py` — Supplier endpoints
 - `src/uvo_api/routers/graph.py` — Graph wrapper endpoints
 
+## 3. Data Pipeline (Microservices)
+
+Seven long-lived services handle continuous data ingestion via Redis Streams. See [data-pipeline.md](data-pipeline.md) and the detailed spec at [docs/superpowers/specs/2026-04-27-source-microservices-design.md](superpowers/specs/2026-04-27-source-microservices-design.md).
+
+**Services & Health Endpoints**:
+- `extractor-vestnik` (port 8091) — UVO Vestník XML extraction
+- `extractor-crz` (port 8092) — Ekosystem CRZ contract extraction
+- `extractor-ted` (port 8093) — TED EU API extraction
+- `extractor-itms` (port 8094) — ITMS fund extraction (Redis-cached subjects/suppliers)
+- `ingestor` (port 8095) — Streams consumer; upserts Mongo+Neo4j
+- `dedup-worker` (port 8096) — Cross-source deduplication (event-driven + fallback poll)
+
+**Health Check Format**:
+```bash
+curl http://localhost:8091/health  # Returns JSON snapshot: {"status": "ok", "service": "...", "..."}
+```
+
+**Key Files**:
+- `src/uvo_pipeline/redis_client.py` — Async Redis factory
+- `src/uvo_pipeline/streams.py` — XADD, XREADGROUP, XACK helpers
+- `src/uvo_pipeline/pubsub.py` — PUBLISH, SUBSCRIBE helpers
+- `src/uvo_pipeline/locks.py` — Distributed lock helpers
+- `src/uvo_pipeline/cache/` — ITMS cache (memory + Redis backends)
+- `src/uvo_pipeline/dedup.py` — Cross-source dedup logic
+- `src/uvo_workers/` — Daemon entrypoints (runner.py, vestnik.py, crz.py, ted.py, itms.py, ingestor.py, dedup.py)
+
 ## Starting the Servers
 
 **MCP Server** (port 8000):

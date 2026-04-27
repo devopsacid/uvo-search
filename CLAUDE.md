@@ -4,14 +4,15 @@ Search and browse Slovak government procurement data. Shared MCP backend, single
 
 ## Architecture
 
-Four Python packages under `src/` + one React frontend:
+Five Python packages under `src/` + one React frontend:
 
 | Package | Port | Entrypoint | Role |
 | ------- | ---- | ---------- | ---- |
 | `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` | FastMCP server — search, detail, graph tools |
 | `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (frontend → MCP); dashboard + ingestion endpoints |
 | `uvo-gui-react` | 8080 host / 5174 dev | `cd src/uvo-gui-react && npm run dev` | React 18 SPA public frontend (Slovak UI) |
-| `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | One-shot ingestion (UVO/CRZ/ITMS/TED/NKOD → Mongo/Neo4j) |
+| `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | Shared lib + one-shot backfill CLI (legacy; new long-lived services below) |
+| `uvo_workers` | 8091–8096 | `uv run python -m uvo_workers.<service>` | Long-lived microservices (4 extractors + ingestor + dedup-worker; Redis Streams) |
 
 **Storage:** MongoDB Atlas Local (27017, with `mongot` for Atlas Search) + Neo4j 5 with APOC (7474/7687). Both required for `uvo_mcp` to start.
 
@@ -47,7 +48,7 @@ cd src/uvo-gui-react && npm install && npm test
 
 ## Docker (local deploy)
 
-Full stack (mcp + api + gui-react + mongo + neo4j + pipeline) lives in `docker-compose.yml`. For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j volume-init gotchas, service-name URIs, and nuclear-reset tiers.
+Full stack (14 services: mcp-server, api, gui-react, mongo, mongo-express, neo4j, redis, extractor-vestnik, extractor-crz, extractor-ted, extractor-itms, ingestor, dedup-worker, pipeline) lives in `docker-compose.yml`. For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j/redis volume-init gotchas, service-name URIs, and nuclear-reset tiers. The `pipeline` service is now optional/legacy for ad-hoc backfills; the 6 new microservices (4 extractors + ingestor + dedup-worker) handle continuous ingestion via Redis Streams.
 
 ## Workflow
 

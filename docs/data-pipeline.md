@@ -2,9 +2,9 @@
 
 ## Overview
 
-The data pipeline ingests Slovak public procurement data from several sources into local databases, enabling the MCP server to answer queries without real-time API calls. Data is stored in MongoDB (primary document store) and Neo4j (graph relationships for network analysis).
+Seven long-lived microservices ingest Slovak public procurement data from five sources (UVO Vestník, CRZ, ITMS, TED, NKOD) into MongoDB and Neo4j via Redis Streams. Each service owns its extraction cadence, rate-limit budget, and failure domain. The legacy one-shot `pipeline` service is preserved for ad-hoc historical backfills.
 
-The pipeline runs as a Docker Compose service. The default mode (`recent`) fetches the past 365 days on startup. Historical backfill is available as an on-demand command.
+**Status**: Microservices architecture (source-per-service) implemented as of 2026-04-27. See the detailed design spec at [docs/superpowers/specs/2026-04-27-source-microservices-design.md](superpowers/specs/2026-04-27-source-microservices-design.md).
 
 ---
 
@@ -12,28 +12,65 @@ The pipeline runs as a Docker Compose service. The default mode (`recent`) fetch
 
 ```
 [NKOD / data.gov.sk]   [UVO Vestník XML]    [Ekosystem CRZ]    [ITMS]    [TED EU API]
-       |                      |                    |              |          |
-  catalog/ckan.py       extractors/uvo.py     extractors/crz.py  extractors/itms.py  extractors/ted.py
-  catalog/nkod.py       extractors/vestnik_xml.py
-  extractors/vestnik_nkod.py
-       |                      |                    |              |          |
-       +----------------------+--------------------+--------------+----------+
-                              |
-                    transformers/<source>.py
-                    (-> CanonicalNotice)
-                              |
-                    +---------+---------+
-                    |                   |
-               loaders/mongo.py    loaders/neo4j.py
-                    |                   |
-               MongoDB             Neo4j
-               uvo_search          (graph)
-                    |                   |
-                    +---------+---------+
-                              |
-                     MCP Server (port 8000)
-                     src/uvo_mcp/
+       │                      │                    │              │          │
+       └──────────────────────┼────────────────────┼──────────────┼──────────┘
+                              │
+                   ┌──────────┴──────────┐
+                   │ extractors/         │
+                   │ (4 daemons)         │
+                   └────────┬────────────┘
+                            │
+                   ┌────────▼──────────┐
+                   │ Redis Streams     │
+                   │ notices:vestnik   │
+                   │ notices:crz       │
+                   │ notices:ted       │
+                   │ notices:itms      │
+                   └────────┬──────────┘
+                            │ XREADGROUP
+                   ┌────────▼──────────┐
+                   │ ingestor          │
+                   │ (transforms +     │
+                   │  upserts)         │
+                   └────────┬──────────┘
+                            │ PUBLISH notices:written
+                   ┌────────▼──────────┐
+                   │ Redis pub/sub      │
+                   │ (event trigger)    │
+                   └────────┬──────────┘
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+   ┌────▼─────┐        ┌────▼──────┐      ┌────▼──────┐
+   │ MongoDB   │        │ Neo4j     │      │ dedup-    │
+   │ notices   │        │ graph     │      │ worker    │
+   │ procurers │        │           │      │ (debounce │
+   │ suppliers │        │           │      │  5s)      │
+   │ cross_src │        │           │      └───────────┘
+   │ pipeline_ │        │           │
+   │ state     │        │           │
+   └───────────┘        └───────────┘
+        │                   │
+        └───────────┬───────┘
+                    │
+           MCP Server (port 8000)
+           src/uvo_mcp/
 ```
+
+**New packages & modules** (`uvo_pipeline` shared lib + `uvo_workers` daemon entrypoints):
+- `src/uvo_pipeline/` (shared, no rename):
+  - `redis_client.py` — async Redis factory
+  - `streams.py` — XADD, XREADGROUP, XACK helpers
+  - `pubsub.py` — PUBLISH, SUBSCRIBE helpers
+  - `locks.py` — distributed lock CAS
+  - `cache/` (memory.py, redis.py) — ITMS cache backends
+  - `dedup.py` — cross-source dedup logic
+  - `extractors/` — unchanged (+ `cache_backend` param for ITMS)
+- `src/uvo_workers/` (new package):
+  - `runner.py` — daemon loop, signal handling, /health, lock acquisition
+  - `vestnik.py`, `crz.py`, `ted.py`, `itms.py` — per-source extractors
+  - `ingestor.py` — streams consumer
+  - `dedup.py` — dedup subscriber
 
 ---
 
@@ -50,32 +87,78 @@ The pipeline runs as a Docker Compose service. The default mode (`recent`) fetch
 
 ---
 
-## Pipeline Modes
+## Microservices Operation
 
-### Recent mode (default)
-```bash
-docker compose run --rm pipeline --mode=recent
-# or just start the pipeline container
-docker compose up pipeline
-```
-- Fetches data from the last 365 days (configurable via `RECENT_DAYS`)
-- Uses checkpoint from MongoDB to start from last successful run
-- Runs once and exits (`restart: "no"` in Docker Compose)
+### Extractors (vestnik, crz, ted, itms)
 
-### Historical backfill
-```bash
-docker compose run --rm pipeline --mode=historical
-```
-- Full backfill from `HISTORICAL_FROM_YEAR` (default: 2014)
-- May take several hours depending on data volume
-- Safe to re-run — all writes are idempotent upserts
+Each runs on its own interval (config via `<SOURCE>_INTERVAL_SECONDS` in `.env`):
 
-### Dry run
 ```bash
-docker compose run --rm pipeline --mode=recent --dry-run
+# Default intervals:
+VESTNIK_INTERVAL_SECONDS=3600  # 1 hour
+CRZ_INTERVAL_SECONDS=3600      # 1 hour
+TED_INTERVAL_SECONDS=21600     # 6 hours
+ITMS_INTERVAL_SECONDS=3600     # 1 hour
+
+# Health check (per service):
+curl http://localhost:8091/health  # vestnik
+curl http://localhost:8092/health  # crz
+curl http://localhost:8093/health  # ted
+curl http://localhost:8094/health  # itms
 ```
-- Skips DB connections
-- Useful for testing configuration
+
+Per-cycle behavior:
+1. Acquire distributed lock `extractor:lock:<source>` (TTL = 2×interval)
+2. Iterate source API, buffer `CanonicalNotice` objects
+3. Every 500 items (configurable `BATCH_SIZE`): `XADD notices:<source> MAXLEN ~ 100000 ...`
+4. After API loop: flush remainder + update checkpoint in Mongo `pipeline_state`
+5. Release lock, sleep until next interval
+
+### Ingestor
+
+Continuous daemon reading all 4 Redis Streams:
+
+```bash
+# Health check:
+curl http://localhost:8095/health
+
+# Behavior:
+XREADGROUP GROUP ingestor <instance-id> COUNT <INGESTOR_BATCH_SIZE>
+           BLOCK 5000 STREAMS notices:vestnik notices:crz notices:ted notices:itms > > > >
+# → decode payloads, upsert Mongo+Neo4j
+# → on success: XACK + PUBLISH notices:written
+# → on failure: skip XACK (re-delivers next read)
+```
+
+### Dedup-worker
+
+Event-driven with fallback poll:
+
+```bash
+# Health check:
+curl http://localhost:8096/health
+
+# Behavior:
+SUBSCRIBE notices:written
+# Debounce 5 seconds (DEDUP_DEBOUNCE_SECONDS)
+# Fallback poll every 1 hour (DEDUP_INTERVAL_SECONDS) if no events arrive
+# Run cross_source_dedup filtered on canonical_id IS NULL + ingested_at >= now - 30 days
+```
+
+### Legacy: One-shot pipeline (ad-hoc backfill only)
+
+```bash
+# Historical backfill (full rebuild from 2014)
+docker compose run --rm pipeline run --mode historical
+
+# Recent backfill (last 365 days)
+docker compose run --rm pipeline run --mode recent
+
+# Dry run (validation only)
+docker compose run --rm pipeline run --mode recent --dry-run
+```
+
+The legacy `pipeline` service is kept in `docker-compose.yml` for backwards compatibility; new continuous ingestion runs via the 6 microservices above.
 
 ---
 
@@ -153,58 +236,148 @@ RETURN DISTINCT related.name, related.ico, labels(related)[0]
 
 ## Running the Pipeline
 
+### Full stack (microservices + storage)
+
 ```bash
-# First-time setup (starts MongoDB and Neo4j)
-docker compose up mongo neo4j -d
+# Start all services
+docker compose up -d
 
-# Run recent pipeline (fetches last 365 days)
-docker compose run --rm pipeline --mode=recent
+# Watch logs (all services)
+docker compose logs -f
 
-# Historical backfill (from 2014)
-docker compose run --rm pipeline --mode=historical
+# Stop all services
+docker compose down
+```
 
-# Check results in MongoDB
+### Individual service operations
+
+```bash
+# Build images
+docker compose build redis extractor-vestnik extractor-crz extractor-ted extractor-itms ingestor dedup-worker
+
+# Start new stack (without legacy pipeline, for cutover):
+docker compose up -d redis extractor-vestnik extractor-crz extractor-ted extractor-itms ingestor dedup-worker
+
+# Stop microservices (keep legacy pipeline if needed)
+docker compose stop extractor-vestnik extractor-crz extractor-ted extractor-itms ingestor dedup-worker
+
+# Watch stream backlog (should drain to ~0)
+docker compose exec redis redis-cli XLEN notices:vestnik
+docker compose exec redis redis-cli XLEN notices:crz
+docker compose exec redis redis-cli XLEN notices:ted
+docker compose exec redis redis-cli XLEN notices:itms
+
+# Check pipeline state (per-source checkpoints)
+docker compose exec mongo mongosh -u uvo -p $MONGO_PASSWORD uvo_search \
+  --eval "db.pipeline_state.find().pretty()"
+
+# Check notices & dedup results
 docker compose exec mongo mongosh -u uvo -p $MONGO_PASSWORD uvo_search \
   --eval "db.notices.countDocuments({})"
+docker compose exec mongo mongosh -u uvo -p $MONGO_PASSWORD uvo_search \
+  --eval "db.cross_source_matches.countDocuments({})"
+```
+
+### Health & monitoring
+
+```bash
+# Per-service /health endpoints (JSON snapshots)
+curl http://localhost:8091/health  # extractor-vestnik
+curl http://localhost:8092/health  # extractor-crz
+curl http://localhost:8093/health  # extractor-ted
+curl http://localhost:8094/health  # extractor-itms
+curl http://localhost:8095/health  # ingestor
+curl http://localhost:8096/health  # dedup-worker
+```
+
+### Storage inspection
+
+```bash
+# Open MongoDB shell
+docker compose exec mongo mongosh -u uvo -p $MONGO_PASSWORD uvo_search
 
 # Open Neo4j Browser
 # http://localhost:7474  (user: neo4j, password from NEO4J_PASSWORD env var)
+
+# Open Redis CLI
+docker compose exec redis redis-cli
 ```
 
 ---
 
-## Checkpoint and Incremental Runs
+## Checkpoints & State
 
-Checkpoints are stored in the `pipeline_state` MongoDB collection (key: `source = "pipeline"`).
+Per-source checkpoints are stored in the `pipeline_state` MongoDB collection (one document per `source`):
 
-On `--mode=recent`, if a checkpoint exists with a date more recent than `today - RECENT_DAYS`, the pipeline uses the checkpoint date as `from_date` instead.
-
-To reset the checkpoint (force full re-fetch in recent mode):
 ```javascript
 // In mongosh:
-db.pipeline_state.deleteOne({source: "pipeline"})
+db.pipeline_state.find()  // all checkpoints
+
+// Sample document:
+{
+  "_id": ObjectId("..."),
+  "source": "vestnik",
+  "last_run_at": ISODate("2026-04-27T12:34:56Z"),
+  "last_modified": "2026-04-27",  // Vestník last_modified date
+  "itms_min_id": 0  // ITMS-specific: min_id for next fetch
+}
 ```
+
+Each extractor updates its checkpoint after successfully writing to the stream. On restart, the extractor resumes from the checkpoint date (or start of time if none exists).
+
+**Reset a source checkpoint** (force full re-fetch from start of time):
+
+```javascript
+// In mongosh:
+db.pipeline_state.deleteOne({source: "vestnik"})
+// Next cycle of extractor-vestnik will start from day 1
+```
+
+**ITMS special handling**: The `itms_min_id` field tracks progress through ITMS pagination. Updated after each successful stream flush.
 
 ---
 
 ## Environment Variables
 
-Add these to `.env`:
+All configuration lives in `.env` (interpolated by Docker Compose):
 
 ```bash
-# MongoDB
+# Storage
 MONGO_PASSWORD=changeme
-MONGODB_URI=mongodb://uvo:changeme@mongo:27017
-
-# Neo4j
 NEO4J_PASSWORD=changeme
-NEO4J_URI=bolt://neo4j:7687
-NEO4J_USER=neo4j
 
-# Pipeline behaviour
-PIPELINE_MODE=recent        # recent | historical
-RECENT_DAYS=365
-HISTORICAL_FROM_YEAR=2014
+# Redis (new — required for microservices)
+REDIS_URL=redis://redis:6379/0
+REDIS_PASSWORD=
+
+# Extractor intervals (seconds)
+VESTNIK_INTERVAL_SECONDS=3600     # 1 hour
+CRZ_INTERVAL_SECONDS=3600         # 1 hour
+TED_INTERVAL_SECONDS=21600        # 6 hours
+ITMS_INTERVAL_SECONDS=3600        # 1 hour
+
+# Extractor modes (all default to "recent")
+VESTNIK_MODE=recent
+CRZ_MODE=recent
+TED_MODE=recent
+ITMS_MODE=recent
+
+# Cross-source deduplication (event-driven + fallback poll)
+DEDUP_INTERVAL_SECONDS=3600       # 1 hour fallback poll
+DEDUP_DEBOUNCE_SECONDS=5          # coalesce events within 5s
+DEDUP_WINDOW_DAYS=30              # only dedup notices ingested in last 30 days
+
+# ITMS cache backend (Redis by default in production)
+ITMS_CACHE_BACKEND=redis          # or "memory" for tests
+ITMS_CACHE_TTL_SECONDS=604800     # 7 days
+
+# Ingestor batching
+INGESTOR_BATCH_SIZE=100           # messages per XREADGROUP call
+STREAM_MAXLEN_APPROX=100000       # approximate max entries per stream
+
+# Legacy pipeline (one-shot backfill mode)
+HISTORICAL_FROM_YEAR=2014         # used by `pipeline run --mode historical`
+RECENT_DAYS=365                   # used by `pipeline run --mode recent`
 ```
 
 ---
@@ -213,10 +386,14 @@ HISTORICAL_FROM_YEAR=2014
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `429 Too Many Requests` from CRZ | Rate limit exceeded | Lower `CRZ_RATE_LIMIT` (default: 55/min) |
-| ZIP download timeout | Large Vestník package | Increase `REQUEST_TIMEOUT` |
-| Neo4j OOM | Heap too small | Set `NEO4J_server_memory_heap_max__size: 2g` |
-| Pipeline exits with 0 notices | No data in date range | Check `from_date` and checkpoint |
+| Extractors keep skipping cycles | Lock conflict (another instance running) | Kill the competing container, wait for lock to expire (2× interval) |
+| Stream backlog grows (`XLEN` doesn't return to ~0) | Ingestor down or stuck | Check `docker compose logs ingestor`, restart with `docker compose restart ingestor` |
+| `429 Too Many Requests` from source API | Rate limit exceeded | Increase interval in `.env` or lower `BATCH_SIZE` |
+| Ingestor fails to write to Mongo | Connection down or permission error | Check `docker compose logs ingestor`, verify `MONGO_PASSWORD`, restart stack |
+| Dedup-worker never runs | No `notices:written` events (ingestor not publishing) | Check `docker compose logs ingestor` and `docker compose logs dedup-worker` |
+| Redis connection refused | Redis not running or wrong URI | Verify `REDIS_URL` in `.env`, run `docker compose up redis` |
+| ITMS extractor re-fetches everything on restart | Cache backend is `memory` (in-process only) | Set `ITMS_CACHE_BACKEND=redis` for persistent cache across restarts |
+| Neo4j OOM | Heap too small | Set `NEO4J_server_memory_heap_max__size: 2g` in `docker-compose.yml` |
 
 ---
 
@@ -224,6 +401,10 @@ HISTORICAL_FROM_YEAR=2014
 
 1. Add extractor: `src/uvo_pipeline/extractors/<source>.py` — async generator yielding raw dicts
 2. Add transformer: `src/uvo_pipeline/transformers/<source>.py` — `transform_<entity>(raw) -> CanonicalNotice`
-3. Add to orchestrator: `src/uvo_pipeline/orchestrator.py` — add extraction block in `run()`
-4. Add tests: `tests/pipeline/extractors/test_<source>.py`, `tests/pipeline/transformers/test_<source>.py`
-5. Add checkpoint key to `pipeline_state` if the source needs incremental tracking
+3. For microservices: Create daemon entry in `src/uvo_workers/<source>.py` (inherits from `runner.py`)
+   - Implement extraction loop, stream publishing, checkpoint update
+   - Expose via `uv run python -m uvo_workers.<source>`
+   - Add to `docker-compose.yml` service block
+4. For legacy pipeline: Add extraction block to `src/uvo_pipeline/orchestrator.py::run()`
+5. Add tests: `tests/pipeline/extractors/test_<source>.py`, `tests/pipeline/transformers/test_<source>.py`
+6. Add checkpoint key to `pipeline_state` MongoDB if the source needs incremental tracking

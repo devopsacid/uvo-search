@@ -134,56 +134,130 @@ The public SPA lives in [`src/uvo-gui-react/`](../src/uvo-gui-react/) (React 18 
 
 ## Environment Variables
 
-| Variable | Type | Default | Required | Description |
-|----------|------|---------|----------|-------------|
-| `MONGO_PASSWORD` | string | — | Yes | Password for MongoDB |
-| `NEO4J_PASSWORD` | string | — | Yes | Password for Neo4j |
-| `EKOSYSTEM_BASE_URL` | string | `https://datahub.ekosystem.slovensko.digital` | No | Ekosystem Datahub URL |
-| `EKOSYSTEM_API_TOKEN` | string | `` | No | Ekosystem API token (future use) |
-| `TED_BASE_URL` | string | `https://api.ted.europa.eu` | No | TED API URL (future use) |
-| `MCP_SERVER_URL` | string | `http://localhost:8000/mcp` | No | URL for API bridge to reach MCP server |
-| `MCP_HOST` | string | `0.0.0.0` | No | MCP server bind address |
-| `MCP_PORT` | int | `8000` | No | MCP server port |
-| `CACHE_TTL_SEARCH` | int | `300` | No | Search result cache TTL (seconds) |
-| `CACHE_TTL_ENTITY` | int | `3600` | No | Entity lookup cache TTL (seconds) |
-| `CACHE_TTL_DETAIL` | int | `1800` | No | Detail view cache TTL (seconds) |
-| `REQUEST_TIMEOUT` | float | `30.0` | No | HTTP request timeout (seconds) |
-| `LOG_LEVEL` | string | `INFO` | No | Logging level (DEBUG, INFO, WARNING, ERROR) |
+**Storage** (required):
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MONGO_PASSWORD` | — | MongoDB user password |
+| `NEO4J_PASSWORD` | — | Neo4j user password |
+
+**Redis** (required for microservices):
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `REDIS_URL` | `redis://redis:6379/0` | Redis connection URI |
+| `REDIS_PASSWORD` | `` | Redis password (if auth enabled) |
+
+**Microservices — Extractor Intervals** (all in seconds):
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `VESTNIK_INTERVAL_SECONDS` | `3600` | UVO Vestník extraction interval |
+| `CRZ_INTERVAL_SECONDS` | `3600` | CRZ extraction interval |
+| `TED_INTERVAL_SECONDS` | `21600` | TED extraction interval (6 hours) |
+| `ITMS_INTERVAL_SECONDS` | `3600` | ITMS extraction interval |
+
+**Microservices — Extraction Modes**:
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `VESTNIK_MODE` | `recent` | `recent` or `historical` (legacy pipeline modes) |
+| `CRZ_MODE` | `recent` | `` |
+| `TED_MODE` | `recent` | `` |
+| `ITMS_MODE` | `recent` | `` |
+
+**Microservices — Cross-source Deduplication**:
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DEDUP_INTERVAL_SECONDS` | `3600` | Fallback poll interval (1 hour) |
+| `DEDUP_DEBOUNCE_SECONDS` | `5` | Coalesce events within N seconds |
+| `DEDUP_WINDOW_DAYS` | `30` | Only dedup notices ingested in last N days |
+
+**Microservices — ITMS Cache** (Redis-backed by default):
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ITMS_CACHE_BACKEND` | `redis` | `redis` (production) or `memory` (tests) |
+| `ITMS_CACHE_TTL_SECONDS` | `604800` | Cache TTL (7 days) |
+
+**Microservices — Ingestor Batching**:
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `INGESTOR_BATCH_SIZE` | `100` | Messages per XREADGROUP call |
+| `STREAM_MAXLEN_APPROX` | `100000` | Approximate max entries per Redis stream |
+
+**Legacy Pipeline** (one-shot backfill mode):
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `HISTORICAL_FROM_YEAR` | `2014` | Start year for `pipeline run --mode historical` |
+| `RECENT_DAYS` | `365` | Days window for `pipeline run --mode recent` |
+
+**MCP Server** (data layer):
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `EKOSYSTEM_BASE_URL` | `https://datahub.ekosystem.slovensko.digital` | Ekosystem Datahub URL |
+| `EKOSYSTEM_API_TOKEN` | `` | Ekosystem API token (optional) |
+| `TED_BASE_URL` | `https://api.ted.europa.eu` | TED API URL |
+| `MCP_SERVER_URL` | `http://localhost:8000/mcp` | URL for API bridge to reach MCP server |
+| `MCP_HOST` | `0.0.0.0` | MCP server bind address |
+| `MCP_PORT` | `8000` | MCP server port |
+| `CACHE_TTL_SEARCH` | `300` | Search result cache TTL (seconds) |
+| `CACHE_TTL_ENTITY` | `3600` | Entity lookup cache TTL (seconds) |
+| `CACHE_TTL_DETAIL` | `1800` | Detail view cache TTL (seconds) |
+| `REQUEST_TIMEOUT` | `30.0` | HTTP request timeout (seconds) |
+| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ## Project Structure
 
 ```
 uvo-search/
 ├── src/
-│   ├── uvo_mcp/                          # Backend (MCP server)
-│   │   ├── __main__.py                   # Entry point: main()
-│   │   ├── __init__.py
-│   │   ├── server.py                     # FastMCP setup, lifespan context
-│   │   ├── config.py                     # Settings (pydantic-settings)
-│   │   ├── models.py                     # Pydantic response models
-│   │   └── tools/
-│   │       ├── __init__.py
-│   │       ├── procurements.py           # search_completed_procurements, get_procurement_detail
-│   │       └── subjects.py               # find_procurer, find_supplier
+│   ├── uvo_mcp/                          # MCP server (port 8000)
+│   │   ├── __main__.py, server.py, config.py, models.py
+│   │   └── tools/ (procurements.py, subjects.py, graph.py)
 │   │
 │   ├── uvo_api/                          # FastAPI bridge (port 8001)
-│   ├── uvo_pipeline/                     # Ingestion pipeline (one-shot)
-│   └── uvo-gui-react/                    # React 18 SPA public frontend
+│   │   └── routers/ (contracts.py, dashboard.py, graph.py, procurers.py, suppliers.py)
+│   │
+│   ├── uvo_pipeline/                     # Shared library (no public port)
+│   │   ├── extractors/                   # Source-specific extraction (vestnik, crz, ted, itms)
+│   │   ├── transformers/                 # Normalize to CanonicalNotice
+│   │   ├── loaders/                      # Mongo + Neo4j loading
+│   │   ├── redis_client.py               # Async Redis factory (NEW)
+│   │   ├── streams.py                    # XADD, XREADGROUP, XACK helpers (NEW)
+│   │   ├── pubsub.py                     # PUBLISH, SUBSCRIBE helpers (NEW)
+│   │   ├── locks.py                      # Distributed lock CAS helpers (NEW)
+│   │   ├── dedup.py                      # Cross-source dedup (moved from orchestrator) (NEW)
+│   │   ├── cache/                        # ITMS cache backends (NEW)
+│   │   │   ├── memory.py                 # In-process (tests)
+│   │   │   └── redis.py                  # Redis-backed (production)
+│   │   ├── orchestrator.py               # Legacy one-shot entry point
+│   │   ├── models.py, config.py
+│   │   └── __main__.py                   # Legacy CLI: uv run python -m uvo_pipeline
+│   │
+│   ├── uvo_workers/                      # Long-lived microservice daemons (NEW)
+│   │   ├── runner.py                     # Daemon loop, signal handling, /health, lock
+│   │   ├── vestnik.py, crz.py, ted.py, itms.py  # Per-source extractors
+│   │   ├── ingestor.py                   # Streams consumer
+│   │   ├── dedup.py                      # Dedup subscriber
+│   │   ├── health.py                     # /health endpoint helpers
+│   │   └── __main__.py                   # Entry point: uv run python -m uvo_workers.<service>
+│   │
+│   └── uvo-gui-react/                    # React 18 SPA (port 8080 / 5174 dev)
+│       └── src/ (components, hooks, pages, i18n, lib)
 │
 ├── tests/
 │   ├── conftest.py                       # Shared pytest fixtures
-│   ├── mcp/                              # Unit tests (mocked)
+│   ├── mcp/                              # MCP unit tests (mocked)
 │   ├── api/                              # API bridge unit tests
 │   ├── pipeline/                         # Pipeline unit tests
 │   └── e2e/                              # End-to-end (requires docker compose)
 │
 ├── docs/
 │   ├── architecture.md                   # System design and data flow
-│   ├── backend.md                        # Backend (MCP) guide
-│   ├── reference.md                      # This file
+│   ├── backend.md                        # Backend (MCP + microservices) guide
+│   ├── data-pipeline.md                  # Data pipeline (microservices) operations
+│   ├── reference.md                      # Quick reference (this file)
 │   ├── plan.md                           # Project roadmap
 │   ├── data-sources-research.md          # API documentation
 │   └── superpowers/
+│       └── specs/
+│           └── 2026-04-27-source-microservices-design.md  # Authoritative design spec
 │
 ├── .github/workflows/
 │   ├── ci.yml                            # Unit tests, lint, Docker build
@@ -191,7 +265,7 @@ uvo-search/
 │
 ├── Dockerfile.mcp                        # MCP server image
 ├── Dockerfile.api                        # API bridge image
-├── docker-compose.yml                    # Local deployment
+├── docker-compose.yml                    # Local deployment (14 services)
 ├── pyproject.toml                        # Dependencies, tooling config
 ├── uv.lock                               # Locked dependency versions
 ├── .env.example                          # Configuration template
@@ -199,6 +273,13 @@ uvo-search/
 ├── README.md                             # Project overview
 └── .gitignore
 ```
+
+**New in source-microservices**:
+- `src/uvo_workers/` — 6 daemon entrypoints (4 extractors + ingestor + dedup-worker)
+- `src/uvo_pipeline/redis_client.py`, `streams.py`, `pubsub.py`, `locks.py` — Redis integration helpers
+- `src/uvo_pipeline/cache/` — ITMS cache abstraction (memory + Redis backends)
+- `src/uvo_pipeline/dedup.py` — Extracted from `orchestrator.py` for reuse
+- `docs/superpowers/specs/2026-04-27-source-microservices-design.md` — Full design specification
 
 ## Dev Commands
 
