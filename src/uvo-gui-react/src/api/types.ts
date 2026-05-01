@@ -286,6 +286,86 @@ export interface IngestionDashboard {
   }
 }
 
+// ── Analytics (period summary + executive summary) ────────────────────────────
+
+export interface PeriodDeltas {
+  total_value_pct: number | null
+  contract_count_pct: number | null
+  avg_value_pct: number | null
+  unique_counterparties_pct: number | null
+}
+
+export interface PeriodKpis {
+  total_value: number
+  contract_count: number
+  avg_value: number
+  unique_counterparties: number
+  value_coverage: number
+  deltas: PeriodDeltas
+}
+
+export interface MonthlySpendBucket {
+  month: string // YYYY-MM
+  total_value: number
+  contract_count: number
+}
+
+export interface CounterpartyRow {
+  ico: string | null
+  name: string
+  total_value: number
+  contract_count: number
+  share_pct: number
+}
+
+export interface CpvBreakdownRow {
+  cpv_code: string
+  label_sk: string | null
+  label_en: string | null
+  total_value: number
+  contract_count: number
+  share_pct: number
+}
+
+export interface ConcentrationBlock {
+  hhi: number
+  top1_share_pct: number
+  top3_share_pct: number
+}
+
+export interface PeriodMeta {
+  date_from: string
+  date_to: string
+  prior_date_from: string
+  prior_date_to: string
+}
+
+export interface PeriodSummary {
+  ico: string
+  name: string
+  entity_type: 'procurer' | 'supplier'
+  period: PeriodMeta
+  kpis: PeriodKpis
+  monthly_spend: MonthlySpendBucket[]
+  top_counterparties: CounterpartyRow[]
+  cpv_breakdown: CpvBreakdownRow[]
+  concentration: ConcentrationBlock
+}
+
+export type AnomalySeverity = 'info' | 'warn' | 'critical'
+
+export interface Anomaly {
+  code: string
+  severity: AnomalySeverity
+  title_sk: string
+  detail_sk: string
+  metric_value: number | null
+}
+
+export interface ExecutiveSummary extends PeriodSummary {
+  anomalies: Anomaly[]
+}
+
 // ── Shared error ──────────────────────────────────────────────────────────────
 
 export interface ApiError {
