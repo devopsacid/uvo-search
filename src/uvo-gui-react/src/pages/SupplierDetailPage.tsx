@@ -1,4 +1,5 @@
 import { useParams, Link } from 'react-router-dom'
+import { BarChart3 } from 'lucide-react'
 import { useSupplier, useSupplierSummary } from '@/api/queries/suppliers'
 import { EntityLink } from '@/components/entity/EntityLink'
 import { SpendByYearChart } from '@/components/charts/SpendByYearChart'
@@ -60,12 +61,21 @@ export function SupplierDetailPage() {
             </>
           )}
         </div>
-        <Link
-          to="/suppliers"
-          className="text-sm text-muted-foreground hover:text-foreground hover:underline"
-        >
-          ← {sk.common.back}
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to={`/analytics/supplier/${safeIco}`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          >
+            <BarChart3 className="h-4 w-4" />
+            Analyza
+          </Link>
+          <Link
+            to="/suppliers"
+            className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+          >
+            ← {sk.common.back}
+          </Link>
+        </div>
       </div>
 
       {/* KPIs */}
