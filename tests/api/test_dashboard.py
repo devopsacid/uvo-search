@@ -7,49 +7,51 @@ from fastapi.testclient import TestClient
 from uvo_api.app import create_app
 
 SAMPLE_CONTRACTS = {
-    "data": [
+    "items": [
         {
-            "id": "1",
-            "nazov": "IT Project",
-            "obstaravatel": {"ico": "12345678", "nazov": "Ministry"},
-            "dodavatelia": [{"ico": "87654321", "nazov": "Tech Corp"}],
-            "hodnota_zmluvy": 500000.0,
-            "datum_zverejnenia": "2024-03-01",
-            "cpv_kod": "72000000",
+            "_id": "1",
+            "title": "IT Project",
+            "procurer": {"ico": "12345678", "name": "Ministry"},
+            "awards": [{"supplier": {"ico": "87654321", "name": "Tech Corp"}}],
+            "final_value": 500000.0,
+            "publication_date": "2024-03-01",
+            "cpv_code": "72000000",
+            "status": "active",
         },
         {
-            "id": "2",
-            "nazov": "Road Works",
-            "obstaravatel": {"ico": "11111111", "nazov": "NDS"},
-            "dodavatelia": [{"ico": "22222222", "nazov": "Build Co"}],
-            "hodnota_zmluvy": 1000000.0,
-            "datum_zverejnenia": "2023-06-15",
-            "cpv_kod": "45000000",
+            "_id": "2",
+            "title": "Road Works",
+            "procurer": {"ico": "11111111", "name": "NDS"},
+            "awards": [{"supplier": {"ico": "22222222", "name": "Build Co"}}],
+            "final_value": 1000000.0,
+            "publication_date": "2023-06-15",
+            "cpv_code": "45000000",
+            "status": "closed",
         },
     ],
     "total": 2,
 }
 
 SAMPLE_SUPPLIERS = {
-    "data": [
+    "items": [
         {
             "ico": "87654321",
-            "nazov": "Tech Corp",
-            "pocet_zakaziek": 10,
-            "celkova_hodnota": 5000000.0,
+            "name": "Tech Corp",
+            "contract_count": 10,
+            "total_value": 5000000.0,
         },
-        {"ico": "22222222", "nazov": "Build Co", "pocet_zakaziek": 5, "celkova_hodnota": 2000000.0},
+        {"ico": "22222222", "name": "Build Co", "contract_count": 5, "total_value": 2000000.0},
     ],
     "total": 2,
 }
 
 SAMPLE_PROCURERS = {
-    "data": [
+    "items": [
         {
             "ico": "12345678",
-            "nazov": "Ministry",
-            "pocet_zakaziek": 15,
-            "celkova_hodnota": 8000000.0,
+            "name": "Ministry",
+            "contract_count": 15,
+            "total_value": 8000000.0,
         },
     ],
     "total": 1,
@@ -70,6 +72,7 @@ def test_dashboard_summary(client):
             side_effect=[
                 SAMPLE_CONTRACTS,
                 SAMPLE_SUPPLIERS,
+                SAMPLE_PROCURERS,
             ]
         ),
     ):
@@ -93,13 +96,38 @@ def test_dashboard_spend_by_year(client):
 
 
 def test_dashboard_top_suppliers(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_SUPPLIERS)):
+    mock_rows = [
+        {
+            "_id": "31410952",
+            "name": "MICROCOMP - Computersystém s r. o.",
+            "total_value": 1_921_158_287.63,
+            "contract_count": 77,
+        },
+        {
+            "_id": "35919001",
+            "name": "Národná diaľničná spoločnosť, a.s.",
+            "total_value": 1_379_825_579.55,
+            "contract_count": 373,
+        },
+    ]
+    mock_cursor = MagicMock()
+    mock_cursor.to_list = AsyncMock(return_value=mock_rows)
+    mock_collection = MagicMock()
+    mock_collection.aggregate.return_value = mock_cursor
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch("uvo_api.routers.dashboard.get_db", return_value=mock_db):
         response = client.get("/api/dashboard/top-suppliers")
+
     assert response.status_code == 200
     body = response.json()
-    assert len(body) >= 1
-    assert body[0]["ico"] == "87654321"
-    assert body[0]["total_value"] == 5000000.0
+    assert len(body) == 2
+    assert body[0]["ico"] == "31410952"
+    assert body[0]["name"] == "MICROCOMP - Computersystém s r. o."
+    assert body[0]["total_value"] == 1_921_158_287.63
+    assert body[0]["contract_count"] == 77
+    assert body[0]["total_value"] >= body[1]["total_value"]
 
 
 def test_dashboard_top_procurers(client):
