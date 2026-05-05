@@ -23,7 +23,7 @@ import httpx
 API_URL = os.getenv("API_URL", "http://localhost:8001")
 MONGO_CONTAINER = "uvo-search-mongo-1"
 MONGO_DB = os.getenv("MONGODB_DATABASE", "uvo_search")
-_raw_uri = os.getenv("MONGODB_URI", "mongodb://uvo:changeme@mongo:27017/?authSource=admin")
+_raw_uri = os.getenv("MONGODB_URI", "mongodb://uvo:changeme@mongo:27017/?authSource=admin").strip()
 # Inside the container, service name resolves to localhost.
 MONGOSH_URI = _raw_uri.replace("@mongo:", "@localhost:")
 
@@ -40,7 +40,12 @@ def _fmt(v: float) -> str:
 
 def _mongosh(js: str, container: str, db: str) -> list[dict]:
     """Run JS in mongosh inside the Docker container, return parsed JSON array."""
-    uri = MONGOSH_URI.rstrip("/") + "/" + db
+    # Insert db before the query-string: mongodb://user:pw@host:port/DB?params
+    if "?" in MONGOSH_URI:
+        base, params = MONGOSH_URI.split("?", 1)
+        uri = base.rstrip("/") + "/" + db + "?" + params
+    else:
+        uri = MONGOSH_URI.rstrip("/") + "/" + db
     cmd = [
         "docker", "exec", container,
         "mongosh", "--quiet", uri,
@@ -163,9 +168,14 @@ JSON.stringify({{
 }})
 """
         rows = _mongosh(js, container, db)
-        r = rows[0] if rows else {}
-        if isinstance(r, list):
-            r = r[0] if r else {}
+        if isinstance(rows, dict):
+            r = rows
+        elif rows and isinstance(rows[0], dict):
+            r = rows[0]
+        elif rows and isinstance(rows[0], list):
+            r = rows[0][0] if rows[0] else {}
+        else:
+            r = {}
 
         if r.get("supplier_found"):
             print(f"    suppliers coll: found  sources={r.get('supplier_sources')}")
