@@ -22,7 +22,7 @@ import httpx
 
 API_URL = os.getenv("API_URL", "http://localhost:8001")
 MONGO_CONTAINER = "uvo-search-mongo-1"
-MONGO_DB = os.getenv("MONGODB_DATABASE", "uvo_search")
+MONGO_DB = os.getenv("MONGODB_DATABASE", "uvo_search").strip()
 _raw_uri = os.getenv("MONGODB_URI", "mongodb://uvo:changeme@mongo:27017/?authSource=admin").strip()
 # Inside the container, service name resolves to localhost.
 MONGOSH_URI = _raw_uri.replace("@mongo:", "@localhost:")
