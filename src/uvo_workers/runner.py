@@ -96,6 +96,7 @@ async def run_extractor_loop(
             )
         except Exception:
             pass
+        mongo_client.close()
         raise SystemExit(1) from exc
 
     await log_event(

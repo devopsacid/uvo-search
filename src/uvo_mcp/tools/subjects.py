@@ -5,7 +5,7 @@ from typing import Literal
 
 from mcp.server.fastmcp import Context
 
-from uvo_mcp.cache import async_ttl_cache, _make_key
+from uvo_mcp.cache import _make_key, async_ttl_cache
 from uvo_mcp.config import Settings
 from uvo_mcp.search_query import build_search_stage
 from uvo_mcp.server import AppContext, mcp
@@ -60,6 +60,8 @@ async def _run_entity_search(
         "$search": {"index": "default", **build_search_stage(name_query or "", ["name"])}
     }
 
+    # awards.supplier.ico traverses an array, so $expr returns an array of values;
+    # $eq against scalar is always false. Wrap with $isArray/$in for both code paths.
     lookup_stages: list[dict] = [
         {
             "$lookup": {
@@ -72,7 +74,23 @@ async def _run_entity_search(
                                 "$and": [
                                     {"$ne": ["$$ico", None]},
                                     {"$ne": ["$$ico", ""]},
-                                    {"$eq": [f"${lookup_match_field}", "$$ico"]},
+                                    {
+                                        "$or": [
+                                            {"$eq": [f"${lookup_match_field}", "$$ico"]},
+                                            {
+                                                "$in": [
+                                                    "$$ico",
+                                                    {
+                                                        "$cond": [
+                                                            {"$isArray": f"${lookup_match_field}"},
+                                                            f"${lookup_match_field}",
+                                                            [],
+                                                        ]
+                                                    },
+                                                ]
+                                            },
+                                        ]
+                                    },
                                 ]
                             }
                         }

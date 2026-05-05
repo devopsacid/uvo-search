@@ -1,8 +1,8 @@
 """Cross-source deduplication — assigns shared canonical_id to matching notices."""
 
 from collections import defaultdict
+from datetime import UTC, datetime, timedelta
 from datetime import date as date_type
-from datetime import datetime, timedelta
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -24,7 +24,7 @@ async def run_cross_source_dedup(
     if run_id is not None:
         base_filter: dict = {"pipeline_run_id": run_id}
     else:
-        cutoff = (datetime.utcnow() - timedelta(days=window_days)).isoformat()
+        cutoff = (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=window_days)).isoformat()
         base_filter = {"ingested_at": {"$gte": cutoff}}
 
     match_count = 0

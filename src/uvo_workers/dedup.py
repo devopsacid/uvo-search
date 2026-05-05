@@ -66,6 +66,7 @@ async def run_dedup_worker() -> None:
             )
         except Exception:
             pass
+        log_mongo_client.close()
         raise SystemExit(1) from exc
 
     await log_event(
@@ -98,7 +99,9 @@ async def run_dedup_worker() -> None:
 
     pending = asyncio.Event()
     trigger_lock = asyncio.Lock()
-    last_write_time: list[float] = [0.0]  # mutable container for closure
+    # Initialise to monotonic-now so the interval-elapsed branch doesn't trigger
+    # immediately on startup (would otherwise see elapsed == time.monotonic()).
+    last_write_time: list[float] = [time.monotonic()]
 
     async def _run_dedup() -> None:
         mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)

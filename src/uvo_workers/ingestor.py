@@ -95,14 +95,18 @@ async def run_ingestor() -> None:
         metrics["redis_connected"] = True
     except Exception as exc:
         logger.critical("Redis connection failed: %s", exc)
-        await log_event(
-            db,
-            level="critical",
-            event="redis_connect_failed",
-            component="ingestor",
-            instance_id=instance_id,
-            message=f"Redis connection failed: {exc}",
-        )
+        try:
+            await log_event(
+                db,
+                level="critical",
+                event="redis_connect_failed",
+                component="ingestor",
+                instance_id=instance_id,
+                message=f"Redis connection failed: {exc}",
+            )
+        except Exception:
+            pass
+        mongo_client.close()
         raise SystemExit(1) from exc
 
     await log_event(
