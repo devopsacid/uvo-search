@@ -66,7 +66,17 @@ async def _run_entity_search(
                 "from": "notices",
                 "let": {"ico": "$ico"},
                 "pipeline": [
-                    {"$match": {"$expr": {"$eq": [f"${lookup_match_field}", "$$ico"]}}},
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$and": [
+                                    {"$ne": ["$$ico", None]},
+                                    {"$ne": ["$$ico", ""]},
+                                    {"$eq": [f"${lookup_match_field}", "$$ico"]},
+                                ]
+                            }
+                        }
+                    },
                     {"$project": {"_id": 0, "final_value": 1}},
                 ],
                 "as": "_notices",
