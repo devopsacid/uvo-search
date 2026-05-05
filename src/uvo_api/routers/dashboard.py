@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Query
 
 from uvo_api._schema import contract_date, contract_value, year_from_date
+from uvo_api.db import get_db
 from uvo_api.mcp_client import call_tool
 from uvo_api.models import (
     CpvShare,
@@ -204,39 +205,30 @@ async def top_suppliers(
 async def top_procurers(
     n: int = Query(10, ge=1, le=20),
 ) -> list[TopProcurer]:
-    result = await call_tool("find_procurer", {"limit": n * 2})
-    items = result.get("items", [])
-    if items:
-        procurers = [
-            TopProcurer(
-                ico=str(p.get("ico") or ""),
-                name=p.get("name") or "",
-                total_spend=float(p.get("total_value") or 0),
-                contract_count=int(p.get("contract_count") or 0),
-            )
-            for p in items
-        ]
-        return sorted(procurers, key=lambda x: x.total_spend, reverse=True)[:n]
-
-    # Fallback: aggregate across contract sample by procurer ico.
-    contracts, _ = await _fetch_contracts_sample({})
-    agg: dict[str, dict] = defaultdict(lambda: {"name": "", "value": 0.0, "count": 0})
-    for c in contracts:
-        p = c.get("procurer") or {}
-        key = str(p.get("ico") or "")
-        if not key:
-            continue
-        agg[key]["name"] = p.get("name") or agg[key]["name"]
-        agg[key]["value"] += contract_value(c)
-        agg[key]["count"] += 1
-    return sorted(
-        [
-            TopProcurer(ico=k, name=v["name"], total_spend=v["value"], contract_count=v["count"])
-            for k, v in agg.items()
-        ],
-        key=lambda x: x.total_spend,
-        reverse=True,
-    )[:n]
+    db = get_db()
+    pipeline = [
+        {"$match": {"procurer.ico": {"$nin": [None, ""]}}},
+        {
+            "$group": {
+                "_id": "$procurer.ico",
+                "total_value": {"$sum": {"$ifNull": ["$final_value", 0]}},
+                "contract_count": {"$sum": 1},
+                "name": {"$first": "$procurer.name"},
+            }
+        },
+        {"$sort": {"total_value": -1}},
+        {"$limit": n},
+    ]
+    rows = await db["notices"].aggregate(pipeline).to_list(n)
+    return [
+        TopProcurer(
+            ico=str(r["_id"]),
+            name=str(r.get("name") or ""),
+            total_spend=float(r["total_value"]),
+            contract_count=int(r["contract_count"]),
+        )
+        for r in rows
+    ]
 
 
 @router.get("/by-cpv", response_model=list[CpvShare])
