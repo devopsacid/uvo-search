@@ -1,5 +1,5 @@
 # tests/api/test_dashboard.py
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -103,7 +103,15 @@ def test_dashboard_top_suppliers(client):
 
 
 def test_dashboard_top_procurers(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_PROCURERS)):
+    mock_rows = [{"_id": "12345678", "name": "Ministry", "total_value": 8000000.0, "contract_count": 15}]
+    mock_cursor = MagicMock()
+    mock_cursor.to_list = AsyncMock(return_value=mock_rows)
+    mock_collection = MagicMock()
+    mock_collection.aggregate.return_value = mock_cursor
+    mock_db = MagicMock()
+    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+
+    with patch("uvo_api.routers.dashboard.get_db", return_value=mock_db):
         response = client.get("/api/dashboard/top-procurers")
     assert response.status_code == 200
     body = response.json()
