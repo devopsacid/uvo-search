@@ -158,47 +158,33 @@ async def spend_by_year(
 @router.get("/top-suppliers", response_model=list[TopSupplier])
 async def top_suppliers(
     n: int = Query(10, ge=1, le=20),
-    ico: str | None = Query(None),
-    entity_type: str | None = Query(None),
 ) -> list[TopSupplier]:
-    # Prefer the entity tool when available; fall back to aggregation over contracts.
-    result = await call_tool("find_supplier", {"limit": n * 2})
-    items = result.get("items", [])
-    if items:
-        suppliers = [
-            TopSupplier(
-                ico=str(s.get("ico") or ""),
-                name=s.get("name") or "",
-                total_value=float(s.get("total_value") or 0),
-                contract_count=int(s.get("contract_count") or 0),
-            )
-            for s in items
-        ]
-        return sorted(suppliers, key=lambda x: x.total_value, reverse=True)[:n]
-
-    # Fallback: aggregate by first supplier in awards from contract sample.
-    contracts, _ = await _fetch_contracts_sample(_ico_filter(ico, entity_type))
-    agg: dict[str, dict] = defaultdict(lambda: {"name": "", "value": 0.0, "count": 0})
-    for c in contracts:
-        awards = c.get("awards") or []
-        if not awards:
-            continue
-        a = awards[0]
-        key = str(a.get("supplier_ico") or a.get("ico") or "")
-        if not key:
-            continue
-        agg[key]["name"] = a.get("supplier_name") or a.get("name") or agg[key]["name"]
-        agg[key]["value"] += contract_value(c)
-        agg[key]["count"] += 1
-    items2 = sorted(
-        [
-            TopSupplier(ico=k, name=v["name"], total_value=v["value"], contract_count=v["count"])
-            for k, v in agg.items()
-        ],
-        key=lambda x: x.total_value,
-        reverse=True,
-    )[:n]
-    return items2
+    db = get_db()
+    pipeline = [
+        {"$match": {"awards.supplier.ico": {"$nin": [None, ""]}}},
+        {"$unwind": "$awards"},
+        {"$match": {"awards.supplier.ico": {"$nin": [None, ""]}}},
+        {
+            "$group": {
+                "_id": "$awards.supplier.ico",
+                "total_value": {"$sum": {"$ifNull": ["$final_value", 0]}},
+                "contract_count": {"$sum": 1},
+                "name": {"$first": "$awards.supplier.name"},
+            }
+        },
+        {"$sort": {"total_value": -1}},
+        {"$limit": n},
+    ]
+    rows = await db["notices"].aggregate(pipeline).to_list(n)
+    return [
+        TopSupplier(
+            ico=str(r["_id"]),
+            name=str(r.get("name") or ""),
+            total_value=float(r["total_value"]),
+            contract_count=int(r["contract_count"]),
+        )
+        for r in rows
+    ]
 
 
 @router.get("/top-procurers", response_model=list[TopProcurer])
