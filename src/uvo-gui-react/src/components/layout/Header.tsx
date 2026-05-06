@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
+import { GlobalSearch } from '@/components/search/GlobalSearch'
 
 const navItems = [
   { to: '/', label: sk.nav.overview, end: true },
@@ -17,6 +18,7 @@ export function Header() {
     <header className="border-b border-border bg-card">
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
         <span className="text-base font-semibold text-foreground">UVO</span>
+        <GlobalSearch />
         <nav className="flex gap-1" aria-label="Hlavna navigacia">
           {navItems.map(({ to, label, end }) => (
             <NavLink

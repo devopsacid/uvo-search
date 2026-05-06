@@ -237,6 +237,11 @@ const sk = {
     empty: 'Ziadne udalosti',
     loading: 'Nacitavam log...',
   },
+  globalSearch: {
+    placeholder: 'Hľadať firmu alebo zákazku…',
+    sectionFirmy: 'Firmy',
+    sectionZakazky: 'Zákazky',
+  },
   workerStatus: {
     title: 'Stav pracovnikov',
     colService: 'Sluzba',

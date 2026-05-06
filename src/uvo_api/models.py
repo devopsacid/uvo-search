@@ -338,6 +338,49 @@ class FirmaProfile(BaseModel):
     spend_by_year: list[SpendByYear]
 
 
+# --- Firma extensions ---
+
+
+class PartnerRow(BaseModel):
+    ico: str | None
+    name: str | None
+    role: str  # "supplier" | "procurer" — role of the counterparty
+    contract_count: int
+    total_value: float
+    last_contract_at: str | None
+
+
+class PartnerListResponse(BaseModel):
+    total: int
+    items: list[PartnerRow]
+
+
+class CpvProfileRow(BaseModel):
+    code: str
+    label: str
+    total_value: float
+    contract_count: int
+    percentage: float
+
+
+class CpvProfileResponse(BaseModel):
+    for_company: list[CpvProfileRow]
+    market_baseline: list[CpvProfileRow]
+
+
+class FirmaCard(BaseModel):
+    ico: str
+    name: str
+    roles: list[str]
+    contract_count: int
+    total_value: float
+
+
+class FirmaListResponse(BaseModel):
+    total: int
+    items: list[FirmaCard]
+
+
 # --- Graph (Cytoscape-compatible) ---
 
 
