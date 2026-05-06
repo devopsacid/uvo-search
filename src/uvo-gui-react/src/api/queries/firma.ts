@@ -108,6 +108,38 @@ export function useFirmaCpvProfile(ico: string) {
   })
 }
 
+export interface FirmaCard {
+  ico: string
+  name: string
+  roles: string[]
+  contract_count: number
+  total_value: number
+}
+
+export interface FirmaListResponse {
+  total: number
+  items: FirmaCard[]
+}
+
+export function useFirmyList(params: { q: string; role: string; limit: number; offset: number }) {
+  return useQuery({
+    queryKey: ['firmy', params],
+    queryFn: async (): Promise<FirmaListResponse> => {
+      const sp = new URLSearchParams({
+        q: params.q,
+        role: params.role,
+        limit: String(params.limit),
+        offset: String(params.offset),
+      })
+      const res = await fetch(`/api/firmy?${sp}`)
+      if (!res.ok) throw new Error('fetch failed')
+      return res.json()
+    },
+    placeholderData: (prev) => prev,
+    staleTime: 60_000,
+  })
+}
+
 export function useFirmaProfile(ico: string) {
   return useQuery({
     queryKey: ['firma', ico, 'profile'],

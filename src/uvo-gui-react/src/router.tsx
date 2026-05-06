@@ -3,7 +3,8 @@ import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import { Layout } from '@/components/layout/Layout'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { AboutPage } from '@/pages/AboutPage'
-import { SearchPage } from '@/pages/SearchPage'
+import { ZakazkyPage } from '@/pages/ZakazkyPage'
+import { HladajPage } from '@/pages/HladajPage'
 import { GraphPage } from '@/pages/GraphPage'
 import { IngestionPage } from '@/pages/IngestionPage'
 import { CpvTrendsPage } from '@/pages/CpvTrendsPage'
@@ -13,10 +14,7 @@ import { FirmaZakazkyTab } from '@/pages/firma/FirmaZakazkyTab'
 import { FirmaSietTab } from '@/pages/firma/FirmaSietTab'
 import { FirmaPartneriTab } from '@/pages/firma/FirmaPartneriTab'
 import { FirmaCpvTab } from '@/pages/firma/FirmaCpvTab'
-
-function ComingSoon() {
-  return <div className="p-8 text-muted-foreground">Stránka sa pripravuje…</div>
-}
+import { FirmyPage } from '@/pages/FirmyPage'
 
 function SupplierRedirect() {
   const { ico } = useParams()
@@ -58,9 +56,9 @@ export const router = createBrowserRouter([
       },
 
       // Other new routes
-      { path: 'firmy', element: <ComingSoon /> },
-      { path: 'zakazky', element: <SearchPage /> },
-      { path: 'hladaj', element: <ComingSoon /> },
+      { path: 'firmy', element: <FirmyPage /> },
+      { path: 'zakazky', element: <ZakazkyPage /> },
+      { path: 'hladaj', element: <HladajPage /> },
 
       // Redirects — old paths → new paths
       { path: 'suppliers', element: <Navigate to="/firmy" replace /> },
