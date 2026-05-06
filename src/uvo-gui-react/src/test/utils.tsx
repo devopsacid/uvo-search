@@ -3,6 +3,7 @@ import { render, RenderOptions, screen, fireEvent, within, waitFor } from '@test
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
+import { CompanyPinProvider } from '@/context/CompanyPinContext'
 
 export interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   route?: string
@@ -29,15 +30,17 @@ export function renderWithProviders(
 ) {
   const Wrapper = ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[route]}>
-        {routePattern ? (
-          <Routes>
-            <Route path={routePattern} element={children} />
-          </Routes>
-        ) : (
-          children
-        )}
-      </MemoryRouter>
+      <CompanyPinProvider>
+        <MemoryRouter initialEntries={[route]}>
+          {routePattern ? (
+            <Routes>
+              <Route path={routePattern} element={children} />
+            </Routes>
+          ) : (
+            children
+          )}
+        </MemoryRouter>
+      </CompanyPinProvider>
     </QueryClientProvider>
   )
 

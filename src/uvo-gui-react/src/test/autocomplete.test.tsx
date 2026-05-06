@@ -221,7 +221,7 @@ describe('Autocomplete', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith('87654321', 'supplier')
+      expect(onSelect).toHaveBeenCalledWith('87654321', 'supplier', 'Supplier matching test')
     })
   })
 

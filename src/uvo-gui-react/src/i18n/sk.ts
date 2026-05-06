@@ -10,6 +10,11 @@ const sk = {
     ingestion: 'Ingesia',
     about: 'O projekte',
   },
+  pin: {
+    clear: 'Zrusit vybranu firmu',
+    placeholder: 'Vyhladat firmu...',
+    viewingAs: 'Zobrazené ako',
+  },
   overview: {
     title: 'Prehlad obstaravania',
     totalValue: 'Celkova hodnota',
@@ -39,6 +44,7 @@ const sk = {
     retry: 'Skusit znova',
     back: 'Spat',
     clearFilters: 'Zrusit filtre',
+    lockedByPin: '(nastavené cez pinpoint)',
   },
   search: {
     title: 'Vyhladavanie zakazok',
