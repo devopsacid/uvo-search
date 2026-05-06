@@ -12,7 +12,7 @@ export function PinBanner() {
   if (!ico || !type) return null
 
   const typeLabel = type === 'supplier' ? sk.search.typeSupplier : sk.search.typeProcurer
-  const href = type === 'supplier' ? `/suppliers/${ico}` : `/procurers/${ico}`
+  const href = `/firma/${ico}`
 
   function copyLink() {
     const params = new URLSearchParams({ pin_ico: ico!, pin_type: type! })
@@ -43,7 +43,7 @@ export function PinBanner() {
         {name ?? ''}
       </button>
       <button
-        onClick={() => navigate('/pinpoint')}
+        onClick={() => navigate('/firmy')}
         className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
       >
         {sk.pinpoint.change}

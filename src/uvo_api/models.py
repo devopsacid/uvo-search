@@ -296,6 +296,48 @@ class WorkerStatusResponse(BaseModel):
     generated_at: str
 
 
+# --- Firma (unified company profile) ---
+
+
+class FirmaStatsBlock(BaseModel):
+    contract_count: int
+    total_value: float
+    last_contract_at: str | None
+
+
+class FirmaStats(BaseModel):
+    as_supplier: FirmaStatsBlock | None
+    as_procurer: FirmaStatsBlock | None
+
+
+class FirmaTopContract(BaseModel):
+    id: str
+    title: str
+    value: float | None
+    year: int | None
+    counterparty_name: str | None
+    counterparty_ico: str | None
+    role: str  # "supplier" | "procurer"
+
+
+class FirmaTopCpv(BaseModel):
+    code: str
+    label: str
+    contract_count: int
+    total_value: float
+
+
+class FirmaProfile(BaseModel):
+    ico: str
+    name: str
+    roles: list[str]
+    primary_role: str
+    stats: FirmaStats
+    top_cpvs: list[FirmaTopCpv]
+    top_contracts: list[FirmaTopContract]
+    spend_by_year: list[SpendByYear]
+
+
 # --- Graph (Cytoscape-compatible) ---
 
 

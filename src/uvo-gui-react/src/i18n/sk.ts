@@ -5,6 +5,8 @@ const sk = {
     suppliers: 'Dodavatelia',
     procurers: 'Obstaravatelia',
     pinpoint: 'Pinpoint',
+    firmy: 'Firmy',
+    zakazky: 'Zákazky',
     graph: 'Graf',
     cpvTrends: 'Trendy CPV',
     calendar: 'Kalendar',

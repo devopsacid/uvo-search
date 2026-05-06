@@ -24,7 +24,7 @@ export function SuppliersPage() {
 
   useEffect(() => {
     if (ico && type === 'supplier') {
-      navigate(`/suppliers/${ico}`, { replace: true })
+      navigate(`/firma/${ico}`, { replace: true })
     }
   }, [ico, type, navigate])
 

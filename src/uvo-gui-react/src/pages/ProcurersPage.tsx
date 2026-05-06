@@ -24,7 +24,7 @@ export function ProcurersPage() {
 
   useEffect(() => {
     if (ico && type === 'procurer') {
-      navigate(`/procurers/${ico}`, { replace: true })
+      navigate(`/firma/${ico}`, { replace: true })
     }
   }, [ico, type, navigate])
 

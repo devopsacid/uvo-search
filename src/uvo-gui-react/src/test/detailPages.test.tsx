@@ -126,7 +126,7 @@ describe('Detail Pages', () => {
       await waitFor(() => {
         const procurerLinks = screen.getAllByRole('link', { name: 'Procurer X' })
         expect(procurerLinks.length).toBeGreaterThan(0)
-        expect(procurerLinks[0]).toHaveAttribute('href', '/procurers/11111111')
+        expect(procurerLinks[0]).toHaveAttribute('href', '/firma/11111111')
       })
     })
 
@@ -145,7 +145,7 @@ describe('Detail Pages', () => {
       await waitFor(() => {
         const procurerLinks = screen.getAllByRole('link', { name: 'Procurer X' })
         expect(procurerLinks.length).toBeGreaterThan(0)
-        expect(procurerLinks[0]).toHaveAttribute('href', '/procurers/11111111')
+        expect(procurerLinks[0]).toHaveAttribute('href', '/firma/11111111')
       })
     })
 
@@ -154,7 +154,7 @@ describe('Detail Pages', () => {
 
       await waitFor(() => {
         const backLink = screen.getByRole('link', { name: /Spat/ })
-        expect(backLink).toHaveAttribute('href', '/suppliers')
+        expect(backLink).toHaveAttribute('href', '/firmy')
       })
     })
 
@@ -285,7 +285,7 @@ describe('Detail Pages', () => {
       await waitFor(() => {
         const supplierLinks = screen.getAllByRole('link', { name: 'Supplier A' })
         expect(supplierLinks.length).toBeGreaterThan(0)
-        expect(supplierLinks[0]).toHaveAttribute('href', '/suppliers/87654321')
+        expect(supplierLinks[0]).toHaveAttribute('href', '/firma/87654321')
       })
     })
 
@@ -294,7 +294,7 @@ describe('Detail Pages', () => {
 
       await waitFor(() => {
         const backLink = screen.getByRole('link', { name: /Spat/ })
-        expect(backLink).toHaveAttribute('href', '/procurers')
+        expect(backLink).toHaveAttribute('href', '/firmy')
       })
     })
 

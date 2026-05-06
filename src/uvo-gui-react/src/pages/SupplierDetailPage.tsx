@@ -27,7 +27,7 @@ export function SupplierDetailPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">{sk.common.error}</p>
-        <Link to="/suppliers" className="mt-4 block text-sm text-primary hover:underline">
+        <Link to="/firmy" className="mt-4 block text-sm text-primary hover:underline">
           {sk.common.back}
         </Link>
       </div>
@@ -61,7 +61,7 @@ export function SupplierDetailPage() {
           )}
         </div>
         <Link
-          to="/suppliers"
+          to="/firmy"
           className="text-sm text-muted-foreground hover:text-foreground hover:underline"
         >
           ← {sk.common.back}

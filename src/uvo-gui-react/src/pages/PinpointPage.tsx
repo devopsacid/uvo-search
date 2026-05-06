@@ -13,7 +13,7 @@ export function PinpointPage() {
   }
 
   const typeLabel = type === 'supplier' ? sk.search.typeSupplier : sk.search.typeProcurer
-  const detailHref = type === 'supplier' ? `/suppliers/${ico}` : `/procurers/${ico}`
+  const detailHref = `/firma/${ico}`
 
   return (
     <div className="mx-auto max-w-xl space-y-8 py-12">
