@@ -13,6 +13,7 @@ const sk = {
   pin: {
     clear: 'Zrusit vybranu firmu',
     placeholder: 'Vyhladat firmu...',
+    viewingAs: 'Zobrazené ako',
   },
   overview: {
     title: 'Prehlad obstaravania',
@@ -43,6 +44,7 @@ const sk = {
     retry: 'Skusit znova',
     back: 'Spat',
     clearFilters: 'Zrusit filtre',
+    lockedByPin: '(nastavené cez pinpoint)',
   },
   search: {
     title: 'Vyhladavanie zakazok',
