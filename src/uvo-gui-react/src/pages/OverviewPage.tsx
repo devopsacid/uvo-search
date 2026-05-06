@@ -1,6 +1,4 @@
 import { Link } from 'react-router-dom'
-import { useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import {
   useDashboardSummary,
   useRecent,
@@ -8,9 +6,6 @@ import {
   useTopProcurers,
   useTopSuppliers,
 } from '@/api/queries/dashboard'
-import { useSupplier } from '@/api/queries/suppliers'
-import { useProcurer } from '@/api/queries/procurers'
-import { useCompanyPin } from '@/context/CompanyPinContext'
 import { KpiCard } from '@/components/ui/KpiCard'
 import { Skeleton, SkeletonRow } from '@/components/ui/Skeleton'
 import { SpendByYearChart } from '@/components/charts/SpendByYearChart'
@@ -47,34 +42,11 @@ function formatMillions(v: number) {
 }
 
 export function OverviewPage() {
-  const { ico, name, type } = useCompanyPin()
-  const [, setSearchParams] = useSearchParams()
-
-  // Keep URL in sync with pin so the overview page is bookmarkable/shareable
-  useEffect(() => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (ico && type) {
-        next.set('pin_ico', ico)
-        next.set('pin_type', type)
-        if (name) next.set('pin_name', name)
-        else next.delete('pin_name')
-      } else {
-        next.delete('pin_ico')
-        next.delete('pin_type')
-        next.delete('pin_name')
-      }
-      return next
-    }, { replace: true })
-  }, [ico, name, type, setSearchParams])
-
-  const { data: summary, isLoading: summaryLoading, isError, error, refetch } = useDashboardSummary(ico ?? undefined, type ?? undefined)
-  const { data: spendByYear, isLoading: spendLoading } = useSpendByYear(ico ?? undefined, type ?? undefined)
+  const { data: summary, isLoading: summaryLoading, isError, error, refetch } = useDashboardSummary()
+  const { data: spendByYear, isLoading: spendLoading } = useSpendByYear()
   const { data: topSuppliers, isLoading: suppliersLoading } = useTopSuppliers(10)
   const { data: topProcurers, isLoading: procurersLoading } = useTopProcurers(10)
-  const { data: recent, isLoading: recentLoading } = useRecent(8, ico ?? undefined, type ?? undefined)
-  const { data: supplierDetail } = useSupplier(ico ?? '')
-  const { data: procurerDetail } = useProcurer(ico ?? '')
+  const { data: recent, isLoading: recentLoading } = useRecent(8)
 
   if (isError) {
     return (
@@ -138,101 +110,66 @@ export function OverviewPage() {
         )}
       </SectionCard>
 
-      {/* Top suppliers + Top procurers (global) OR top partners (pinned) */}
-      {ico ? (
-        <div className="grid gap-6 md:grid-cols-2">
-          <SectionCard>
-            <SectionTitle>
-              {type === 'supplier' ? sk.overview.sectionTopProcurers : sk.overview.sectionTopSuppliers}
-            </SectionTitle>
-            {(() => {
-              const partners = type === 'supplier'
-                ? supplierDetail?.top_procurers
-                : procurerDetail?.top_suppliers
-              const isLoading = type === 'supplier' ? !supplierDetail : !procurerDetail
-              if (isLoading) return <Skeleton className="h-48 w-full" />
-              if (!partners?.length) return <p className="text-sm text-muted-foreground">{sk.common.noData}</p>
-              return (
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={partners} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis type="number" tickFormatter={formatMillions} tick={{ fontSize: 10 }} />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tick={{ fontSize: 10 }}
-                      width={100}
-                      tickFormatter={(v: string) => (v.length > 14 ? v.slice(0, 14) + '…' : v)}
-                    />
-                    <Tooltip formatter={(v: number) => [formatCurrency(v), 'Objem']} />
-                    <Bar dataKey="total_value" fill="hsl(var(--primary))" radius={[0, 3, 3, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )
-            })()}
-          </SectionCard>
-        </div>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2">
-          <SectionCard>
-            <SectionTitle>{sk.overview.sectionTopSuppliers}</SectionTitle>
-            {suppliersLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : (topSuppliers?.length ?? 0) > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart
-                  data={topSuppliers}
-                  layout="vertical"
-                  margin={{ top: 0, right: 8, bottom: 0, left: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tickFormatter={formatMillions} tick={{ fontSize: 10 }} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tick={{ fontSize: 10 }}
-                    width={100}
-                    tickFormatter={(v: string) => (v.length > 14 ? v.slice(0, 14) + '…' : v)}
-                  />
-                  <Tooltip formatter={(v: number) => [formatCurrency(v), 'Objem']} />
-                  <Bar dataKey="total_value" fill="hsl(var(--primary))" radius={[0, 3, 3, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground">{sk.common.noData}</p>
-            )}
-          </SectionCard>
+      {/* Top suppliers + Top procurers */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <SectionCard>
+          <SectionTitle>{sk.overview.sectionTopSuppliers}</SectionTitle>
+          {suppliersLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : (topSuppliers?.length ?? 0) > 0 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart
+                data={topSuppliers}
+                layout="vertical"
+                margin={{ top: 0, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis type="number" tickFormatter={formatMillions} tick={{ fontSize: 10 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 10 }}
+                  width={100}
+                  tickFormatter={(v: string) => (v.length > 14 ? v.slice(0, 14) + '…' : v)}
+                />
+                <Tooltip formatter={(v: number) => [formatCurrency(v), 'Objem']} />
+                <Bar dataKey="total_value" fill="hsl(var(--primary))" radius={[0, 3, 3, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-sm text-muted-foreground">{sk.common.noData}</p>
+          )}
+        </SectionCard>
 
-          <SectionCard>
-            <SectionTitle>{sk.overview.sectionTopProcurers}</SectionTitle>
-            {procurersLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : (topProcurers?.length ?? 0) > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart
-                  data={topProcurers}
-                  layout="vertical"
-                  margin={{ top: 0, right: 8, bottom: 0, left: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis type="number" tickFormatter={formatMillions} tick={{ fontSize: 10 }} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tick={{ fontSize: 10 }}
-                    width={100}
-                    tickFormatter={(v: string) => (v.length > 14 ? v.slice(0, 14) + '…' : v)}
-                  />
-                  <Tooltip formatter={(v: number) => [formatCurrency(v), 'Objem']} />
-                  <Bar dataKey="total_spend" fill="hsl(var(--primary))" radius={[0, 3, 3, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground">{sk.common.noData}</p>
-            )}
-          </SectionCard>
-        </div>
-      )}
+        <SectionCard>
+          <SectionTitle>{sk.overview.sectionTopProcurers}</SectionTitle>
+          {procurersLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : (topProcurers?.length ?? 0) > 0 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart
+                data={topProcurers}
+                layout="vertical"
+                margin={{ top: 0, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis type="number" tickFormatter={formatMillions} tick={{ fontSize: 10 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 10 }}
+                  width={100}
+                  tickFormatter={(v: string) => (v.length > 14 ? v.slice(0, 14) + '…' : v)}
+                />
+                <Tooltip formatter={(v: number) => [formatCurrency(v), 'Objem']} />
+                <Bar dataKey="total_spend" fill="hsl(var(--primary))" radius={[0, 3, 3, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-sm text-muted-foreground">{sk.common.noData}</p>
+          )}
+        </SectionCard>
+      </div>
 
       {/* Recent contracts */}
       <div className="rounded-lg border border-border bg-card">

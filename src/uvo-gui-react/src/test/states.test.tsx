@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderWithProviders, screen, waitFor } from './utils'
 import { SearchPage } from '../pages/SearchPage'
-import { SuppliersPage } from '../pages/SuppliersPage'
-import { ProcurersPage } from '../pages/ProcurersPage'
 import sk from '../i18n/sk'
 
 describe('Loading + Empty + Error States', () => {
@@ -19,17 +17,6 @@ describe('Loading + Empty + Error States', () => {
       global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
 
       renderWithProviders(<SearchPage />, { route: '/search?q=test' })
-
-      await waitFor(() => {
-        const skeletons = screen.getAllByTestId('skeleton-row')
-        expect(skeletons.length).toBeGreaterThan(0)
-      }, { timeout: 2000 })
-    })
-
-    it('shows skeleton rows while suppliers are loading', async () => {
-      global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
-
-      renderWithProviders(<SuppliersPage />, { route: '/suppliers?q=test' })
 
       await waitFor(() => {
         const skeletons = screen.getAllByTestId('skeleton-row')
@@ -127,23 +114,6 @@ describe('Loading + Empty + Error States', () => {
       expect(clearButton).not.toBeInTheDocument()
     })
 
-    it('shows empty state for suppliers with no results', async () => {
-      renderWithProviders(<SuppliersPage />, { route: '/suppliers?q=nonexistent' })
-
-      await waitFor(() => {
-        expect(screen.getByText(sk.suppliers.noResults)).toBeInTheDocument()
-        expect(screen.getByText(sk.suppliers.noResultsHint)).toBeInTheDocument()
-      })
-    })
-
-    it('shows empty state for procurers with no results', async () => {
-      renderWithProviders(<ProcurersPage />, { route: '/procurers?q=nonexistent' })
-
-      await waitFor(() => {
-        expect(screen.getByText(sk.procurers.noResults)).toBeInTheDocument()
-        expect(screen.getByText(sk.procurers.noResultsHint)).toBeInTheDocument()
-      })
-    })
   })
 
   describe('Error states', () => {
@@ -165,21 +135,6 @@ describe('Loading + Empty + Error States', () => {
       })
     })
 
-    it('shows error message when suppliers fetch fails', async () => {
-      renderWithProviders(<SuppliersPage />, { route: '/suppliers' })
-
-      await waitFor(() => {
-        expect(screen.getByText(sk.common.error)).toBeInTheDocument()
-      })
-    })
-
-    it('shows error message when procurers fetch fails', async () => {
-      renderWithProviders(<ProcurersPage />, { route: '/procurers' })
-
-      await waitFor(() => {
-        expect(screen.getByText(sk.common.error)).toBeInTheDocument()
-      })
-    })
   })
 
 

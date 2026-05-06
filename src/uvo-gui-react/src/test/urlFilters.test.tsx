@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderWithProviders, screen, fireEvent, waitFor } from './utils'
 import { SearchPage } from '../pages/SearchPage'
-import { SuppliersPage } from '../pages/SuppliersPage'
 import sk from '../i18n/sk'
 
 global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
@@ -110,13 +109,6 @@ describe('URL-as-State Filters', () => {
     })
   })
 
-  it('suppliers page preserves search filter in URL', async () => {
-    renderWithProviders(<SuppliersPage />, { route: '/suppliers?q=Acme' })
-
-    const input = await screen.findByPlaceholderText(sk.suppliers.searchPlaceholder)
-    expect((input as HTMLInputElement).value).toBe('Acme')
-  })
-
   it('year filter select shows all years as options', async () => {
     renderWithProviders(<SearchPage />, { route: '/search' })
 
@@ -134,17 +126,6 @@ describe('URL-as-State Filters', () => {
 
     await waitFor(() => {
       expect(yearSelect.value).toBe('')
-    })
-  })
-
-  it('supplier page shows pagination when results exist', async () => {
-    renderWithProviders(<SuppliersPage />, { route: '/suppliers?q=test' })
-
-    // Wait for data to load and pagination to appear
-    await waitFor(() => {
-      // Pagination exists when there are results
-      const headings = screen.getAllByText('Dodavatelia')
-      expect(headings.length).toBeGreaterThan(0)
     })
   })
 

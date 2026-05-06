@@ -4,7 +4,6 @@ import { useCpvShare } from '@/api/queries/dashboard'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { formatCurrency } from '@/lib/utils'
 import sk from '@/i18n/sk'
-import { useCompanyPin } from '@/context/CompanyPinContext'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -23,9 +22,7 @@ export function CpvTrendsPage() {
   const [fromInput, setFromInput] = useState(String(yearFrom))
   const [toInput, setToInput] = useState(String(yearTo))
 
-  const { ico, type, name } = useCompanyPin()
-
-  const { data, isLoading } = useCpvShare(yearFrom, yearTo, ico ?? undefined, type ?? undefined)
+  const { data, isLoading } = useCpvShare(yearFrom, yearTo)
 
   function applyFilters() {
     const f = parseInt(fromInput)
@@ -41,22 +38,12 @@ export function CpvTrendsPage() {
   const top10 = (data ?? []).slice(0, 10)
 
   function handleCpvClick(cpvCode: string) {
-    // Navigate with only the CPV param. SearchPage's existing pin-sync effect will automatically
-    // add supplier_ico or procurer_ico when a pin is active — no change needed here.
     navigate(`/search?cpv=${encodeURIComponent(cpvCode)}`)
   }
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-foreground">{sk.cpvTrends.title}</h1>
-
-      {ico && (
-        <div className="flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-xs">
-          <span className="text-muted-foreground">{sk.pin.viewingAs}:</span>
-          <span className="font-medium">{name ?? ''}</span>
-          <span className="text-muted-foreground">{sk.common.lockedByPin}</span>
-        </div>
-      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-card p-4">

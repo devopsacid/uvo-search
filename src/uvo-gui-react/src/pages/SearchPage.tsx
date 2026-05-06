@@ -1,6 +1,4 @@
-import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useCompanyPin } from '@/context/CompanyPinContext'
 import { useContractSearch, useContractDetail } from '@/api/queries/contracts'
 import { Sidebar, SidebarSection } from '@/components/layout/Sidebar'
 import { EntityAutocomplete } from '@/components/search/EntityAutocomplete'
@@ -22,42 +20,6 @@ const YEAR_OPTIONS = Array.from({ length: 15 }, (_, i) => {
 
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { ico, type, name } = useCompanyPin()
-
-  // Sync active pin into URL params
-  useEffect(() => {
-    if (!ico || !type) return
-    const paramKey = type === 'supplier' ? 'supplier_ico' : 'procurer_ico'
-    const current = searchParams.get(paramKey)
-    if (current !== ico) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.set(paramKey, ico)
-        next.delete(type === 'supplier' ? 'procurer_ico' : 'supplier_ico')
-        next.delete('page')
-        return next
-      }, { replace: true })
-    }
-  }, [ico, type]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Clear pin param when pin is removed
-  const prevIcoRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (ico) {
-      prevIcoRef.current = ico
-      return
-    }
-    const prev = prevIcoRef.current
-    if (!prev) return
-    prevIcoRef.current = null
-    setSearchParams((params) => {
-      const next = new URLSearchParams(params)
-      next.delete('supplier_ico')
-      next.delete('procurer_ico')
-      next.delete('page')
-      return next
-    }, { replace: true })
-  }, [ico]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const q = searchParams.get('q') ?? ''
   const year = searchParams.get('year') ?? ''
@@ -178,13 +140,6 @@ export function SearchPage() {
       {/* Results */}
       <div className="min-w-0 flex-1">
         <div className="mb-4">
-          {ico && (
-            <div className="flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-xs">
-              <span className="text-muted-foreground">{sk.pin.viewingAs}:</span>
-              <span className="font-medium">{name ?? ''}</span>
-              <span className="text-muted-foreground">{sk.common.lockedByPin}</span>
-            </div>
-          )}
           <EntityAutocomplete
             onSelect={(ico, type) => {
               if (type === 'supplier') setParam('supplier_ico', ico)

@@ -13,12 +13,6 @@ const sk = {
     ingestion: 'Ingesia',
     about: 'O projekte',
   },
-  pin: {
-    clear: 'Zrusit vybranu firmu',
-    copyLink: 'Kopirovat odkaz na pinpoint',
-    placeholder: 'Vyhladat firmu...',
-    viewingAs: 'Zobrazené ako',
-  },
   overview: {
     title: 'Prehlad obstaravania',
     totalValue: 'Celkova hodnota',
@@ -48,7 +42,6 @@ const sk = {
     retry: 'Skusit znova',
     back: 'Spat',
     clearFilters: 'Zrusit filtre',
-    lockedByPin: '(nastavené cez pinpoint)',
   },
   search: {
     title: 'Vyhladavanie zakazok',
@@ -136,7 +129,6 @@ const sk = {
     apply: 'Pouzit',
     noData: 'Ziadne data pre dany rozsah',
     drillHint: 'Kliknite na kategoriu pre zobrazenie zakazok',
-    subtitlePinned: 'CPV rozpis pre vybranú firmu',
   },
   calendar: {
     title: 'Kalendar zakazok',
@@ -147,16 +139,6 @@ const sk = {
     ],
     contracts: 'zakazok',
     noData: 'Ziadne data',
-  },
-  pinpoint: {
-    title: 'Sledovanie firmy',
-    subtitle: 'Vyberte dodávateľa alebo obstarávateľa. Všetky karty sa prefiltrujú na vybranú firmu.',
-    searchPlaceholder: 'Zadajte názov alebo IČO firmy …',
-    currentPin: 'Aktuálna firma',
-    showOverview: 'Zobraziť prehľad',
-    showDetail: 'Zobraziť detail',
-    change: 'Zmeniť',
-    noPin: 'Žiadna firma nie je vybraná.',
   },
   graph: {
     title: 'Sietova analyza',
@@ -174,7 +156,6 @@ const sk = {
     loading: 'Nacitavam graf...',
     nodesProcurer: 'Obstaravatelia',
     nodesSupplier: 'Dodavatelia',
-    lockedFromPin: '(z pinpointu)',
   },
   ingestion: {
     title: 'Stav ingescie udajov',

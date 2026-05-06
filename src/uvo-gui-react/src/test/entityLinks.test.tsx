@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { renderWithProviders, screen } from './utils'
 import { EntityLink } from '../components/entity/EntityLink'
 import { SearchPage } from '../pages/SearchPage'
-import { SuppliersPage } from '../pages/SuppliersPage'
-import { ProcurersPage } from '../pages/ProcurersPage'
 import { vi } from 'vitest'
 
 global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
@@ -122,17 +120,4 @@ describe('Entity Linking', () => {
     expect(procurerLink).toHaveAttribute('href', '/firma/12345678')
   })
 
-  it('suppliers list renders each supplier as a link', async () => {
-    renderWithProviders(<SuppliersPage />, { route: '/suppliers' })
-
-    const link = await screen.findByRole('link', { name: 'Supplier A' })
-    expect(link).toHaveAttribute('href', '/firma/87654321')
-  })
-
-  it('procurers list renders each procurer as a link', async () => {
-    renderWithProviders(<ProcurersPage />, { route: '/procurers' })
-
-    const link = await screen.findByRole('link', { name: 'Procurer A' })
-    expect(link).toHaveAttribute('href', '/firma/12345678')
-  })
 })

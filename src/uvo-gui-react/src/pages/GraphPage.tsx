@@ -1,8 +1,7 @@
-import React, { Suspense, useEffect, useState } from 'react'
+import React, { Suspense, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useEgoGraph, useCpvGraph } from '@/api/queries/graph'
 import { Skeleton } from '@/components/ui/Skeleton'
-import { useCompanyPin } from '@/context/CompanyPinContext'
 import sk from '@/i18n/sk'
 
 const CytoscapeGraph = React.lazy(() => import('../components/graph/CytoscapeGraph'))
@@ -21,31 +20,10 @@ export function GraphPage() {
   const [cpvInput, setCpvInput] = useState(searchParams.get('cpv') ?? '')
   const [yearInput, setYearInput] = useState(Number(searchParams.get('year') ?? CURRENT_YEAR))
 
-  const { ico: pinIco, type: pinType, name: pinName } = useCompanyPin()
-
   const activeIco = searchParams.get('ico') ?? ''
   const activeHops = Number(searchParams.get('hops') ?? 2)
   const activeCpv = searchParams.get('cpv') ?? ''
   const activeYear = Number(searchParams.get('year') ?? CURRENT_YEAR)
-
-  // Auto-seed ego mode from pin on mount when no ico is already in the URL
-  useEffect(() => {
-    if (mode !== 'ego') return
-    if (!pinIco || !pinType) return
-    if (searchParams.get('ico')) return // user already targeted an ICO
-
-    setIcoInput(pinIco)
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.set('mode', 'ego')
-        next.set('ico', pinIco)
-        if (!next.get('hops')) next.set('hops', String(hopsInput))
-        return next
-      },
-      { replace: true },
-    )
-  }, [mode, pinIco, pinType]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const egoQuery = useEgoGraph(activeIco, activeHops)
   const cpvQuery = useCpvGraph(activeCpv, activeYear)
@@ -133,12 +111,6 @@ export function GraphPage() {
                 placeholder={sk.graph.icoPlaceholder}
                 className="w-40 rounded border border-border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               />
-              {pinIco && icoInput === pinIco && (
-                <span className="text-xs text-muted-foreground">
-                  {sk.graph.lockedFromPin}
-                  {pinName ? ` · ${pinName}` : ''}
-                </span>
-              )}
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground">
