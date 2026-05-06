@@ -10,7 +10,6 @@ export function PinpointPage() {
 
   function handleSelect(selectedIco: string, selectedType: 'supplier' | 'procurer', selectedName: string) {
     setPin(selectedIco, selectedName, selectedType)
-    navigate('/')
   }
 
   const typeLabel = type === 'supplier' ? sk.search.typeSupplier : sk.search.typeProcurer
@@ -26,6 +25,7 @@ export function PinpointPage() {
       <EntityAutocomplete
         placeholder={sk.pinpoint.searchPlaceholder}
         className="w-full"
+        autoFocus
         onSelect={handleSelect}
       />
 
