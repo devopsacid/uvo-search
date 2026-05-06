@@ -10,6 +10,7 @@ import { ProcurerDetailPage } from '@/pages/ProcurerDetailPage'
 import { GraphPage } from '@/pages/GraphPage'
 import { IngestionPage } from '@/pages/IngestionPage'
 import { PinpointPage } from '@/pages/PinpointPage'
+import { CpvTrendsPage } from '@/pages/CpvTrendsPage'
 
 export const router = createBrowserRouter([
   {
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
       { path: 'procurers', element: <ProcurersPage /> },
       { path: 'procurers/:ico', element: <ProcurerDetailPage /> },
       { path: 'pinpoint', element: <PinpointPage /> },
+      { path: 'cpv-trends', element: <CpvTrendsPage /> },
       { path: 'graph', element: <GraphPage /> },
       { path: 'ingestion', element: <IngestionPage /> },
     ],

@@ -134,6 +134,7 @@ const sk = {
     apply: 'Pouzit',
     noData: 'Ziadne data pre dany rozsah',
     drillHint: 'Kliknite na kategoriu pre zobrazenie zakazok',
+    subtitlePinned: 'CPV rozpis pre vybranú firmu',
   },
   calendar: {
     title: 'Kalendar zakazok',
@@ -171,6 +172,7 @@ const sk = {
     loading: 'Nacitavam graf...',
     nodesProcurer: 'Obstaravatelia',
     nodesSupplier: 'Dodavatelia',
+    lockedFromPin: '(z pinpointu)',
   },
   ingestion: {
     title: 'Stav ingescie udajov',

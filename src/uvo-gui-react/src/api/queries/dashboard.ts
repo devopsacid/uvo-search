@@ -18,8 +18,8 @@ export const dashboardKeys = {
     [...dashboardKeys.all, 'spendByYear', ico, entityType] as const,
   topSuppliers: (n?: number) => [...dashboardKeys.all, 'topSuppliers', n] as const,
   topProcurers: (n?: number) => [...dashboardKeys.all, 'topProcurers', n] as const,
-  cpvShare: (yearFrom?: number, yearTo?: number) =>
-    [...dashboardKeys.all, 'cpvShare', yearFrom, yearTo] as const,
+  cpvShare: (yearFrom?: number, yearTo?: number, ico?: string, entityType?: string) =>
+    [...dashboardKeys.all, 'cpvShare', yearFrom, yearTo, ico, entityType] as const,
   recent: (limit?: number, ico?: string, entityType?: string) =>
     [...dashboardKeys.all, 'recent', limit, ico, entityType] as const,
   byMonth: (year: number) => [...dashboardKeys.all, 'byMonth', year] as const,
@@ -69,13 +69,20 @@ export function useTopProcurers(n = 10) {
   })
 }
 
-export function useCpvShare(yearFrom?: number, yearTo?: number) {
+export function useCpvShare(
+  yearFrom?: number,
+  yearTo?: number,
+  ico?: string,
+  entityType?: string,
+) {
   return useQuery({
-    queryKey: dashboardKeys.cpvShare(yearFrom, yearTo),
+    queryKey: dashboardKeys.cpvShare(yearFrom, yearTo, ico, entityType),
     queryFn: () => {
       const params = new URLSearchParams()
       if (yearFrom != null) params.set('year_from', String(yearFrom))
       if (yearTo != null) params.set('year_to', String(yearTo))
+      if (ico) params.set('ico', ico)
+      if (entityType) params.set('entity_type', entityType)
       const qs = params.toString()
       return apiClient.get<CpvShare[]>(`/dashboard/by-cpv${qs ? `?${qs}` : ''}`)
     },

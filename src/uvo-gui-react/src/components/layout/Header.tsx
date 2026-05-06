@@ -9,6 +9,7 @@ const navItems = [
   { to: '/procurers', label: sk.nav.procurers, end: false },
   { to: '/pinpoint', label: sk.nav.pinpoint, end: false },
   { to: '/graph', label: sk.nav.graph, end: false },
+  { to: '/cpv-trends', label: sk.nav.cpvTrends, end: false },
   { to: '/ingestion', label: sk.nav.ingestion, end: false },
   { to: '/about', label: sk.nav.about, end: false },
 ] as const
