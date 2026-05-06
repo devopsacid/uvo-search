@@ -12,6 +12,7 @@ const sk = {
   },
   pin: {
     clear: 'Zrusit vybranu firmu',
+    placeholder: 'Vyhladat firmu...',
   },
   overview: {
     title: 'Prehlad obstaravania',
