@@ -11,9 +11,7 @@ const sk = {
     about: 'O projekte',
   },
   pin: {
-    placeholder: 'Vyhladat firmu...',
     clear: 'Zrusit vybranu firmu',
-    viewingAs: 'Zobrazene ako',
   },
   overview: {
     title: 'Prehlad obstaravania',

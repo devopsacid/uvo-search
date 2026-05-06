@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 
 interface CompanyPin {
   ico: string | null
-  name: string
+  name: string | null
   type: 'supplier' | 'procurer' | null
 }
 
@@ -14,14 +14,14 @@ interface CompanyPinContextValue extends CompanyPin {
 const CompanyPinContext = createContext<CompanyPinContextValue | null>(null)
 
 export function CompanyPinProvider({ children }: { children: ReactNode }) {
-  const [pin, setPin] = useState<CompanyPin>({ ico: null, name: '', type: null })
+  const [pin, setPin] = useState<CompanyPin>({ ico: null, name: null, type: null })
 
   return (
     <CompanyPinContext.Provider
       value={{
         ...pin,
         setPin: (ico, name, type) => setPin({ ico, name, type }),
-        clearPin: () => setPin({ ico: null, name: '', type: null }),
+        clearPin: () => setPin({ ico: null, name: null, type: null }),
       }}
     >
       {children}

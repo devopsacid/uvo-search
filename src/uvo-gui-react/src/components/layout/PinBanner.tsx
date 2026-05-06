@@ -13,7 +13,7 @@ export function PinBanner() {
   const href = type === 'supplier' ? `/suppliers/${ico}` : `/procurers/${ico}`
 
   return (
-    <div className="flex items-center gap-2 border-b border-border bg-accent/60 px-4 py-1.5 text-xs">
+    <div role="status" className="flex items-center gap-2 border-b border-border bg-accent/60 px-4 py-1.5 text-xs">
       <span
         className={cn(
           'shrink-0 rounded px-1.5 py-0.5 font-medium uppercase tracking-wide',
@@ -28,7 +28,7 @@ export function PinBanner() {
         onClick={() => navigate(href)}
         className="flex-1 truncate text-left font-medium text-foreground hover:underline"
       >
-        {name}
+        {name ?? ''}
       </button>
       <span className="text-muted-foreground">{ico}</span>
       <button
