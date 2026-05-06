@@ -161,7 +161,7 @@ export function SupplierDetailPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{formatCurrency(c.value)}</TableCell>
-                    <TableCell>{c.year}</TableCell>
+                    <TableCell>{c.year || '—'}</TableCell>
                   </TableRow>
                 ))}
           </TableBody>
