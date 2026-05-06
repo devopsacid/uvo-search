@@ -9,7 +9,7 @@ import sk from '@/i18n/sk'
 interface EntityAutocompleteProps {
   placeholder?: string
   className?: string
-  onSelect?: (ico: string, type: 'supplier' | 'procurer') => void
+  onSelect?: (ico: string, type: 'supplier' | 'procurer', name: string) => void
 }
 
 export function EntityAutocomplete({
@@ -45,7 +45,7 @@ export function EntityAutocomplete({
       setOpen(false)
       setInputValue('')
       if (onSelect) {
-        onSelect(hit.ico, hit.type as 'supplier' | 'procurer')
+        onSelect(hit.ico, hit.type as 'supplier' | 'procurer', hit.name)
       } else {
         navigate(hit.type === 'supplier' ? `/suppliers/${hit.ico}` : `/procurers/${hit.ico}`)
       }
