@@ -81,7 +81,7 @@ export function OverviewPage() {
           placeholder={sk.pin.placeholder}
           className="w-72"
           onSelect={(selectedIco, selectedType, selectedName) =>
-            setPin(selectedIco, selectedType, selectedName)
+            setPin(selectedIco, selectedName, selectedType)
           }
         />
       </div>
