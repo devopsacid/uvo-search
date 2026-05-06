@@ -6,6 +6,8 @@ import { SearchPage } from '@/pages/SearchPage'
 import { GraphPage } from '@/pages/GraphPage'
 import { IngestionPage } from '@/pages/IngestionPage'
 import { CpvTrendsPage } from '@/pages/CpvTrendsPage'
+import { FirmaPage } from '@/pages/FirmaPage'
+import { FirmaPrehladTab } from '@/pages/firma/FirmaPrehladTab'
 
 function ComingSoon() {
   return <div className="p-8 text-muted-foreground">Stránka sa pripravuje…</div>
@@ -29,13 +31,21 @@ export const router = createBrowserRouter([
       { index: true, element: <OverviewPage /> },
       { path: 'about', element: <AboutPage /> },
 
-      // New routes
-      { path: 'firma/:ico', element: <ComingSoon /> },
-      { path: 'firma/:ico/prehlad', element: <ComingSoon /> },
-      { path: 'firma/:ico/zakazky', element: <ComingSoon /> },
-      { path: 'firma/:ico/siet', element: <ComingSoon /> },
-      { path: 'firma/:ico/partneri', element: <ComingSoon /> },
-      { path: 'firma/:ico/cpv', element: <ComingSoon /> },
+      // Firma workspace
+      {
+        path: 'firma/:ico',
+        element: <FirmaPage />,
+        children: [
+          { index: true, element: <Navigate to="prehlad" replace /> },
+          { path: 'prehlad', element: <FirmaPrehladTab /> },
+          { path: 'zakazky', element: <ComingSoon /> },
+          { path: 'siet', element: <ComingSoon /> },
+          { path: 'partneri', element: <ComingSoon /> },
+          { path: 'cpv', element: <ComingSoon /> },
+        ],
+      },
+
+      // Other new routes
       { path: 'firmy', element: <ComingSoon /> },
       { path: 'zakazky', element: <SearchPage /> },
       { path: 'hladaj', element: <ComingSoon /> },
