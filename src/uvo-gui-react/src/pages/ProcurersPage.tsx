@@ -1,4 +1,6 @@
-import { useSearchParams } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useCompanyPin } from '@/context/CompanyPinContext'
 import { useProcurers } from '@/api/queries/procurers'
 import { Sidebar, SidebarSection } from '@/components/layout/Sidebar'
 import { FilterInput } from '@/components/search/FilterBar'
@@ -16,6 +18,15 @@ export function ProcurersPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const q = searchParams.get('q') ?? ''
   const page = Number(searchParams.get('page') ?? '1')
+
+  const { ico, type } = useCompanyPin()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (ico && type === 'procurer') {
+      navigate(`/procurers/${ico}`, { replace: true })
+    }
+  }, [ico, type, navigate])
 
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
