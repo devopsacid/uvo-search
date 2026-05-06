@@ -11,7 +11,6 @@ import {
 import { useSupplier } from '@/api/queries/suppliers'
 import { useProcurer } from '@/api/queries/procurers'
 import { useCompanyPin } from '@/context/CompanyPinContext'
-import { EntityAutocomplete } from '@/components/search/EntityAutocomplete'
 import { KpiCard } from '@/components/ui/KpiCard'
 import { Skeleton, SkeletonRow } from '@/components/ui/Skeleton'
 import { SpendByYearChart } from '@/components/charts/SpendByYearChart'
@@ -48,7 +47,7 @@ function formatMillions(v: number) {
 }
 
 export function OverviewPage() {
-  const { ico, name, type, setPin } = useCompanyPin()
+  const { ico, name, type } = useCompanyPin()
   const [, setSearchParams] = useSearchParams()
 
   // Keep URL in sync with pin so the overview page is bookmarkable/shareable
@@ -96,16 +95,7 @@ export function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <h1 className="text-xl font-semibold text-foreground">{sk.overview.title}</h1>
-        <EntityAutocomplete
-          placeholder={sk.pin.placeholder}
-          className="w-72"
-          onSelect={(selectedIco, selectedType, selectedName) =>
-            setPin(selectedIco, selectedName, selectedType)
-          }
-        />
-      </div>
+      <h1 className="text-xl font-semibold text-foreground">{sk.overview.title}</h1>
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

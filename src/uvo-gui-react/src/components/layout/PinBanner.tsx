@@ -42,6 +42,12 @@ export function PinBanner() {
       >
         {name ?? ''}
       </button>
+      <button
+        onClick={() => navigate('/pinpoint')}
+        className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
+      >
+        {sk.pinpoint.change}
+      </button>
       <span className="text-muted-foreground">{ico}</span>
       <button
         onClick={copyLink}
