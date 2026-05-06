@@ -50,6 +50,21 @@ cd src/uvo-gui-react && npm install && npm test
 
 Full stack (14 services: mcp-server, api, gui-react, mongo, mongo-express, neo4j, redis, extractor-vestnik, extractor-crz, extractor-ted, extractor-itms, ingestor, dedup-worker, pipeline) lives in `docker-compose.yml`. For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j/redis volume-init gotchas, service-name URIs, and nuclear-reset tiers. The `pipeline` service is now optional/legacy for ad-hoc backfills; the 6 new microservices (4 extractors + ingestor + dedup-worker) handle continuous ingestion via Redis Streams.
 
+**Docker runs in WSL, not Docker Desktop.** All `docker compose` commands must go through WSL:
+
+```bash
+# From Windows shell (PowerShell / Git Bash), always prefix with:
+MSYS_NO_PATHCONV=1 wsl -e bash -lc "cd /mnt/c/Users/User/Documents/src/uvo-search && docker compose <cmd>"
+
+# Standard deploy cycle after code changes:
+MSYS_NO_PATHCONV=1 wsl -e bash -lc "cd /mnt/c/Users/User/Documents/src/uvo-search && docker compose build api gui-react && docker compose up -d api gui-react"
+
+# Check stack status:
+MSYS_NO_PATHCONV=1 wsl -e bash -lc "cd /mnt/c/Users/User/Documents/src/uvo-search && docker compose ps"
+```
+
+Docker Desktop context (`desktop-linux`) will fail with "pipe not found" — that's expected. The WSL `docker` client uses the default context pointing to the WSL daemon.
+
 ## Workflow
 
 - New features: use `superpowers:using-git-worktrees` to create an isolated worktree before writing code. Skip for single-file fixes, docs-only edits, or changes to the in-progress branch.
