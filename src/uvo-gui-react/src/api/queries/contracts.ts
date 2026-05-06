@@ -10,6 +10,8 @@ export interface ContractFilters {
   value_min?: number
   value_max?: number
   ico?: string
+  supplier_ico?: string
+  procurer_ico?: string
   page?: number
   page_size?: number
 }
@@ -29,6 +31,8 @@ function buildContractParams(filters: ContractFilters): string {
   if (filters.value_min != null) params.set('value_min', String(filters.value_min))
   if (filters.value_max != null) params.set('value_max', String(filters.value_max))
   if (filters.ico) params.set('ico', filters.ico)
+  if (filters.supplier_ico) params.set('supplier_ico', filters.supplier_ico)
+  if (filters.procurer_ico) params.set('procurer_ico', filters.procurer_ico)
 
   const pageSize = filters.page_size ?? 20
   const page = filters.page ?? 1

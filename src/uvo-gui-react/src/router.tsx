@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import { Layout } from '@/components/layout/Layout'
 import { OverviewPage } from '@/pages/OverviewPage'
@@ -8,6 +9,8 @@ import { IngestionPage } from '@/pages/IngestionPage'
 import { CpvTrendsPage } from '@/pages/CpvTrendsPage'
 import { FirmaPage } from '@/pages/FirmaPage'
 import { FirmaPrehladTab } from '@/pages/firma/FirmaPrehladTab'
+import { FirmaZakazkyTab } from '@/pages/firma/FirmaZakazkyTab'
+import { FirmaSietTab } from '@/pages/firma/FirmaSietTab'
 
 function ComingSoon() {
   return <div className="p-8 text-muted-foreground">Stránka sa pripravuje…</div>
@@ -38,8 +41,15 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="prehlad" replace /> },
           { path: 'prehlad', element: <FirmaPrehladTab /> },
-          { path: 'zakazky', element: <ComingSoon /> },
-          { path: 'siet', element: <ComingSoon /> },
+          { path: 'zakazky', element: <FirmaZakazkyTab /> },
+          {
+            path: 'siet',
+            element: (
+              <Suspense fallback={<div className="p-8 text-muted-foreground">Načítavam…</div>}>
+                <FirmaSietTab />
+              </Suspense>
+            ),
+          },
           { path: 'partneri', element: <ComingSoon /> },
           { path: 'cpv', element: <ComingSoon /> },
         ],
