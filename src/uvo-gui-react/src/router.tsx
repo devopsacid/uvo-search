@@ -11,6 +11,8 @@ import { FirmaPage } from '@/pages/FirmaPage'
 import { FirmaPrehladTab } from '@/pages/firma/FirmaPrehladTab'
 import { FirmaZakazkyTab } from '@/pages/firma/FirmaZakazkyTab'
 import { FirmaSietTab } from '@/pages/firma/FirmaSietTab'
+import { FirmaPartneriTab } from '@/pages/firma/FirmaPartneriTab'
+import { FirmaCpvTab } from '@/pages/firma/FirmaCpvTab'
 
 function ComingSoon() {
   return <div className="p-8 text-muted-foreground">Stránka sa pripravuje…</div>
@@ -50,8 +52,8 @@ export const router = createBrowserRouter([
               </Suspense>
             ),
           },
-          { path: 'partneri', element: <ComingSoon /> },
-          { path: 'cpv', element: <ComingSoon /> },
+          { path: 'partneri', element: <FirmaPartneriTab /> },
+          { path: 'cpv', element: <FirmaCpvTab /> },
         ],
       },
 
