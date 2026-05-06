@@ -9,7 +9,7 @@ def build_search_stage(query: str, path: list[str]) -> dict:
     Empty string → list-all via `exists`.
     "quoted phrase" → `phrase` operator.
     Contains * or ? → `wildcard` operator.
-    Otherwise → compound of `autocomplete` (fuzzy=1) and `text`.
+    Otherwise → compound: phrase (3× boost) + fuzzy text (maxEdits 1-2) + autocomplete prefix.
     """
     q = query.strip()
     if not q:
@@ -27,9 +27,27 @@ def build_search_stage(query: str, path: list[str]) -> dict:
             }
         }
 
+    max_edits = 2 if len(q) >= 6 else 1
     return {
         "compound": {
             "should": [
+                # Phrase match scores highest when all words appear in order
+                {
+                    "phrase": {
+                        "query": q,
+                        "path": path,
+                        "score": {"boost": {"value": 3}},
+                    }
+                },
+                # Fuzzy text — tolerates typos across the full string
+                {
+                    "text": {
+                        "query": q,
+                        "path": path,
+                        "fuzzy": {"maxEdits": max_edits},
+                    }
+                },
+                # Autocomplete prefix — still useful for short / in-progress queries
                 {
                     "autocomplete": {
                         "query": q,
@@ -37,7 +55,6 @@ def build_search_stage(query: str, path: list[str]) -> dict:
                         "fuzzy": {"maxEdits": 1},
                     }
                 },
-                {"text": {"query": q, "path": path}},
             ]
         }
     }

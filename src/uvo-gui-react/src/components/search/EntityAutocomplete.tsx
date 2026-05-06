@@ -66,6 +66,7 @@ export function EntityAutocomplete({
     } else if (e.key === 'Enter') {
       e.preventDefault()
       if (activeIndex >= 0) commit(activeIndex)
+      else if (hits.length > 0) commit(0)
     } else if (e.key === 'Escape') {
       setOpen(false)
     }
