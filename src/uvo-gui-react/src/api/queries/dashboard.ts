@@ -20,7 +20,8 @@ export const dashboardKeys = {
   topProcurers: (n?: number) => [...dashboardKeys.all, 'topProcurers', n] as const,
   cpvShare: (yearFrom?: number, yearTo?: number) =>
     [...dashboardKeys.all, 'cpvShare', yearFrom, yearTo] as const,
-  recent: (limit?: number) => [...dashboardKeys.all, 'recent', limit] as const,
+  recent: (limit?: number, ico?: string, entityType?: string) =>
+    [...dashboardKeys.all, 'recent', limit, ico, entityType] as const,
   byMonth: (year: number) => [...dashboardKeys.all, 'byMonth', year] as const,
 }
 
@@ -82,10 +83,15 @@ export function useCpvShare(yearFrom?: number, yearTo?: number) {
   })
 }
 
-export function useRecent(limit = 10) {
+export function useRecent(limit = 10, ico?: string, entityType?: string) {
   return useQuery({
-    queryKey: dashboardKeys.recent(limit),
-    queryFn: () => apiClient.get<RecentContract[]>(`/dashboard/recent?limit=${limit}`),
+    queryKey: dashboardKeys.recent(limit, ico, entityType),
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(limit) })
+      if (ico) params.set('ico', ico)
+      if (entityType) params.set('entity_type', entityType)
+      return apiClient.get<RecentContract[]>(`/dashboard/recent?${params.toString()}`)
+    },
     staleTime: 60 * 1000,
   })
 }
