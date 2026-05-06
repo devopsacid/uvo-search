@@ -30,8 +30,8 @@ export function renderWithProviders(
 ) {
   const Wrapper = ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <CompanyPinProvider>
-        <MemoryRouter initialEntries={[route]}>
+      <MemoryRouter initialEntries={[route]}>
+        <CompanyPinProvider>
           {routePattern ? (
             <Routes>
               <Route path={routePattern} element={children} />
@@ -39,8 +39,8 @@ export function renderWithProviders(
           ) : (
             children
           )}
-        </MemoryRouter>
-      </CompanyPinProvider>
+        </CompanyPinProvider>
+      </MemoryRouter>
     </QueryClientProvider>
   )
 

@@ -12,6 +12,7 @@ const sk = {
   },
   pin: {
     clear: 'Zrusit vybranu firmu',
+    copyLink: 'Kopirovat odkaz na pinpoint',
     placeholder: 'Vyhladat firmu...',
     viewingAs: 'Zobrazené ako',
   },

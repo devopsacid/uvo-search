@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   useDashboardSummary,
   useRecent,
@@ -46,7 +48,26 @@ function formatMillions(v: number) {
 }
 
 export function OverviewPage() {
-  const { ico, type, setPin } = useCompanyPin()
+  const { ico, name, type, setPin } = useCompanyPin()
+  const [, setSearchParams] = useSearchParams()
+
+  // Keep URL in sync with pin so the overview page is bookmarkable/shareable
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (ico && type) {
+        next.set('pin_ico', ico)
+        next.set('pin_type', type)
+        if (name) next.set('pin_name', name)
+        else next.delete('pin_name')
+      } else {
+        next.delete('pin_ico')
+        next.delete('pin_type')
+        next.delete('pin_name')
+      }
+      return next
+    }, { replace: true })
+  }, [ico, name, type, setSearchParams])
 
   const { data: summary, isLoading: summaryLoading, isError, error, refetch } = useDashboardSummary(ico ?? undefined, type ?? undefined)
   const { data: spendByYear, isLoading: spendLoading } = useSpendByYear(ico ?? undefined, type ?? undefined)
