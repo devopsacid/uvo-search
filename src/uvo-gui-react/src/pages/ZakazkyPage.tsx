@@ -10,6 +10,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { formatCurrency } from '@/lib/utils'
 import sk from '@/i18n/sk'
+import type { ContractDetail } from '@/api/types'
 
 const PAGE_SIZE = 20
 
@@ -18,7 +19,7 @@ const YEAR_OPTIONS = Array.from({ length: 15 }, (_, i) => {
   return { value: y, label: y }
 })
 
-export function SearchPage() {
+export function ZakazkyPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const q = searchParams.get('q') ?? ''
@@ -58,7 +59,6 @@ export function SearchPage() {
     setSearchParams({}, { replace: false })
   }
 
-  // Build date_from/date_to from year
   const date_from = year ? `${year}-01-01` : undefined
   const date_to = year ? `${year}-12-31` : undefined
 
@@ -265,8 +265,6 @@ export function SearchPage() {
     </div>
   )
 }
-
-import type { ContractDetail } from '@/api/types'
 
 function ContractDetailPane({ detail }: { detail: ContractDetail }) {
   return (

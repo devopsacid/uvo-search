@@ -9,12 +9,14 @@ import sk from '@/i18n/sk'
 interface EntityAutocompleteProps {
   placeholder?: string
   className?: string
+  autoFocus?: boolean
   onSelect?: (ico: string, type: 'supplier' | 'procurer', name: string) => void
 }
 
 export function EntityAutocomplete({
   placeholder,
   className,
+  autoFocus,
   onSelect,
 }: EntityAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -47,7 +49,7 @@ export function EntityAutocomplete({
       if (onSelect) {
         onSelect(hit.ico, hit.type as 'supplier' | 'procurer', hit.name)
       } else {
-        navigate(hit.type === 'supplier' ? `/suppliers/${hit.ico}` : `/procurers/${hit.ico}`)
+        navigate(`/firma/${hit.ico}`)
       }
     },
     [hits, navigate, onSelect],
@@ -64,6 +66,7 @@ export function EntityAutocomplete({
     } else if (e.key === 'Enter') {
       e.preventDefault()
       if (activeIndex >= 0) commit(activeIndex)
+      else if (hits.length > 0) commit(0)
     } else if (e.key === 'Escape') {
       setOpen(false)
     }
@@ -83,6 +86,7 @@ export function EntityAutocomplete({
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onFocus={() => { if (debouncedQuery.length >= 2) setOpen(true) }}
         placeholder={placeholder ?? sk.search.autocompletePlaceholder}
+        autoFocus={autoFocus}
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         aria-label={sk.search.autocompletePlaceholder}
         aria-autocomplete="list"
@@ -116,6 +120,8 @@ export function EntityAutocomplete({
                 {typeLabel(hit.type)}
               </span>
               <span className="flex-1 truncate text-foreground">{hit.name}</span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">{hit.ico}</span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">{hit.contract_count}</span>
             </li>
           ))}
           {isFetching && (

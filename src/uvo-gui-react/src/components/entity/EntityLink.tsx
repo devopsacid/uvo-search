@@ -14,8 +14,8 @@ interface EntityLinkProps {
  * Wraps an entity name in a link to its detail page.
  * Use this EVERYWHERE a supplier or procurer name is rendered.
  */
-export function EntityLink({ ico, name, type, className }: EntityLinkProps) {
-  const to = type === 'supplier' ? `/suppliers/${ico}` : `/procurers/${ico}`
+export function EntityLink({ ico, name, type: _type, className }: EntityLinkProps) {
+  const to = `/firma/${ico}`
   if (!ico) return <span className={className}>{name || '—'}</span>
 
   return (
