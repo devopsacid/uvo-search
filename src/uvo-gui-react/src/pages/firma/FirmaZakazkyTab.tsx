@@ -1,73 +1,86 @@
-import { useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useContractSearch, useContractDetail } from '@/api/queries/contracts'
-import { Sidebar, SidebarSection } from '@/components/layout/Sidebar'
-import { EntityAutocomplete } from '@/components/search/EntityAutocomplete'
-import { FilterInput } from '@/components/search/FilterBar'
-import { EntityLink } from '@/components/entity/EntityLink'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
-import { Skeleton, SkeletonRow } from '@/components/ui/Skeleton'
+import { SkeletonRow } from '@/components/ui/Skeleton'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { Pagination } from '@/components/ui/Pagination'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { EntityLink } from '@/components/entity/EntityLink'
 import { formatCurrency } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
+
+type Role = 'all' | 'supplier' | 'procurer'
 
 const PAGE_SIZE = 20
 
-const YEAR_OPTIONS = Array.from({ length: 15 }, (_, i) => {
-  const y = String(2024 - i)
-  return { value: y, label: y }
-})
+const CHIPS: { role: Role; label: string }[] = [
+  { role: 'all', label: sk.firma.chipAll },
+  { role: 'supplier', label: sk.firma.chipAsSupplier },
+  { role: 'procurer', label: sk.firma.chipAsProcurer },
+]
 
-export function SearchPage() {
+export function FirmaZakazkyTab() {
+  const { ico } = useParams<{ ico: string }>()
+  const safeIco = ico ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const q = searchParams.get('q') ?? ''
-  const year = searchParams.get('year') ?? ''
-  const cpv = searchParams.get('cpv') ?? ''
-  const procurer_ico = searchParams.get('procurer_ico') ?? ''
-  const supplier_ico = searchParams.get('supplier_ico') ?? ''
+  const role = (searchParams.get('role') as Role) ?? 'all'
   const page = Number(searchParams.get('page') ?? '1')
   const selectedId = searchParams.get('selected') ?? ''
 
-  function setParam(key: string, value: string) {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (value) {
-        next.set(key, value)
-      } else {
-        next.delete(key)
-      }
-      if (key !== 'page' && key !== 'selected') next.delete('page')
-      return next
-    }, { replace: false })
+  function setRole(r: Role) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (r === 'all') {
+          next.delete('role')
+        } else {
+          next.set('role', r)
+        }
+        next.delete('page')
+        next.delete('selected')
+        return next
+      },
+      { replace: false },
+    )
+  }
+
+  function setPage(p: number) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('page', String(p))
+        return next
+      },
+      { replace: false },
+    )
   }
 
   function selectContract(id: string) {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      if (next.get('selected') === id) {
-        next.delete('selected')
-      } else {
-        next.set('selected', id)
-      }
-      return next
-    }, { replace: true })
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (next.get('selected') === id) {
+          next.delete('selected')
+        } else {
+          next.set('selected', id)
+        }
+        return next
+      },
+      { replace: true },
+    )
   }
 
-  function clearFilters() {
-    setSearchParams({}, { replace: false })
-  }
+  const filters =
+    role === 'supplier'
+      ? { supplier_ico: safeIco }
+      : role === 'procurer'
+        ? { procurer_ico: safeIco }
+        : { ico: safeIco }
 
-  // Build date_from/date_to from year
-  const date_from = year ? `${year}-01-01` : undefined
-  const date_to = year ? `${year}-12-31` : undefined
-
-  const { data, isLoading, isError, error } = useContractSearch({
-    q: q || undefined,
-    cpv: cpv || undefined,
-    date_from,
-    date_to,
-    ico: supplier_ico || undefined,
+  const { data, isLoading, isError } = useContractSearch({
+    ...filters,
     page,
     page_size: PAGE_SIZE,
   })
@@ -76,84 +89,36 @@ export function SearchPage() {
 
   const contracts = data?.data ?? []
   const total = data?.pagination.total ?? 0
-  const hasFilters = !!(q || year || cpv || procurer_ico || supplier_ico)
 
   return (
     <div className="flex gap-4">
-      {/* Filter sidebar */}
-      <Sidebar>
-        <div className="space-y-4">
-          <SidebarSection title={sk.search.title}>
-            <FilterInput
-              label={sk.search.filterQ}
-              value={q}
-              onChange={(e) => setParam('q', e.target.value)}
-              placeholder={sk.search.placeholder}
-            />
-          </SidebarSection>
-
-          <SidebarSection>
-            <label className="block space-y-1">
-              <span className="text-xs text-muted-foreground">{sk.search.filterYear}</span>
-              <select
-                value={year}
-                onChange={(e) => setParam('year', e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Všetky</option>
-                {YEAR_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </label>
-          </SidebarSection>
-
-          <SidebarSection>
-            <FilterInput
-              label={sk.search.filterCpv}
-              value={cpv}
-              onChange={(e) => setParam('cpv', e.target.value)}
-              placeholder="napr. 45000000"
-            />
-          </SidebarSection>
-
-          <SidebarSection>
-            <FilterInput
-              label={sk.search.filterSupplier}
-              value={supplier_ico}
-              onChange={(e) => setParam('supplier_ico', e.target.value)}
-              placeholder="IČO"
-            />
-          </SidebarSection>
-
-          {hasFilters && (
+      <div className="min-w-0 flex-1 space-y-3">
+        {/* Role chips */}
+        <div className="flex gap-2">
+          {CHIPS.map(({ role: r, label }) => (
             <button
-              onClick={clearFilters}
-              className="w-full rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+              key={r}
+              onClick={() => setRole(r)}
+              className={cn(
+                'rounded-full px-3 py-1 text-sm transition-colors',
+                r === role
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border border-border text-muted-foreground hover:bg-accent',
+              )}
             >
-              {sk.common.clearFilters}
+              {label}
             </button>
-          )}
-        </div>
-      </Sidebar>
-
-      {/* Results */}
-      <div className="min-w-0 flex-1">
-        <div className="mb-4">
-          <EntityAutocomplete
-            onSelect={(ico, type) => {
-              if (type === 'supplier') setParam('supplier_ico', ico)
-              else setParam('procurer_ico', ico)
-            }}
-          />
+          ))}
         </div>
 
+        {/* Error */}
         {isError && (
           <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
-            {sk.common.error}: {error instanceof Error ? error.message : ''}
+            {sk.common.error}
           </div>
         )}
 
+        {/* Table */}
         {isLoading ? (
           <div className="rounded-lg border border-border bg-card">
             <Table>
@@ -162,7 +127,7 @@ export function SearchPage() {
                   <TableHead>{sk.search.colTitle}</TableHead>
                   <TableHead>{sk.search.colProcurer}</TableHead>
                   <TableHead>{sk.search.colSupplier}</TableHead>
-                  <TableHead>{sk.search.colValue}</TableHead>
+                  <TableHead className="text-right">{sk.search.colValue}</TableHead>
                   <TableHead>{sk.search.colYear}</TableHead>
                 </tr>
               </TableHeader>
@@ -174,20 +139,7 @@ export function SearchPage() {
             </Table>
           </div>
         ) : contracts.length === 0 ? (
-          <EmptyState
-            title={sk.search.noResults}
-            description={sk.search.noResultsHint}
-            action={
-              hasFilters ? (
-                <button
-                  onClick={clearFilters}
-                  className="text-sm text-primary hover:underline"
-                >
-                  {sk.common.clearFilters}
-                </button>
-              ) : undefined
-            }
-          />
+          <EmptyState title={sk.firma.zakazkyEmpty} description={sk.firma.zakazkyEmptyHint} />
         ) : (
           <div className="rounded-lg border border-border bg-card">
             <Table>
@@ -237,7 +189,7 @@ export function SearchPage() {
                 page={page}
                 pageSize={PAGE_SIZE}
                 total={total}
-                onPageChange={(p) => setParam('page', String(p))}
+                onPageChange={setPage}
               />
             </div>
           </div>
@@ -272,17 +224,20 @@ function ContractDetailPane({ detail }: { detail: ContractDetail }) {
   return (
     <div className="space-y-3 text-sm">
       <p className="font-medium leading-snug text-foreground">{detail.title}</p>
-
       <dl className="space-y-1.5 text-sm">
         <Row label={sk.search.colProcurer}>
           {detail.procurer_ico ? (
             <EntityLink ico={detail.procurer_ico} name={detail.procurer_name} type="procurer" />
-          ) : detail.procurer_name || '—'}
+          ) : (
+            detail.procurer_name || '—'
+          )}
         </Row>
         <Row label={sk.search.colSupplier}>
           {detail.supplier_ico ? (
             <EntityLink ico={detail.supplier_ico} name={detail.supplier_name ?? ''} type="supplier" />
-          ) : detail.supplier_name || '—'}
+          ) : (
+            detail.supplier_name || '—'
+          )}
         </Row>
         <Row label={sk.search.colValue}>{formatCurrency(detail.value)}</Row>
         <Row label={sk.search.colYear}>{String(detail.year)}</Row>
@@ -294,27 +249,6 @@ function ContractDetailPane({ detail }: { detail: ContractDetail }) {
           <span className="font-mono text-xs text-muted-foreground">{detail.id}</span>
         </Row>
       </dl>
-
-      {detail.all_suppliers.length > 1 && (
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">{sk.search.labelAllSuppliers}</p>
-          <ul className="space-y-1">
-            {detail.all_suppliers.map((s, i) => {
-              const ico = String((s as Record<string, unknown>).ico ?? '')
-              const name = String((s as Record<string, unknown>).name ?? '')
-              return (
-                <li key={i}>
-                  {ico ? (
-                    <EntityLink ico={ico} name={name} type="supplier" />
-                  ) : (
-                    <span>{name}</span>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
     </div>
   )
 }

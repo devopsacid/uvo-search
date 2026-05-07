@@ -24,7 +24,7 @@ export function ConcentrationPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">{sk.common.error}</p>
-        <Link to="/procurers" className="mt-4 block text-sm text-primary hover:underline">
+        <Link to="/firmy" className="mt-4 block text-sm text-primary hover:underline">
           {sk.common.back}
         </Link>
       </div>
@@ -56,7 +56,7 @@ export function ConcentrationPage() {
           )}
         </div>
         <Link
-          to={`/procurers/${safeIco}`}
+          to={`/firma/${safeIco}`}
           className="text-sm text-muted-foreground hover:text-foreground hover:underline"
         >
           ← {sk.common.back}

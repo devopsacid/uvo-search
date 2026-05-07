@@ -7,15 +7,23 @@ MCP tools return:
 - entities with fields: `ico`, `name`, `contract_count`, `total_value`
 """
 
+from datetime import datetime, timezone
+
 from uvo_api.models import ContractDetail, ContractRow
+
+_MIN_YEAR = 1993
+_MAX_YEAR_DELTA = 5  # mirror uvo_pipeline.utils.date_validation
 
 
 def year_from_date(date_str: str | None) -> int:
     if date_str and len(date_str) >= 4:
         try:
-            return int(date_str[:4])
+            year = int(date_str[:4])
         except ValueError:
-            pass
+            return 0
+        max_year = datetime.now(timezone.utc).year + _MAX_YEAR_DELTA
+        if _MIN_YEAR <= year <= max_year:
+            return year
     return 0
 
 

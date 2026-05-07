@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { renderWithProviders, screen } from './utils'
 import { EntityLink } from '../components/entity/EntityLink'
 import { SearchPage } from '../pages/SearchPage'
-import { SuppliersPage } from '../pages/SuppliersPage'
-import { ProcurersPage } from '../pages/ProcurersPage'
 import { vi } from 'vitest'
 
 global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
@@ -61,7 +59,7 @@ describe('Entity Linking', () => {
       <EntityLink ico="87654321" name="Supplier A" type="supplier" />
     )
     const link = screen.getByRole('link', { name: 'Supplier A' })
-    expect(link).toHaveAttribute('href', '/suppliers/87654321')
+    expect(link).toHaveAttribute('href', '/firma/87654321')
   })
 
   it('renders procurer link with correct href', () => {
@@ -69,7 +67,7 @@ describe('Entity Linking', () => {
       <EntityLink ico="12345678" name="Procurer A" type="procurer" />
     )
     const link = screen.getByRole('link', { name: 'Procurer A' })
-    expect(link).toHaveAttribute('href', '/procurers/12345678')
+    expect(link).toHaveAttribute('href', '/firma/12345678')
   })
 
   it('uses ico as fallback when name is empty', () => {
@@ -112,27 +110,14 @@ describe('Entity Linking', () => {
     renderWithProviders(<SearchPage />, { route: '/search' })
 
     const supplierLink = await screen.findByRole('link', { name: 'Supplier A' })
-    expect(supplierLink).toHaveAttribute('href', '/suppliers/87654321')
+    expect(supplierLink).toHaveAttribute('href', '/firma/87654321')
   })
 
   it('search results render procurer names as links', async () => {
     renderWithProviders(<SearchPage />, { route: '/search' })
 
     const procurerLink = await screen.findByRole('link', { name: 'Procurer A' })
-    expect(procurerLink).toHaveAttribute('href', '/procurers/12345678')
+    expect(procurerLink).toHaveAttribute('href', '/firma/12345678')
   })
 
-  it('suppliers list renders each supplier as a link', async () => {
-    renderWithProviders(<SuppliersPage />, { route: '/suppliers' })
-
-    const link = await screen.findByRole('link', { name: 'Supplier A' })
-    expect(link).toHaveAttribute('href', '/suppliers/87654321')
-  })
-
-  it('procurers list renders each procurer as a link', async () => {
-    renderWithProviders(<ProcurersPage />, { route: '/procurers' })
-
-    const link = await screen.findByRole('link', { name: 'Procurer A' })
-    expect(link).toHaveAttribute('href', '/procurers/12345678')
-  })
 })

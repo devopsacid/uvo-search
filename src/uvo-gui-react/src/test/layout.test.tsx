@@ -42,9 +42,8 @@ describe('Layout + Routing', () => {
     renderApp()
 
     expect(await screen.findByText(sk.nav.overview)).toBeInTheDocument()
-    expect(await screen.findByText(sk.nav.search)).toBeInTheDocument()
-    expect(await screen.findByText(sk.nav.suppliers)).toBeInTheDocument()
-    expect(await screen.findByText(sk.nav.procurers)).toBeInTheDocument()
+    expect(await screen.findByText(sk.nav.firmy)).toBeInTheDocument()
+    expect(await screen.findByText(sk.nav.zakazky)).toBeInTheDocument()
     expect(await screen.findByText(sk.nav.about)).toBeInTheDocument()
   })
 
@@ -54,14 +53,11 @@ describe('Layout + Routing', () => {
     const overviewLink = await screen.findByRole('link', { name: sk.nav.overview })
     expect(overviewLink).toHaveAttribute('href', '/')
 
-    const searchLink = await screen.findByRole('link', { name: sk.nav.search })
-    expect(searchLink).toHaveAttribute('href', '/search')
+    const firmyLink = await screen.findByRole('link', { name: sk.nav.firmy })
+    expect(firmyLink).toHaveAttribute('href', '/firmy')
 
-    const suppliersLink = await screen.findByRole('link', { name: sk.nav.suppliers })
-    expect(suppliersLink).toHaveAttribute('href', '/suppliers')
-
-    const procurersLink = await screen.findByRole('link', { name: sk.nav.procurers })
-    expect(procurersLink).toHaveAttribute('href', '/procurers')
+    const zakazkyLink = await screen.findByRole('link', { name: sk.nav.zakazky })
+    expect(zakazkyLink).toHaveAttribute('href', '/zakazky')
 
     const aboutLink = await screen.findByRole('link', { name: sk.nav.about })
     expect(aboutLink).toHaveAttribute('href', '/about')
