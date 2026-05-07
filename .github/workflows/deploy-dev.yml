@@ -1,0 +1,238 @@
+name: Deploy to Dev — uvo-search
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: uvo-dev-deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NS: ghcr.io/${{ github.repository }}
+  DEPLOY_HOST: 168.119.165.3
+  DEPLOY_USER: cicd
+  DEPLOY_PATH: /home/cicd/uvo-search
+
+jobs:
+  test:
+    name: Tests & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Run pytest (unit)
+        run: uv run pytest tests/ -v --tb=short -m "not e2e and not integration"
+
+      - name: Run ruff
+        run: |
+          uv run ruff check src/ tests/
+          uv run ruff format --check src/ tests/
+
+  build:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: meta
+        run: echo "tag=dev-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push MCP server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.mcp
+          push: true
+          tags: |
+            ${{ env.IMAGE_NS }}/uvo-mcp:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_NS }}/uvo-mcp:latest
+          cache-from: type=gha,scope=mcp
+          cache-to: type=gha,mode=max,scope=mcp
+
+      - name: Build and push API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.api
+          push: true
+          tags: |
+            ${{ env.IMAGE_NS }}/uvo-api:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_NS }}/uvo-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build and push Workers
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.workers
+          push: true
+          tags: |
+            ${{ env.IMAGE_NS }}/uvo-workers:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_NS }}/uvo-workers:latest
+          cache-from: type=gha,scope=workers
+          cache-to: type=gha,mode=max,scope=workers
+
+      - name: Build and push GUI
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src/uvo-gui-react
+          file: ./src/uvo-gui-react/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NS }}/uvo-gui:${{ steps.meta.outputs.tag }}
+            ${{ env.IMAGE_NS }}/uvo-gui:latest
+          cache-from: type=gha,scope=gui
+          cache-to: type=gha,mode=max,scope=gui
+
+  deploy:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      IMAGE_TAG: ${{ needs.build.outputs.image-tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add deploy host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ env.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Discord — deploy started
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SHA: ${{ github.sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          if [ -z "${DISCORD_WEBHOOK:-}" ]; then exit 0; fi
+          message="**UVO Search deploy started by @${GITHUB_ACTOR}**\nCommit: \`${SHA:0:7}\`"
+          curl -fsS -H "Content-Type: application/json" \
+            -d "{\"content\":\"$message\"}" "$DISCORD_WEBHOOK" || true
+
+      - name: Write .env locally and copy to host
+        env:
+          UVO_MONGO_PASSWORD: ${{ secrets.UVO_MONGO_PASSWORD }}
+          UVO_NEO4J_PASSWORD: ${{ secrets.UVO_NEO4J_PASSWORD }}
+          # UVO_EKOSYSTEM_API_TOKEN: ${{ secrets.UVO_EKOSYSTEM_API_TOKEN }}
+          IMAGE_NS: ${{ env.IMAGE_NS }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        run: |
+          set -euo pipefail
+          umask 077
+          # Use Python to safely write the env file — handles passwords with special characters
+          python3 - << 'PY'
+          import os, sys
+
+          required = {'UVO_MONGO_PASSWORD', 'UVO_NEO4J_PASSWORD', 'IMAGE_NS', 'IMAGE_TAG'}
+          missing = [k for k in required if not os.environ.get(k)]
+          if missing:
+              print(f"Missing required env vars: {', '.join(missing)}", file=sys.stderr)
+              sys.exit(1)
+
+          entries = {
+            'MONGO_PASSWORD': os.environ['UVO_MONGO_PASSWORD'],
+            'NEO4J_PASSWORD': os.environ['UVO_NEO4J_PASSWORD'],
+            'EKOSYSTEM_API_TOKEN': os.environ.get('UVO_EKOSYSTEM_API_TOKEN', ''),
+            'IMAGE_REGISTRY': os.environ['IMAGE_NS'],
+            'IMAGE_TAG': os.environ['IMAGE_TAG'],
+          }
+
+          with open('/tmp/uvo-deploy.env', 'w') as f:
+              for key, val in entries.items():
+                  if '\n' in val or '\r' in val:
+                      print(f"Secret {key} contains a newline — not supported", file=sys.stderr)
+                      sys.exit(1)
+                  # Single-quote values so bash source doesn't expand $ in bcrypt hashes or passwords
+                  safe = val.replace("'", "'\\''")
+                  f.write(f"{key}='{safe}'\n")
+
+          os.chmod('/tmp/uvo-deploy.env', 0o600)
+          PY
+
+          ssh "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}" "mkdir -p ${{ env.DEPLOY_PATH }}"
+          scp docker-stack-dev.yml \
+            "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/docker-stack-dev.yml"
+          scp /tmp/uvo-deploy.env \
+            "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/.env"
+          # Restrict .env permissions on the remote host
+          ssh "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}" "chmod 600 ${{ env.DEPLOY_PATH }}/.env"
+
+      - name: Log in to GHCR on deploy host
+        env:
+          # Use a PAT with read:packages scope for pulling on the remote host.
+          # GITHUB_TOKEN is short-lived and scoped to this runner — it cannot auth a remote host.
+          # Add GHCR_TOKEN to this repo's secrets: a classic PAT with read:packages.
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          ssh "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}" \
+            "echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+
+      - name: Pull images and restart stack
+        run: |
+          ssh "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}" \
+            "cd ${{ env.DEPLOY_PATH }} && set -a && source .env && set +a && docker stack deploy -c docker-stack-dev.yml --with-registry-auth uvo-search"
+      - name: Verify MCP health
+        run: |
+          ssh "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}" \
+            "curl -sf http://localhost:8000/health | jq ."
+
+      - name: Show running services
+        if: always()
+        run: |
+          ssh "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}" \
+            "cd ${{ env.DEPLOY_PATH }} && docker stack services uvo-search"
+
+      - name: Discord — deploy finished
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          STATUS: ${{ job.status }}
+          SHA: ${{ github.sha }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          if [ -z "${DISCORD_WEBHOOK:-}" ]; then exit 0; fi
+          if [ "$STATUS" = "success" ]; then icon="✅"; else icon="❌"; fi
+          run_link="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          message="**UVO Search ${icon} Deploy ${STATUS}**\nCommit: \`${SHA:0:7}\`\nGUI: \`http://${{ env.DEPLOY_HOST }}:8080\`\nRun: ${run_link}"
+          curl -fsS -H "Content-Type: application/json" \
+            -d "{\"content\":\"$message\"}" "$DISCORD_WEBHOOK" || true
