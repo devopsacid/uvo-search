@@ -13,4 +13,4 @@ class ApiSettings(BaseSettings):
     mongodb_uri: str = "mongodb://uvo:changeme@mongo:27017"
     mongodb_database: str = "uvo_search"
 
-    model_config = {"env_file": ".env", "env_prefix": "API_", "extra": "ignore"}
+    model_config = {"env_file": ".env", "env_prefix": "API_", "secrets_dir": "/run/secrets", "extra": "ignore"}

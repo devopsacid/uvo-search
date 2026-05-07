@@ -1,10 +1,14 @@
 version: "3.9"
 
-# Required env vars (set by the deploy workflow before docker stack deploy):
+# Required env vars for docker stack deploy (non-sensitive, used only by DB init and image tags):
 #   IMAGE_REGISTRY   — e.g. ghcr.io/your-org/uvo-search
 #   IMAGE_TAG        — e.g. dev-abc1234
-#   MONGO_PASSWORD
-#   NEO4J_PASSWORD
+#   MONGO_PASSWORD   — used only by mongo INITDB on first start
+#   NEO4J_PASSWORD   — used only by neo4j NEO4J_AUTH on first start
+#
+# Sensitive app credentials are in Docker secrets (created once by the deploy workflow):
+#   uvo_dev_mongodb_uri      — mongodb://uvo:<password>@mongo:27017
+#   uvo_dev_neo4j_password   — raw password
 
 networks:
   traefik_public:
@@ -20,19 +24,38 @@ networks:
     name: uvo_dev_data
 
 volumes:
-  # All pinned to stubarag-dev node via placement constraints — local named volumes are sufficient
+  # MongoDB — NFS-backed so data survives node restarts and volume pruning
   mongo_data:
-    name: uvo_dev_mongo-data
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.100.0.7,nfsvers=4.2,rw,hard,timeo=600,retrans=2,intr,noatime"
+      device: ":/srv/nfs/docker/uvo_dev/mongodb-data"
   mongo_config:
-    name: uvo_dev_mongo-config
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.100.0.7,nfsvers=4.2,rw,hard,timeo=600,retrans=2,intr,noatime"
+      device: ":/srv/nfs/docker/uvo_dev/mongodb-config"
   mongot_data:
-    name: uvo_dev_mongot-data
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.100.0.7,nfsvers=4.2,rw,hard,timeo=600,retrans=2"
+      device: ":/srv/nfs/docker/uvo_dev/mongot-data"
+  # Neo4j + Redis — local named volumes, pinned to stubarag-dev node
   neo4j_data:
     name: uvo_dev_neo4j-data
   neo4j_logs:
     name: uvo_dev_neo4j-logs
   redis_data:
     name: uvo_dev_redis-data
+
+secrets:
+  uvo_dev_mongodb_uri:
+    external: true
+  uvo_dev_neo4j_password:
+    external: true
 
 services:
 
@@ -118,12 +141,14 @@ services:
     image: ${IMAGE_REGISTRY}/uvo-mcp:${IMAGE_TAG}
     networks: [app, data]
     environment:
-      MONGODB_URI: mongodb://uvo:${MONGO_PASSWORD}@mongo:27017
       MONGODB_DATABASE: uvo_search
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
-      EKOSYSTEM_API_TOKEN: ${EKOSYSTEM_API_TOKEN}
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
+      - source: uvo_dev_neo4j_password
+        target: neo4j_password
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
@@ -197,11 +222,13 @@ services:
   #   command: ["uvo_workers.vestnik"]
   #   networks: [app, data]
   #   environment:
-  #     MONGODB_URI: mongodb://uvo:${MONGO_PASSWORD}@mongo:27017
   #     MONGODB_DATABASE: uvo_search
   #     REDIS_URL: redis://redis:6379/0
   #     EKOSYSTEM_API_TOKEN: ${EKOSYSTEM_API_TOKEN}
   #     VESTNIK_INTERVAL_SECONDS: "3600"
+  #   secrets:
+  #     - source: uvo_dev_mongodb_uri
+  #       target: mongodb_uri
   #   deploy:
   #     replicas: 1
   #     restart_policy:
@@ -216,11 +243,13 @@ services:
   #   command: ["uvo_workers.crz"]
   #   networks: [app, data]
   #   environment:
-  #     MONGODB_URI: mongodb://uvo:${MONGO_PASSWORD}@mongo:27017
   #     MONGODB_DATABASE: uvo_search
   #     REDIS_URL: redis://redis:6379/0
   #     EKOSYSTEM_API_TOKEN: ${EKOSYSTEM_API_TOKEN}
   #     CRZ_INTERVAL_SECONDS: "3600"
+  #   secrets:
+  #     - source: uvo_dev_mongodb_uri
+  #       target: mongodb_uri
   #   deploy:
   #     replicas: 1
   #     restart_policy:
@@ -234,10 +263,12 @@ services:
     command: ["uvo_workers.ted"]
     networks: [app, data]
     environment:
-      MONGODB_URI: mongodb://uvo:${MONGO_PASSWORD}@mongo:27017
       MONGODB_DATABASE: uvo_search
       REDIS_URL: redis://redis:6379/0
       TED_INTERVAL_SECONDS: "21600"
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
     deploy:
       replicas: 1
       restart_policy:
@@ -251,12 +282,14 @@ services:
     command: ["uvo_workers.itms"]
     networks: [app, data]
     environment:
-      MONGODB_URI: mongodb://uvo:${MONGO_PASSWORD}@mongo:27017
       MONGODB_DATABASE: uvo_search
       REDIS_URL: redis://redis:6379/0
       ITMS_INTERVAL_SECONDS: "3600"
       ITMS_CACHE_BACKEND: redis
       ITMS_CACHE_TTL_SECONDS: "604800"
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
     deploy:
       replicas: 1
       restart_policy:
@@ -270,13 +303,16 @@ services:
     command: ["uvo_workers.ingestor"]
     networks: [app, data]
     environment:
-      MONGODB_URI: mongodb://uvo:${MONGO_PASSWORD}@mongo:27017
       MONGODB_DATABASE: uvo_search
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
       REDIS_URL: redis://redis:6379/0
       INGESTOR_BATCH_SIZE: "100"
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
+      - source: uvo_dev_neo4j_password
+        target: neo4j_password
     deploy:
       replicas: 1
       restart_policy:
@@ -290,12 +326,14 @@ services:
     command: ["uvo_workers.dedup"]
     networks: [app, data]
     environment:
-      MONGODB_URI: mongodb://uvo:${MONGO_PASSWORD}@mongo:27017
       MONGODB_DATABASE: uvo_search
       REDIS_URL: redis://redis:6379/0
       DEDUP_INTERVAL_SECONDS: "3600"
       DEDUP_DEBOUNCE_SECONDS: "5"
       DEDUP_WINDOW_DAYS: "30"
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
     deploy:
       replicas: 1
       restart_policy:
