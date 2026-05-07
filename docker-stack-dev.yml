@@ -205,11 +205,15 @@ services:
         max_attempts: 3
       labels:
         - traefik.enable=true
+        - traefik.public=true
         - traefik.swarm.network=traefik_public
         - traefik.http.services.uvo_dev_gui.loadbalancer.server.port=80
         # Router
         - traefik.http.routers.uvo_dev.rule=Host(`contract-register.agentkovac.sk`)
         - traefik.http.routers.uvo_dev.entrypoints=websecure
+        - traefik.http.routers.uvo_dev-http.rule=Host(`contract-register.agentkovac.sk`)
+        - traefik.http.routers.uvo_dev-http.entrypoints=web
+        - traefik.http.routers.uvo_dev-http.middlewares=https-redirect@file
         - traefik.http.routers.uvo_dev.tls=true
         - traefik.http.routers.uvo_dev.service=uvo_dev_gui
         - traefik.http.routers.uvo_dev.middlewares=admin-auth@file,security-headers@file
