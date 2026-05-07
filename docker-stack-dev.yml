@@ -1,0 +1,343 @@
+version: "3.9"
+
+# Required env vars for docker stack deploy (non-sensitive, used only by DB init and image tags):
+#   IMAGE_REGISTRY   — e.g. ghcr.io/your-org/uvo-search
+#   IMAGE_TAG        — e.g. dev-abc1234
+#   MONGO_PASSWORD   — used only by mongo INITDB on first start
+#   NEO4J_PASSWORD   — used only by neo4j NEO4J_AUTH on first start
+#
+# Sensitive app credentials are in Docker secrets (created once by the deploy workflow):
+#   uvo_dev_mongodb_uri      — mongodb://uvo:<password>@mongo:27017
+#   uvo_dev_neo4j_password   — raw password
+
+networks:
+  traefik_public:
+    external: true
+    name: traefik_public
+  app:
+    driver: overlay
+    attachable: true
+    name: uvo_dev_app
+  data:
+    driver: overlay
+    attachable: true
+    name: uvo_dev_data
+
+volumes:
+  # MongoDB — NFS-backed so data survives node restarts and volume pruning
+  mongo_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.100.0.7,nfsvers=4.2,rw,hard,timeo=600,retrans=2,intr,noatime"
+      device: ":/srv/nfs/docker/uvo_dev/mongodb-data"
+  mongo_config:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.100.0.7,nfsvers=4.2,rw,hard,timeo=600,retrans=2,intr,noatime"
+      device: ":/srv/nfs/docker/uvo_dev/mongodb-config"
+  mongot_data:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=10.100.0.7,nfsvers=4.2,rw,hard,timeo=600,retrans=2"
+      device: ":/srv/nfs/docker/uvo_dev/mongot-data"
+  # Neo4j + Redis — local named volumes, pinned to stubarag-dev node
+  neo4j_data:
+    name: uvo_dev_neo4j-data
+  neo4j_logs:
+    name: uvo_dev_neo4j-logs
+  redis_data:
+    name: uvo_dev_redis-data
+
+secrets:
+  uvo_dev_mongodb_uri:
+    external: true
+  uvo_dev_neo4j_password:
+    external: true
+
+services:
+
+  # ── Databases ──────────────────────────────────────────────────────────────
+
+  mongo:
+    image: mongodb/mongodb-atlas-local:latest
+    hostname: mongo
+    networks: [data]
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: uvo
+      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+      - mongot_data:/var/lib/mongot
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.hostname == stubarag-dev]
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+      labels: [traefik.enable=false]
+
+  neo4j:
+    image: neo4j:5
+    networks: [data]
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1g
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.hostname == stubarag-dev]
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+      labels: [traefik.enable=false]
+
+  redis:
+    image: redis:7-alpine
+    networks: [data]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.hostname == stubarag-dev]
+      restart_policy:
+        condition: on-failure
+      labels: [traefik.enable=false]
+
+  # ── Application tier ───────────────────────────────────────────────────────
+
+  mcp-server:
+    image: ${IMAGE_REGISTRY}/uvo-mcp:${IMAGE_TAG}
+    networks: [app, data]
+    environment:
+      MONGODB_DATABASE: uvo_search
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
+      - source: uvo_dev_neo4j_password
+        target: neo4j_password
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      labels: [traefik.enable=false]
+
+  api:
+    image: ${IMAGE_REGISTRY}/uvo-api:${IMAGE_TAG}
+    networks: [app]
+    environment:
+      API_MCP_SERVER_URL: http://mcp-server:8000/mcp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      labels: [traefik.enable=false]
+
+  gui-react:
+    image: ${IMAGE_REGISTRY}/uvo-gui:${IMAGE_TAG}
+    networks: [app, traefik_public]
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      labels:
+        - traefik.enable=true
+        - traefik.swarm.network=traefik_public
+        - traefik.http.services.uvo_dev_gui.loadbalancer.server.port=80
+        # Router
+        - traefik.http.routers.uvo_dev.rule=Host(`contract-register.agentkovac.sk`)
+        - traefik.http.routers.uvo_dev.entrypoints=websecure
+        - traefik.http.routers.uvo_dev.tls=true
+        - traefik.http.routers.uvo_dev.service=uvo_dev_gui
+        - traefik.http.routers.uvo_dev.middlewares=admin-auth@file,security-headers@file
+
+  # ── Workers ────────────────────────────────────────────────────────────────
+
+  # extractor-vestnik: disabled — uncomment when EKOSYSTEM_API_TOKEN is available
+  # extractor-vestnik:
+  #   image: ${IMAGE_REGISTRY}/uvo-workers:${IMAGE_TAG}
+  #   command: ["uvo_workers.vestnik"]
+  #   networks: [app, data]
+  #   environment:
+  #     MONGODB_DATABASE: uvo_search
+  #     REDIS_URL: redis://redis:6379/0
+  #     EKOSYSTEM_API_TOKEN: ${EKOSYSTEM_API_TOKEN}
+  #     VESTNIK_INTERVAL_SECONDS: "3600"
+  #   secrets:
+  #     - source: uvo_dev_mongodb_uri
+  #       target: mongodb_uri
+  #   deploy:
+  #     replicas: 1
+  #     restart_policy:
+  #       condition: on-failure
+  #       delay: 30s
+  #       max_attempts: 3
+  #     labels: [traefik.enable=false]
+
+  # extractor-crz: disabled — uncomment when EKOSYSTEM_API_TOKEN is available
+  # extractor-crz:
+  #   image: ${IMAGE_REGISTRY}/uvo-workers:${IMAGE_TAG}
+  #   command: ["uvo_workers.crz"]
+  #   networks: [app, data]
+  #   environment:
+  #     MONGODB_DATABASE: uvo_search
+  #     REDIS_URL: redis://redis:6379/0
+  #     EKOSYSTEM_API_TOKEN: ${EKOSYSTEM_API_TOKEN}
+  #     CRZ_INTERVAL_SECONDS: "3600"
+  #   secrets:
+  #     - source: uvo_dev_mongodb_uri
+  #       target: mongodb_uri
+  #   deploy:
+  #     replicas: 1
+  #     restart_policy:
+  #       condition: on-failure
+  #       delay: 30s
+  #       max_attempts: 3
+  #     labels: [traefik.enable=false]
+
+  extractor-ted:
+    image: ${IMAGE_REGISTRY}/uvo-workers:${IMAGE_TAG}
+    command: ["uvo_workers.ted"]
+    networks: [app, data]
+    environment:
+      MONGODB_DATABASE: uvo_search
+      REDIS_URL: redis://redis:6379/0
+      TED_INTERVAL_SECONDS: "21600"
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+        max_attempts: 3
+      labels: [traefik.enable=false]
+
+  extractor-itms:
+    image: ${IMAGE_REGISTRY}/uvo-workers:${IMAGE_TAG}
+    command: ["uvo_workers.itms"]
+    networks: [app, data]
+    environment:
+      MONGODB_DATABASE: uvo_search
+      REDIS_URL: redis://redis:6379/0
+      ITMS_INTERVAL_SECONDS: "3600"
+      ITMS_CACHE_BACKEND: redis
+      ITMS_CACHE_TTL_SECONDS: "604800"
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+        max_attempts: 3
+      labels: [traefik.enable=false]
+
+  ingestor:
+    image: ${IMAGE_REGISTRY}/uvo-workers:${IMAGE_TAG}
+    command: ["uvo_workers.ingestor"]
+    networks: [app, data]
+    environment:
+      MONGODB_DATABASE: uvo_search
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      REDIS_URL: redis://redis:6379/0
+      INGESTOR_BATCH_SIZE: "100"
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
+      - source: uvo_dev_neo4j_password
+        target: neo4j_password
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+        max_attempts: 3
+      labels: [traefik.enable=false]
+
+  dedup-worker:
+    image: ${IMAGE_REGISTRY}/uvo-workers:${IMAGE_TAG}
+    command: ["uvo_workers.dedup"]
+    networks: [app, data]
+    environment:
+      MONGODB_DATABASE: uvo_search
+      REDIS_URL: redis://redis:6379/0
+      DEDUP_INTERVAL_SECONDS: "3600"
+      DEDUP_DEBOUNCE_SECONDS: "5"
+      DEDUP_WINDOW_DAYS: "30"
+    secrets:
+      - source: uvo_dev_mongodb_uri
+        target: mongodb_uri
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+        max_attempts: 3
+      labels: [traefik.enable=false]

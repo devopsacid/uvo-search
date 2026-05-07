@@ -25,7 +25,7 @@ class DedupWorkerSettings(BaseSettings):
     dedup_window_days: int = 30
     health_port: int = 8096
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
 
 async def run_dedup_worker() -> None:

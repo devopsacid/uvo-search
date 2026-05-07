@@ -33,7 +33,7 @@ class ItmsSettings(BaseSettings):
     stream_maxlen_approx: int = 100_000
     health_port: int = 8094
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
 
 async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:

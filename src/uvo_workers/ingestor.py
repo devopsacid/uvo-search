@@ -30,7 +30,7 @@ class IngestorSettings(BaseSettings):
     ingestor_batch_size: int = 100
     health_port: int = 8095
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
 
 async def process_batch_logs(

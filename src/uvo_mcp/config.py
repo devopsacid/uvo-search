@@ -20,4 +20,4 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str | None = None
 
-    model_config = {"env_file": ".env", "env_prefix": "", "extra": "ignore"}
+    model_config = {"env_file": ".env", "env_prefix": "", "secrets_dir": "/run/secrets", "extra": "ignore"}

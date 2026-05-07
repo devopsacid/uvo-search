@@ -35,4 +35,4 @@ class PipelineSettings(BaseSettings):
     uvo_publisher_uri: str = "https://data.gov.sk/id/legal-subject/31797903"
     request_timeout: float = 60.0
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
