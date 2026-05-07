@@ -1,8 +1,6 @@
 name: Deploy to Dev — uvo-search
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       skip_test_failures:
@@ -158,7 +156,9 @@ jobs:
           MONGO_PASSWORD: ${{ secrets.UVO_MONGO_PASSWORD }}
           NEO4J_PASSWORD: ${{ secrets.UVO_NEO4J_PASSWORD }}
         run: |
-          printf '%s' "mongodb://uvo:${MONGO_PASSWORD}@mongo:27017" | \
+          MONGO_PASSWORD_ENCODED=$(printf '%s' "${MONGO_PASSWORD}" | python3 -c "import urllib.parse,sys; sys.stdout.write(urllib.parse.quote(sys.stdin.read(),''))")
+          echo "::add-mask::${MONGO_PASSWORD_ENCODED}"
+          printf '%s' "mongodb://uvo:${MONGO_PASSWORD_ENCODED}@mongo:27017" | \
             ssh "${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}" \
               "docker secret create uvo_dev_mongodb_uri - 2>/dev/null || echo 'uvo_dev_mongodb_uri already exists, skipping'"
           printf '%s' "${NEO4J_PASSWORD}" | \
