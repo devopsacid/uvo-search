@@ -3,7 +3,12 @@ name: Deploy to Dev — uvo-search
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      skip_test_failures:
+        description: 'Deploy even if tests fail'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -24,6 +29,7 @@ jobs:
   test:
     name: Tests & Lint
     runs-on: ubuntu-latest
+    continue-on-error: ${{ inputs.skip_test_failures == true }}
     steps:
       - uses: actions/checkout@v4
 
