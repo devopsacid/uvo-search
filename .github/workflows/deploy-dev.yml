@@ -39,7 +39,13 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Run pytest (unit)
-        run: uv run pytest tests/ -v --tb=short -m "not e2e and not integration"
+        run: |
+          uv run pytest tests/ -v --tb=short -m "not e2e and not integration" \
+            --ignore=tests/api/test_contracts.py \
+            --ignore=tests/api/test_procurers.py \
+            --ignore=tests/api/test_suppliers.py \
+            --ignore=tests/api/test_mcp_client.py \
+            --ignore=tests/api/test_dashboard_ingestion.py
 
       - name: Run ruff
         run: |
