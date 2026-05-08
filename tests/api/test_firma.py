@@ -1,7 +1,7 @@
 # tests/api/test_firma.py
 """Tests for GET /api/firma/{ico} — unified company profile endpoint."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -104,17 +104,31 @@ def client(monkeypatch):
 # ------------------------------------------------------------------
 
 
+CORE_AGG_RESULT = {
+    "as_supplier": [{"count": 10, "total": 5_000_000.0, "last": "2023-06-15"}],
+    "as_procurer": [],
+    "cpv": [{"_id": "72000000", "count": 10, "total": 5_000_000.0}],
+    "spend_by_year": [
+        {"_id": "2022", "total": 500_000.0},
+        {"_id": "2023", "total": 4_500_000.0},
+    ],
+}
+
+
 def test_supplier_only_ico_returns_200(client):
     """A supplier-only ICO returns roles=['supplier'], primary_role='supplier'."""
 
-    side_effects = [
+    call_tool_effects = [
         SUPPLIER_RESULT,       # find_supplier
         EMPTY_RESULT,          # find_procurer → not found
         SUPPLIER_CONTRACTS,    # top-5 as supplier
-        SUPPLIER_CONTRACTS,    # agg-100 as supplier
     ]
 
-    with patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=side_effects)):
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
+    ):
         response = client.get(f"/api/firma/{SUPPLIER_ONLY_ICO}")
 
     assert response.status_code == 200
@@ -152,16 +166,25 @@ def test_dual_role_ico_returns_200(client):
         "total": 1,
     }
 
-    side_effects = [
+    dual_core_agg = {
+        "as_supplier": [{"count": 5, "total": 1_000_000.0, "last": "2023-01-01"}],
+        "as_procurer": [{"count": 20, "total": 10_000_000.0, "last": "2023-09-01"}],
+        "cpv": [{"_id": "45000000", "count": 20, "total": 10_000_000.0}],
+        "spend_by_year": [{"_id": "2023", "total": 11_000_000.0}],
+    }
+
+    call_tool_effects = [
         dual_supplier,          # find_supplier
         dual_procurer,          # find_procurer
         SUPPLIER_CONTRACTS,     # top-5 as supplier
         PROCURER_CONTRACTS,     # top-5 as procurer
-        SUPPLIER_CONTRACTS,     # agg-100 as supplier
-        PROCURER_CONTRACTS,     # agg-100 as procurer
     ]
 
-    with patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=side_effects)):
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=dual_core_agg)),
+    ):
         response = client.get(f"/api/firma/{DUAL_ROLE_ICO}")
 
     assert response.status_code == 200
@@ -185,12 +208,16 @@ def test_dual_role_ico_returns_200(client):
 def test_unknown_ico_returns_404(client):
     """An ICO unknown to both find_supplier and find_procurer returns 404."""
 
-    side_effects = [
+    call_tool_effects = [
         EMPTY_RESULT,   # find_supplier
         EMPTY_RESULT,   # find_procurer
     ]
 
-    with patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=side_effects)):
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value={})),
+    ):
         response = client.get(f"/api/firma/{UNKNOWN_ICO}")
 
     assert response.status_code == 404

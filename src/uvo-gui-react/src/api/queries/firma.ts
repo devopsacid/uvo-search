@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
 export interface FirmaStatsBlock {
   contract_count: number
@@ -122,11 +123,12 @@ export interface FirmaListResponse {
 }
 
 export function useFirmyList(params: { q: string; role: string; limit: number; offset: number }) {
+  const debouncedQ = useDebouncedValue(params.q, 300)
   return useQuery({
-    queryKey: ['firmy', params],
+    queryKey: ['firmy', { ...params, q: debouncedQ }],
     queryFn: async (): Promise<FirmaListResponse> => {
       const sp = new URLSearchParams({
-        q: params.q,
+        q: debouncedQ,
         role: params.role,
         limit: String(params.limit),
         offset: String(params.offset),
