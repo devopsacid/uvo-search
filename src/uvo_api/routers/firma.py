@@ -150,7 +150,7 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
         top_cpvs.append(
             FirmaTopCpv(
                 code=code,
-                label=labels.get(code, {"sk": code}).get("sk", code),
+                label=labels.get(code, {}).get("sk") or code,
                 contract_count=int(r.get("count") or 0),
                 total_value=float(r.get("total") or 0.0),
             )
@@ -212,9 +212,7 @@ async def get_firma_cpv_profile(ico: str) -> CpvProfileResponse:
     for_company: list[CpvProfileRow] = [
         CpvProfileRow(
             code=_cpv_prefix(r.get("_id")),
-            label=labels.get(_cpv_prefix(r.get("_id")), {"sk": r.get("_id", "")}).get(
-                "sk", r.get("_id", "")
-            ),
+            label=labels.get(_cpv_prefix(r.get("_id")), {}).get("sk") or _cpv_prefix(r.get("_id")),
             total_value=float(r.get("total") or 0),
             contract_count=int(r.get("count") or 0),
             percentage=round(float(r.get("total") or 0) / company_total * 100, 1),
@@ -233,9 +231,7 @@ async def get_firma_cpv_profile(ico: str) -> CpvProfileResponse:
     market_baseline: list[CpvProfileRow] = [
         CpvProfileRow(
             code=_cpv_prefix(r.get("_id")),
-            label=labels.get(_cpv_prefix(r.get("_id")), {"sk": r.get("_id", "")}).get(
-                "sk", r.get("_id", "")
-            ),
+            label=labels.get(_cpv_prefix(r.get("_id")), {}).get("sk") or _cpv_prefix(r.get("_id")),
             total_value=float(r.get("total") or 0),
             contract_count=int(r.get("count") or 0),
             percentage=round(float(r.get("total") or 0) / mkt_total * 100, 1),
