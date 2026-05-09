@@ -4,13 +4,14 @@ import asyncio
 
 from fastembed import TextEmbedding
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import UpdateOne
 
 from uvo_mcp.config import Settings
 
 
-async def embed_collection(coll, model, batch_size: int = 64) -> None:
+async def embed_collection(coll, model, batch_size: int = 256) -> None:
     total = await coll.count_documents({"name_embedding": {"$exists": False}})
-    print(f"  {coll.name}: {total} documents to embed")
+    print(f"  {coll.name}: {total} documents to embed", flush=True)
     if not total:
         return
 
@@ -22,19 +23,23 @@ async def embed_collection(coll, model, batch_size: int = 64) -> None:
         texts.append(doc.get("name") or "")
         if len(ids) >= batch_size:
             vecs = list(model.embed(texts))
-            for oid, vec in zip(ids, vecs):
-                await coll.update_one({"_id": oid}, {"$set": {"name_embedding": vec.tolist()}})
+            await coll.bulk_write([
+                UpdateOne({"_id": oid}, {"$set": {"name_embedding": vec.tolist()}})
+                for oid, vec in zip(ids, vecs)
+            ], ordered=False)
             done += len(ids)
-            print(f"  {coll.name}: {done}/{total}", end="\r")
+            print(f"  {coll.name}: {done}/{total}", end="\r", flush=True)
             ids, texts = [], []
 
     if ids:
         vecs = list(model.embed(texts))
-        for oid, vec in zip(ids, vecs):
-            await coll.update_one({"_id": oid}, {"$set": {"name_embedding": vec.tolist()}})
+        await coll.bulk_write([
+            UpdateOne({"_id": oid}, {"$set": {"name_embedding": vec.tolist()}})
+            for oid, vec in zip(ids, vecs)
+        ], ordered=False)
         done += len(ids)
 
-    print(f"  {coll.name}: {done} done        ")
+    print(f"  {coll.name}: {done} done        ", flush=True)
 
 
 async def main() -> None:

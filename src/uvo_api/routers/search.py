@@ -227,14 +227,22 @@ async def unified_search(
     contract_args = {"text_query": q.strip(), "limit": limit}
     vec_args = {"query": q.strip(), "limit": limit}
 
-    (supp_result, proc_result, vec_result), contract_result = await asyncio.gather(
-        asyncio.gather(
+    try:
+        (supp_result, proc_result, vec_result), contract_result = await asyncio.gather(
+            asyncio.gather(
+                call_tool("find_supplier", entity_args),
+                call_tool("find_procurer", entity_args),
+                call_tool("search_companies_vector", vec_args),
+            ),
+            call_tool("search_completed_procurements", contract_args),
+        )
+    except Exception:
+        (supp_result, proc_result, vec_result) = await asyncio.gather(
             call_tool("find_supplier", entity_args),
             call_tool("find_procurer", entity_args),
             call_tool("search_companies_vector", vec_args),
-        ),
-        call_tool("search_completed_procurements", contract_args),
-    )
+        )
+        contract_result = {}
 
     vec_items = vec_result.get("items", []) if "error" not in vec_result else []
     firmy = _merge_firmy_with_vector(
