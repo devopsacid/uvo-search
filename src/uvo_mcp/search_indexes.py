@@ -108,3 +108,31 @@ async def ensure_indexes(db) -> None:
             logger.info("search index created: %s.%s", coll, spec["name"])
         except Exception as exc:
             logger.warning("search index provisioning failed for %s: %s", coll, exc)
+    await ensure_vector_indexes(db)
+
+
+async def ensure_vector_indexes(db) -> None:
+    for coll in ("procurers", "suppliers"):
+        try:
+            await db.command(
+                "createSearchIndexes",
+                coll,
+                indexes=[
+                    {
+                        "name": "vector_index",
+                        "type": "vectorSearch",
+                        "definition": {
+                            "fields": [
+                                {
+                                    "type": "vector",
+                                    "path": "name_embedding",
+                                    "numDimensions": 384,
+                                    "similarity": "cosine",
+                                }
+                            ]
+                        },
+                    }
+                ],
+            )
+        except Exception:
+            pass  # index already exists

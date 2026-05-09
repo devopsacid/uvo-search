@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 class AppContext:
     http_client: httpx.AsyncClient
     settings: Settings
-    mongo_db: Any | None = field(default=None)      # AsyncIOMotorDatabase when connected
+    mongo_db: Any | None = field(default=None)  # AsyncIOMotorDatabase when connected
     neo4j_driver: Any | None = field(default=None)  # neo4j.AsyncDriver when connected
+    embedding_model: Any | None = field(default=None)  # fastembed TextEmbedding when loaded
 
 
 @asynccontextmanager
@@ -46,11 +47,21 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     neo4j_driver = None
     if settings.neo4j_uri and settings.neo4j_password:
         from neo4j import AsyncGraphDatabase
+
         neo4j_driver = AsyncGraphDatabase.driver(
             settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password),
         )
         logger.info("Neo4j connected: %s", settings.neo4j_uri)
+
+    embedding_model = None
+    try:
+        from fastembed import TextEmbedding
+
+        embedding_model = TextEmbedding("intfloat/multilingual-e5-small")
+        logger.info("FastEmbed model loaded")
+    except Exception as exc:
+        logger.warning("FastEmbed unavailable: %s", exc)
 
     async with httpx.AsyncClient(
         timeout=settings.request_timeout,
@@ -61,6 +72,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
             settings=settings,
             mongo_db=mongo_db,
             neo4j_driver=neo4j_driver,
+            embedding_model=embedding_model,
         )
         logger.info("MCP server shutting down")
 
@@ -79,10 +91,11 @@ mcp = FastMCP(
     port=8000,
 )
 
+import uvo_mcp.tools.autocomplete  # noqa: F401, E402
+import uvo_mcp.tools.graph  # noqa: F401, E402
 import uvo_mcp.tools.procurements  # noqa: F401, E402
 import uvo_mcp.tools.subjects  # noqa: F401, E402
-import uvo_mcp.tools.graph  # noqa: F401, E402
-import uvo_mcp.tools.autocomplete  # noqa: F401, E402
+import uvo_mcp.tools.vector_search  # noqa: F401, E402
 
 
 @mcp.custom_route("/health", methods=["GET"], name="health_check")

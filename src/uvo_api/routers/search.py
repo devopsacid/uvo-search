@@ -94,6 +94,46 @@ def _merge_firmy(suppliers: list[dict], procurers: list[dict], limit: int) -> li
     return list(merged.values())[:limit]
 
 
+def _merge_firmy_with_vector(
+    suppliers: list[dict],
+    procurers: list[dict],
+    vector_items: list[dict],
+    limit: int,
+) -> list[FirmaHit]:
+    """Merge text and vector hits; vector hits ranked first, then text hits fill remaining slots."""
+    result: dict[str, FirmaHit] = {}
+    for item in vector_items:
+        ico = str(item.get("ico") or "")
+        if not ico:
+            continue
+        roles = item.get("roles") or []
+        hit = FirmaHit(
+            ico=ico,
+            name=item.get("name") or "",
+            roles=roles,
+            contract_count=0,
+        )
+        result[ico] = hit
+
+    for item in suppliers:
+        ico = str(item.get("ico") or "")
+        if ico in result:
+            if "supplier" not in result[ico].roles:
+                result[ico].roles.append("supplier")
+        else:
+            result[ico] = _entity_to_firma(item, "supplier")
+
+    for item in procurers:
+        ico = str(item.get("ico") or "")
+        if ico in result:
+            if "procurer" not in result[ico].roles:
+                result[ico].roles.append("procurer")
+        else:
+            result[ico] = _entity_to_firma(item, "procurer")
+
+    return list(result.values())[:limit]
+
+
 @router.get("/entities", response_model=EntitySearchResponse)
 async def search_entities(
     q: str = Query("", description="Name fragment; empty returns top suppliers/procurers."),
@@ -110,16 +150,44 @@ async def search_entities(
     if q:
         args["name_query"] = q
 
-    supp_result = await call_tool("find_supplier", args)
-    proc_result = await call_tool("find_procurer", args)
+    vec_args: dict = {"query": q, "limit": limit} if q else {}
 
+    if q:
+        supp_result, proc_result, vec_result = await asyncio.gather(
+            call_tool("find_supplier", args),
+            call_tool("find_procurer", args),
+            call_tool("search_companies_vector", vec_args),
+        )
+    else:
+        supp_result, proc_result = await asyncio.gather(
+            call_tool("find_supplier", args),
+            call_tool("find_procurer", args),
+        )
+        vec_result = {}
+
+    vec_items = vec_result.get("items", []) if "error" not in vec_result else []
+
+    seen_icos: set[str] = {str(v.get("ico") or "") for v in vec_items}
     hits: list[EntityHit] = []
+    for v in vec_items:
+        hits.append(
+            EntityHit(
+                ico=str(v.get("ico") or ""),
+                name=v.get("name") or "",
+                type="supplier" if "supplier" in (v.get("roles") or []) else "procurer",
+                contract_count=0,
+                total_value=0.0,
+            )
+        )
     for s in supp_result.get("items", []):
-        hits.append(_as_hit(s, "supplier"))
+        if str(s.get("ico") or "") not in seen_icos:
+            hits.append(_as_hit(s, "supplier"))
     for p in proc_result.get("items", []):
-        hits.append(_as_hit(p, "procurer"))
+        if str(p.get("ico") or "") not in seen_icos:
+            hits.append(_as_hit(p, "procurer"))
 
     needle = q.strip().lower()
+
     def rank(h: EntityHit) -> tuple:
         n = h.name.lower()
         exact = 0 if n == needle else 1
@@ -157,18 +225,22 @@ async def unified_search(
 
     entity_args = {"name_query": q.strip(), "limit": limit}
     contract_args = {"text_query": q.strip(), "limit": limit}
+    vec_args = {"query": q.strip(), "limit": limit}
 
-    (supp_result, proc_result), contract_result = await asyncio.gather(
+    (supp_result, proc_result, vec_result), contract_result = await asyncio.gather(
         asyncio.gather(
             call_tool("find_supplier", entity_args),
             call_tool("find_procurer", entity_args),
+            call_tool("search_companies_vector", vec_args),
         ),
         call_tool("search_completed_procurements", contract_args),
     )
 
-    firmy = _merge_firmy(
+    vec_items = vec_result.get("items", []) if "error" not in vec_result else []
+    firmy = _merge_firmy_with_vector(
         supp_result.get("items", []),
         proc_result.get("items", []),
+        vec_items,
         limit,
     )
     zakazky = [_contract_to_zakazka(i) for i in contract_result.get("items", [])][:limit]

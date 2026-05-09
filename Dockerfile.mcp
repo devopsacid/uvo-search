@@ -11,6 +11,9 @@ COPY pyproject.toml uv.lock ./
 # Sync production dependencies only (no dev extras)
 RUN uv sync --frozen --no-dev
 
+# Pre-download fastembed model (~134MB) so it's available at runtime without network
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding('intfloat/multilingual-e5-small')" 2>&1 | tail -3
+
 # Copy application source
 COPY src/uvo_mcp/ src/uvo_mcp/
 
