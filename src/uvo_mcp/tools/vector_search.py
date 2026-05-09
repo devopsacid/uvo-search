@@ -19,7 +19,7 @@ def _get_app_context(ctx: Context) -> AppContext:
 )
 async def _embed(model, text: str) -> list[float]:
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: list(next(model.embed(["query: " + text]))))
+    return await loop.run_in_executor(None, lambda: list(next(model.embed([text]))))
 
 
 async def _vsearch(db, collection: str, vector: list[float], limit: int) -> list[dict]:

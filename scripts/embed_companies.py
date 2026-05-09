@@ -19,7 +19,7 @@ async def embed_collection(coll, model, batch_size: int = 64) -> None:
 
     async for doc in coll.find({"name_embedding": {"$exists": False}}, {"_id": 1, "name": 1}):
         ids.append(doc["_id"])
-        texts.append("passage: " + (doc.get("name") or ""))
+        texts.append(doc.get("name") or "")
         if len(ids) >= batch_size:
             vecs = list(model.embed(texts))
             for oid, vec in zip(ids, vecs):
@@ -41,7 +41,7 @@ async def main() -> None:
     settings = Settings()
     client = AsyncIOMotorClient(settings.mongodb_uri)
     db = client[settings.mongodb_database]
-    model = TextEmbedding("intfloat/multilingual-e5-small")
+    model = TextEmbedding("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     print("Model loaded. Embedding companies...")
     for name in ("procurers", "suppliers"):
         await embed_collection(db[name], model)

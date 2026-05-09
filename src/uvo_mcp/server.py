@@ -58,7 +58,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     try:
         from fastembed import TextEmbedding
 
-        embedding_model = TextEmbedding("intfloat/multilingual-e5-small")
+        embedding_model = TextEmbedding("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
         logger.info("FastEmbed model loaded")
     except Exception as exc:
         logger.warning("FastEmbed unavailable: %s", exc)
