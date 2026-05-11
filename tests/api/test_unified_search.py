@@ -67,7 +67,7 @@ def _make_call_tool_side_effect(*results):
 def test_unified_returns_grouped_shape(client):
     with patch(
         "uvo_api.routers.search.call_tool",
-        new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, CONTRACT_RESULT]),
+        new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]),
     ):
         response = client.get("/api/search/unified?q=acme")
     assert response.status_code == 200
@@ -80,7 +80,7 @@ def test_unified_returns_grouped_shape(client):
 def test_unified_firmy_shape(client):
     with patch(
         "uvo_api.routers.search.call_tool",
-        new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, CONTRACT_RESULT]),
+        new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]),
     ):
         response = client.get("/api/search/unified?q=acme")
     firmy = response.json()["firmy"]
@@ -96,7 +96,7 @@ def test_unified_firmy_shape(client):
 def test_unified_zakazky_shape(client):
     with patch(
         "uvo_api.routers.search.call_tool",
-        new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, CONTRACT_RESULT]),
+        new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]),
     ):
         response = client.get("/api/search/unified?q=road")
     zakazky = response.json()["zakazky"]
@@ -113,7 +113,7 @@ def test_unified_firmy_deduplication(client):
     """Supplier + procurer with same ICO → single FirmaHit with both roles."""
     with patch(
         "uvo_api.routers.search.call_tool",
-        new=AsyncMock(side_effect=[SUPPLIER_RESULT, OVERLAP_PROCURER_RESULT, CONTRACT_RESULT]),
+        new=AsyncMock(side_effect=[SUPPLIER_RESULT, OVERLAP_PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]),
     ):
         response = client.get("/api/search/unified?q=acme")
     firmy = response.json()["firmy"]
@@ -189,7 +189,7 @@ def test_unified_respects_limit(client):
     }
     with patch(
         "uvo_api.routers.search.call_tool",
-        new=AsyncMock(side_effect=[many_suppliers, EMPTY_RESULT, EMPTY_RESULT]),
+        new=AsyncMock(side_effect=[many_suppliers, EMPTY_RESULT, EMPTY_RESULT, EMPTY_RESULT]),
     ):
         response = client.get("/api/search/unified?q=firm&limit=5")
     assert response.status_code == 200

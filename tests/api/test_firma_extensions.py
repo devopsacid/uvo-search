@@ -1,7 +1,7 @@
 # tests/api/test_firma_extensions.py
 """Tests for the three firma extension endpoints: partneri, cpv-profile, firmy."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -106,32 +106,86 @@ def client(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Shared agg mock return values
+# ---------------------------------------------------------------------------
+
+PARTNERS_AGG_RESULT = {
+    "total": 2,
+    "items": [
+        {
+            "ico": "11111111",
+            "name": "Ministry A",
+            "role": "procurer",
+            "contract_count": 2,
+            "total_value": 1_500_000.0,
+            "last_contract_at": "2023-05-01",
+        },
+        {
+            "ico": "22222222",
+            "name": "Build Co",
+            "role": "supplier",
+            "contract_count": 1,
+            "total_value": 3_000_000.0,
+            "last_contract_at": "2023-09-15",
+        },
+    ],
+}
+
+PARTNERS_AGG_SUPPLIER_ONLY = {
+    "total": 1,
+    "items": [
+        {
+            "ico": "22222222",
+            "name": "Build Co",
+            "role": "supplier",
+            "contract_count": 1,
+            "total_value": 3_000_000.0,
+            "last_contract_at": "2023-09-15",
+        }
+    ],
+}
+
+PARTNERS_AGG_PROCURER_ONLY = {
+    "total": 1,
+    "items": [
+        {
+            "ico": "11111111",
+            "name": "Ministry A",
+            "role": "procurer",
+            "contract_count": 2,
+            "total_value": 1_500_000.0,
+            "last_contract_at": "2023-05-01",
+        }
+    ],
+}
+
+CORE_AGG_RESULT = {
+    "as_supplier": [{"count": 2, "total": 1_500_000.0, "last": "2023-05-01"}],
+    "as_procurer": [{"count": 1, "total": 3_000_000.0, "last": "2023-09-15"}],
+    "cpv": [
+        {"_id": "72000000", "count": 2, "total": 1_500_000.0},
+        {"_id": "45000000", "count": 1, "total": 3_000_000.0},
+    ],
+    "spend_by_year": [
+        {"_id": "2022", "total": 500_000.0},
+        {"_id": "2023", "total": 4_000_000.0},
+    ],
+}
+
+MARKET_AGG_RESULT = [
+    {"_id": "72000000", "count": 100, "total": 10_000_000.0},
+    {"_id": "45000000", "count": 200, "total": 50_000_000.0},
+]
+
+
+# ---------------------------------------------------------------------------
 # TASK-05: /api/firma/{ico}/partneri
 # ---------------------------------------------------------------------------
 
-# _fetch_contracts_sample calls search_completed_procurements in pages.
-# With the mock returning < 100 items each page stops after first call.
-# Two parallel calls are made: one with supplier_ico=ico, one with procurer_id=ico.
-
-def _partneri_side_effects(supplier_result, procurer_result):
-    """Returns a side_effect list for _fetch_contracts_sample calls.
-
-    _fetch_contracts_sample issues search_completed_procurements calls.
-    The two asyncio.gather calls happen in parallel but mock is sequential,
-    so we provide both pages interleaved the way asyncio.gather resolves them:
-    gather fires both coroutines, which each call call_tool once (small result).
-    """
-    # supplier fetch (page 0) → procurer fetch (page 0)
-    return [supplier_result, procurer_result]
-
-
 def test_partneri_returns_correct_shape(client):
-    with patch(
-        "uvo_api.routers.firma._fetch_contracts_sample",
-        new=AsyncMock(side_effect=[
-            (SUPPLIER_CONTRACTS["items"], 2),
-            (PROCURER_CONTRACTS["items"], 1),
-        ]),
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma._firma_partners_agg", new=AsyncMock(return_value=PARTNERS_AGG_RESULT)),
     ):
         response = client.get(f"/api/firma/{ICO}/partneri")
 
@@ -148,12 +202,9 @@ def test_partneri_returns_correct_shape(client):
 
 def test_partneri_role_filter_supplier(client):
     """role=supplier returns only counterparties that acted as suppliers."""
-    with patch(
-        "uvo_api.routers.firma._fetch_contracts_sample",
-        new=AsyncMock(side_effect=[
-            (SUPPLIER_CONTRACTS["items"], 2),
-            (PROCURER_CONTRACTS["items"], 1),
-        ]),
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma._firma_partners_agg", new=AsyncMock(return_value=PARTNERS_AGG_SUPPLIER_ONLY)),
     ):
         response = client.get(f"/api/firma/{ICO}/partneri?role=supplier")
 
@@ -165,12 +216,9 @@ def test_partneri_role_filter_supplier(client):
 
 def test_partneri_role_filter_procurer(client):
     """role=procurer returns only counterparties that acted as procurers."""
-    with patch(
-        "uvo_api.routers.firma._fetch_contracts_sample",
-        new=AsyncMock(side_effect=[
-            (SUPPLIER_CONTRACTS["items"], 2),
-            (PROCURER_CONTRACTS["items"], 1),
-        ]),
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma._firma_partners_agg", new=AsyncMock(return_value=PARTNERS_AGG_PROCURER_ONLY)),
     ):
         response = client.get(f"/api/firma/{ICO}/partneri?role=procurer")
 
@@ -182,12 +230,9 @@ def test_partneri_role_filter_procurer(client):
 
 def test_partneri_all_has_both_roles(client):
     """role=all (default) returns counterparties from both sides."""
-    with patch(
-        "uvo_api.routers.firma._fetch_contracts_sample",
-        new=AsyncMock(side_effect=[
-            (SUPPLIER_CONTRACTS["items"], 2),
-            (PROCURER_CONTRACTS["items"], 1),
-        ]),
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma._firma_partners_agg", new=AsyncMock(return_value=PARTNERS_AGG_RESULT)),
     ):
         response = client.get(f"/api/firma/{ICO}/partneri")
 
@@ -199,12 +244,9 @@ def test_partneri_all_has_both_roles(client):
 
 def test_partneri_sort_by_count(client):
     """sort=count orders by contract_count desc."""
-    with patch(
-        "uvo_api.routers.firma._fetch_contracts_sample",
-        new=AsyncMock(side_effect=[
-            (SUPPLIER_CONTRACTS["items"], 2),
-            (PROCURER_CONTRACTS["items"], 1),
-        ]),
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma._firma_partners_agg", new=AsyncMock(return_value=PARTNERS_AGG_RESULT)),
     ):
         response = client.get(f"/api/firma/{ICO}/partneri?sort=count")
 
@@ -218,13 +260,10 @@ def test_partneri_sort_by_count(client):
 # ---------------------------------------------------------------------------
 
 def test_cpv_profile_shape(client):
-    with patch(
-        "uvo_api.routers.firma._fetch_contracts_sample",
-        new=AsyncMock(side_effect=[
-            (SUPPLIER_CONTRACTS["items"], 2),
-            (PROCURER_CONTRACTS["items"], 1),
-            (MARKET_CONTRACTS["items"], 2),
-        ]),
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
+        patch("uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)),
     ):
         response = client.get(f"/api/firma/{ICO}/cpv-profile")
 
@@ -240,13 +279,10 @@ def test_cpv_profile_shape(client):
 
 
 def test_cpv_profile_percentages_sum_to_100(client):
-    with patch(
-        "uvo_api.routers.firma._fetch_contracts_sample",
-        new=AsyncMock(side_effect=[
-            (SUPPLIER_CONTRACTS["items"], 2),
-            (PROCURER_CONTRACTS["items"], 1),
-            (MARKET_CONTRACTS["items"], 2),
-        ]),
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
+        patch("uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)),
     ):
         response = client.get(f"/api/firma/{ICO}/cpv-profile")
 
@@ -258,13 +294,10 @@ def test_cpv_profile_percentages_sum_to_100(client):
 
 def test_cpv_profile_market_only_has_matching_codes(client):
     """market_baseline only contains CPV codes present in for_company."""
-    with patch(
-        "uvo_api.routers.firma._fetch_contracts_sample",
-        new=AsyncMock(side_effect=[
-            (SUPPLIER_CONTRACTS["items"], 2),
-            (PROCURER_CONTRACTS["items"], 1),
-            (MARKET_CONTRACTS["items"], 2),
-        ]),
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
+        patch("uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)),
     ):
         response = client.get(f"/api/firma/{ICO}/cpv-profile")
 
