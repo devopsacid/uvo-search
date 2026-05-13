@@ -176,7 +176,7 @@ services:
       API_MCP_SERVER_URL: http://mcp-server:8000/mcp
     secrets:
       - source: uvo_dev_mongodb_uri
-        target: mongodb_uri
+        target: api_mongodb_uri
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 15s
