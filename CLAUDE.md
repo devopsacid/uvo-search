@@ -75,6 +75,7 @@ Docker Desktop context (`desktop-linux`) will fail with "pipe not found" — tha
 - `data-pipeline` (sonnet) — ingestion, Redis Streams workers, cross-source dedup, integrity invariants, backfills. Prefer over generic devops/developer for pipeline and data-quality work.
 - `search-tuner` (opus) — Atlas Search analyzers (`sk_folding`), autocomplete, FastEmbed hybrid vector search, relevance tuning. Prefer for any search-behavior change or relevance bug.
 - `procurement-domain` (opus, advisory/read-only) — Slovak procurement semantics: CPV, zákon 343/2015, vestník/CRZ/TED/ITMS meaning, IČO conventions. Use to validate features and labels against real-world semantics.
+- `db-monitor` (haiku, read-only) — reports database filling: per-source counts vs. baseline, ingestion rates/ETAs, checkpoint sanity, stream lag, stalled extractors. Use to check backfill/recovery progress.
 
 ## React GUI notes
 
