@@ -69,10 +69,7 @@ async def dashboard_summary(
     active_procurers = int(procurers_result.get("total") or 0)
 
     # Per-year comparison against the previous year, over the full corpus.
-    valid = [
-        (year_from_date(str(r.get("_id"))), r)
-        for r in year_rows
-    ]
+    valid = [(year_from_date(str(r.get("_id"))), r) for r in year_rows]
     valid = sorted((y, r) for y, r in valid if y > 0)
 
     deltas: dict[str, DashboardDelta] = {

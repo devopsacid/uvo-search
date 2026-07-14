@@ -39,6 +39,7 @@ NOTICES = [
 
 # --- pure pipeline builders -------------------------------------------------
 
+
 def test_spend_by_year_pipeline_shape():
     pipeline = build_spend_by_year_pipeline(None, None)
     assert pipeline[0]["$match"] == {"notice_type": "contract_award"}
@@ -73,6 +74,7 @@ def test_top_entities_pipeline_supplier_unwinds():
 
 
 # --- fake computations ------------------------------------------------------
+
 
 async def test_fake_spend_by_year():
     analytics = InMemoryCompanyAnalytics(NOTICES)

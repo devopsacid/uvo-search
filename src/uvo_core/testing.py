@@ -60,7 +60,9 @@ class InMemoryNoticeRepository:
         limit: int = 20,
         offset: int = 0,
     ) -> dict:
-        rows = [n for n in self.notices if n.get("notice_type", "contract_award") == "contract_award"]
+        rows = [
+            n for n in self.notices if n.get("notice_type", "contract_award") == "contract_award"
+        ]
         if cpv_codes:
             rows = [n for n in rows if n.get("cpv_code") in cpv_codes]
         if procurer_id:
@@ -90,8 +92,7 @@ class InMemoryCompanyAnalytics:
 
     def _awarded(self) -> list[dict]:
         return [
-            n for n in self.notices
-            if n.get("notice_type", "contract_award") == "contract_award"
+            n for n in self.notices if n.get("notice_type", "contract_award") == "contract_award"
         ]
 
     def _filtered(self, ico: str | None, entity_type: str | None) -> list[dict]:
@@ -104,7 +105,8 @@ class InMemoryCompanyAnalytics:
 
     async def core_stats(self, ico: str) -> dict:
         related = [
-            n for n in self.notices
+            n
+            for n in self.notices
             if ico in _supplier_icos(n) or (n.get("procurer") or {}).get("ico") == ico
         ]
 
@@ -112,11 +114,15 @@ class InMemoryCompanyAnalytics:
             sub = [n for n in related if predicate(n)]
             if not sub:
                 return []
-            return [{
-                "count": len(sub),
-                "total": sum(float(n.get("final_value") or 0) for n in sub),
-                "last": max((n.get("award_date") for n in sub if n.get("award_date")), default=None),
-            }]
+            return [
+                {
+                    "count": len(sub),
+                    "total": sum(float(n.get("final_value") or 0) for n in sub),
+                    "last": max(
+                        (n.get("award_date") for n in sub if n.get("award_date")), default=None
+                    ),
+                }
+            ]
 
         cpv: dict[str, dict] = defaultdict(lambda: {"count": 0, "total": 0.0})
         for n in related:
@@ -202,7 +208,9 @@ class InMemoryCompanyAnalytics:
         return rows[:limit]
 
     async def _top_entities(self, get_icos, get_name, n: int) -> list[dict]:
-        buckets: dict[str, dict] = defaultdict(lambda: {"total_value": 0.0, "contract_count": 0, "name": ""})
+        buckets: dict[str, dict] = defaultdict(
+            lambda: {"total_value": 0.0, "contract_count": 0, "name": ""}
+        )
         for notice in self._awarded():
             for ico, name in get_icos(notice):
                 if not ico:
@@ -233,9 +241,7 @@ class InMemoryCompanyAnalytics:
 
         return await self._top_entities(icos, None, n)
 
-    async def partners(
-        self, ico: str, role: str, sort_by: str, limit: int, offset: int
-    ) -> dict:
+    async def partners(self, ico: str, role: str, sort_by: str, limit: int, offset: int) -> dict:
         sort_field = "contract_count" if sort_by == "count" else "total_value"
         rows: dict[tuple[str, str], dict] = {}
 

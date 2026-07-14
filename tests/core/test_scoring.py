@@ -33,8 +33,16 @@ def test_cpv_concentration_empty_and_zero():
 @pytest.mark.asyncio
 async def test_cpv_concentration_over_fake_core_stats():
     notices = [
-        {"awards": [{"supplier": {"ico": "S1"}}], "cpv_code": "72000000", "final_value": 4_000_000.0},
-        {"awards": [{"supplier": {"ico": "S1"}}], "cpv_code": "48000000", "final_value": 1_000_000.0},
+        {
+            "awards": [{"supplier": {"ico": "S1"}}],
+            "cpv_code": "72000000",
+            "final_value": 4_000_000.0,
+        },
+        {
+            "awards": [{"supplier": {"ico": "S1"}}],
+            "cpv_code": "48000000",
+            "final_value": 1_000_000.0,
+        },
     ]
     analytics = InMemoryCompanyAnalytics(notices)
     core = await analytics.core_stats("S1")

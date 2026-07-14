@@ -301,9 +301,7 @@ class MongoCompanyAnalytics:
     async def core_stats(self, ico: str) -> dict:
         return await _firma_core_agg(self._db, ico)
 
-    async def partners(
-        self, ico: str, role: str, sort_by: str, limit: int, offset: int
-    ) -> dict:
+    async def partners(self, ico: str, role: str, sort_by: str, limit: int, offset: int) -> dict:
         return await _firma_partners_agg(self._db, ico, role, sort_by, limit, offset)
 
     async def market_cpv(self, limit: int = 20) -> list[dict]:
