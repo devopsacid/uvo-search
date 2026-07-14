@@ -54,14 +54,9 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         )
         logger.info("Neo4j connected: %s", settings.neo4j_uri)
 
-    embedding_model = None
-    try:
-        from fastembed import TextEmbedding
+    from uvo_core.adapters.embedding import load_embedder
 
-        embedding_model = TextEmbedding("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-        logger.info("FastEmbed model loaded")
-    except Exception as exc:
-        logger.warning("FastEmbed unavailable: %s", exc)
+    embedding_model = load_embedder()
 
     async with httpx.AsyncClient(
         timeout=settings.request_timeout,
