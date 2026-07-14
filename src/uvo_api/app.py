@@ -4,8 +4,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from uvo_api.config import ApiSettings
-from uvo_api.routers import contracts, dashboard, firma, graph, ingestion, ingestion_log, procurers, search, suppliers, worker_status
+from uvo_api.routers import (
+    contracts,
+    dashboard,
+    firma,
+    graph,
+    ingestion,
+    ingestion_log,
+    procurers,
+    search,
+    suppliers,
+    worker_status,
+)
 from uvo_api.routers.firma import firmy_router
+from uvo_api.routers.v1 import create_v1_app
 
 
 def create_app() -> FastAPI:
@@ -40,5 +52,8 @@ def create_app() -> FastAPI:
     app.include_router(worker_status.router)
     app.include_router(search.router)
     app.include_router(graph.router)
+
+    # Public, monetizable API surface (key auth + rate limits); docs at /v1/docs.
+    app.mount("/v1", create_v1_app())
 
     return app

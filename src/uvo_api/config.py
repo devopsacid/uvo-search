@@ -13,4 +13,8 @@ class ApiSettings(BaseSettings):
     mongodb_uri: str = "mongodb://uvo:changeme@mongo:27017"
     mongodb_database: str = "uvo_search"
 
+    # Redis — used by the public /v1 API for rate limiting and usage metering.
+    redis_url: str = "redis://redis:6379/0"
+    redis_password: str = ""
+
     model_config = {"env_file": ".env", "env_prefix": "API_", "secrets_dir": "/run/secrets", "extra": "ignore"}
