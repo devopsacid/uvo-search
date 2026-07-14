@@ -68,7 +68,7 @@ Docker Desktop context (`desktop-linux`) will fail with "pipe not found" — tha
 ## Workflow
 
 - New features: use `superpowers:using-git-worktrees` to create an isolated worktree before writing code. Skip for single-file fixes, docs-only edits, or changes to the in-progress branch.
-- Non-trivial multi-phase work (design + build + test): prefer the `/team` skill over ad-hoc subagent spawns.
+- Non-trivial multi-phase work (design + build + test): run the `feature-pipeline` workflow (`/home/max/.claude/workflows/feature-pipeline.js` via the Workflow tool) over ad-hoc subagent spawns.
 
 ## React GUI notes
 
