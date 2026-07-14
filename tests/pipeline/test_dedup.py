@@ -250,6 +250,133 @@ async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(mock_mongo_d
     assert len(unmatched) == 2
 
 
+def _award_notice(
+    *,
+    source: str,
+    source_id: str,
+    ico: str,
+    value: float | None,
+    publication_date: str,
+    run_id: str,
+    title: str = "Nákup kancelárskych potrieb",
+) -> dict:
+    return {
+        "source": source,
+        "source_id": source_id,
+        "title": title,
+        "title_slug": None,
+        "procurer": {"ico": None, "name": "Obec X", "name_slug": "obec-x"},
+        "cpv_code": None,
+        "awards": [{"supplier": {"ico": ico, "name": "Dodavatel s.r.o.", "name_slug": "dodavatel"}, "value": value}],
+        "publication_date": publication_date,
+        "pipeline_run_id": run_id,
+        "canonical_id": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_cross_source_dedup_pass3_matches_by_ico_and_value(mock_mongo_db):
+    """Pass 3 must match notices sharing an award supplier ICO, pub_date within
+    14 days, and a compatible award value."""
+    from uvo_pipeline.orchestrator import _run_cross_source_dedup
+
+    run_id = "test-run-3"
+    await mock_mongo_db.notices.insert_many([
+        _award_notice(source="crz", source_id="C-1", ico="11223344", value=50_000.0,
+                      publication_date="2026-02-01", run_id=run_id),
+        _award_notice(source="vestnik", source_id="V-1", ico="11223344", value=52_000.0,
+                      publication_date="2026-02-10", run_id=run_id),
+    ])
+
+    match_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
+    assert match_count >= 1
+
+    matched = await mock_mongo_db.notices.find(
+        {"pipeline_run_id": run_id, "canonical_id": {"$ne": None}}
+    ).to_list(length=None)
+    assert len(matched) == 2
+    assert matched[0]["canonical_id"] == matched[1]["canonical_id"]
+
+    csm = await mock_mongo_db.cross_source_matches.find_one({"canonical_id": matched[0]["canonical_id"]})
+    assert csm["match_type"] == "supplier_ico_value_window"
+    assert csm["supplier_ico"] == "11223344"
+
+
+@pytest.mark.asyncio
+async def test_cross_source_dedup_pass3_no_match_when_dates_too_far(mock_mongo_db):
+    """Pass 3 must NOT match notices with pub_date more than 14 days apart."""
+    from uvo_pipeline.orchestrator import _run_cross_source_dedup
+
+    run_id = "test-run-4"
+    await mock_mongo_db.notices.insert_many([
+        _award_notice(source="crz", source_id="C-2", ico="55667788", value=50_000.0,
+                      publication_date="2026-02-01", run_id=run_id),
+        _award_notice(source="vestnik", source_id="V-2", ico="55667788", value=50_500.0,
+                      publication_date="2026-02-20", run_id=run_id),
+    ])
+
+    await _run_cross_source_dedup(mock_mongo_db, run_id)
+
+    unmatched = await mock_mongo_db.notices.find(
+        {"pipeline_run_id": run_id, "canonical_id": None}
+    ).to_list(length=None)
+    assert len(unmatched) == 2
+
+
+@pytest.mark.asyncio
+async def test_cross_source_dedup_pass3_rejects_value_mismatch(mock_mongo_db):
+    """Pass 3 must NOT match same-ICO notices whose values differ by more than 2x —
+    likely two unrelated contracts with the same supplier in the same window."""
+    from uvo_pipeline.orchestrator import _run_cross_source_dedup
+
+    run_id = "test-run-5"
+    await mock_mongo_db.notices.insert_many([
+        _award_notice(source="crz", source_id="C-3", ico="99887766", value=10_000.0,
+                      publication_date="2026-02-01", run_id=run_id),
+        _award_notice(source="vestnik", source_id="V-3", ico="99887766", value=100_000.0,
+                      publication_date="2026-02-05", run_id=run_id),
+    ])
+
+    await _run_cross_source_dedup(mock_mongo_db, run_id)
+
+    unmatched = await mock_mongo_db.notices.find(
+        {"pipeline_run_id": run_id, "canonical_id": None}
+    ).to_list(length=None)
+    assert len(unmatched) == 2
+
+
+@pytest.mark.asyncio
+async def test_cross_source_dedup_pass3_skips_high_frequency_supplier(mock_mongo_db):
+    """Pass 3 must skip a supplier ICO appearing in more than
+    MAX_NOTICES_PER_SUPPLIER_ICO candidate notices, even when pairs would
+    otherwise satisfy the date/value guards — avoids false merges from a
+    high-volume framework supplier (e.g. stationery, cleaning contracts)."""
+    from uvo_pipeline.dedup import MAX_NOTICES_PER_SUPPLIER_ICO
+    from uvo_pipeline.orchestrator import _run_cross_source_dedup
+
+    run_id = "test-run-6"
+    ico = "10101010"
+    notices = []
+    sources = ["crz", "vestnik"]
+    for i in range(MAX_NOTICES_PER_SUPPLIER_ICO + 1):
+        notices.append(_award_notice(
+            source=sources[i % 2],
+            source_id=f"HF-{i}",
+            ico=ico,
+            value=50_000.0,
+            publication_date="2026-02-01",
+            run_id=run_id,
+        ))
+    await mock_mongo_db.notices.insert_many(notices)
+
+    await _run_cross_source_dedup(mock_mongo_db, run_id)
+
+    unmatched = await mock_mongo_db.notices.find(
+        {"pipeline_run_id": run_id, "canonical_id": None}
+    ).to_list(length=None)
+    assert len(unmatched) == MAX_NOTICES_PER_SUPPLIER_ICO + 1
+
+
 def test_notice_hash_set_before_upsert():
     """Notices must have content_hash set before reaching upsert_batch."""
     from uvo_pipeline.utils.hashing import compute_notice_hash
