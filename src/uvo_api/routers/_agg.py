@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from uvo_mcp.cache import _make_key, async_ttl_cache
+from uvo_core.cache import _make_key, async_ttl_cache
 
 
 @async_ttl_cache(
