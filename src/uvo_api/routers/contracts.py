@@ -4,8 +4,8 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from uvo_api._schema import map_contract_detail, map_contract_row
-from uvo_api.mcp_client import call_tool
 from uvo_api.models import ContractDetail, ContractListResponse, PaginationMeta
+from uvo_api.services import run_query
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
 
@@ -41,7 +41,7 @@ async def list_contracts(
     if procurer_ico:
         args["procurer_id"] = procurer_ico
 
-    result = await call_tool("search_completed_procurements", args)
+    result = await run_query("search_completed_procurements", args)
 
     items = result.get("items", [])
     total = result.get("total", len(items))
@@ -62,7 +62,7 @@ async def list_contracts(
 
 @router.get("/{contract_id}", response_model=ContractDetail)
 async def get_contract(contract_id: str) -> ContractDetail:
-    result = await call_tool("get_procurement_detail", {"procurement_id": contract_id})
+    result = await run_query("get_procurement_detail", {"procurement_id": contract_id})
     if "error" in result:
         raise HTTPException(status_code=result.get("status_code", 404), detail=result["error"])
 

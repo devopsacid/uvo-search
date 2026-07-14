@@ -6,7 +6,6 @@ from collections import defaultdict
 from fastapi import APIRouter, HTTPException, Query
 
 from uvo_api._schema import contract_date, contract_value, map_contract_row, year_from_date
-from uvo_api.mcp_client import call_tool
 from uvo_api.models import (
     ConcentrationResponse,
     ContractRow,
@@ -19,6 +18,7 @@ from uvo_api.models import (
     SupplierRelation,
     SupplierShare,
 )
+from uvo_api.services import run_query
 
 router = APIRouter(prefix="/api/procurers", tags=["procurers"])
 
@@ -36,7 +36,7 @@ async def list_procurers(
     if ico:
         args["ico"] = ico
 
-    result = await call_tool("find_procurer", args)
+    result = await run_query("find_procurer", args)
     items = result.get("items", [])
     total = int(result.get("total") or len(items))
 
@@ -56,13 +56,13 @@ async def list_procurers(
 
 
 async def _fetch_procurer_and_contracts(ico: str) -> tuple[dict, list[dict]]:
-    procurer_result = await call_tool("find_procurer", {"ico": ico, "limit": 1})
+    procurer_result = await run_query("find_procurer", {"ico": ico, "limit": 1})
     procurers = procurer_result.get("items", [])
     if not procurers:
         raise HTTPException(status_code=404, detail=f"Procurer {ico} not found")
     procurer = procurers[0]
 
-    contracts_result = await call_tool(
+    contracts_result = await run_query(
         "search_completed_procurements", {"procurer_id": ico, "limit": 100}
     )
     contracts = contracts_result.get("items", [])
@@ -143,14 +143,14 @@ async def get_procurer_concentration(
     top_n: int = Query(10, ge=1, le=50),
 ) -> ConcentrationResponse:
     """Supplier concentration for a procurer with HHI computed server-side over all suppliers."""
-    procurer_result = await call_tool("find_procurer", {"ico": ico, "limit": 1})
+    procurer_result = await run_query("find_procurer", {"ico": ico, "limit": 1})
     procurers = procurer_result.get("items", [])
     if not procurers:
         raise HTTPException(status_code=404, detail=f"Procurer {ico} not found")
     procurer_name = procurers[0].get("name") or ""
 
     # Fetch all contracts for this procurer to compute HHI over full population
-    contracts_result = await call_tool(
+    contracts_result = await run_query(
         "search_completed_procurements", {"procurer_id": ico, "limit": 100}
     )
     contracts = contracts_result.get("items", [])
