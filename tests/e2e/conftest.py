@@ -58,9 +58,29 @@ def _dump_logs():
         print(result.stderr)
 
 
+def _stack_already_running() -> bool:
+    """True if the compose stack was up before the test session started."""
+    result = subprocess.run(
+        ["docker", "compose", "-f", COMPOSE_FILE, "ps", "-q", "--status=running"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    return bool(result.stdout.strip())
+
+
 @pytest.fixture(scope="session")
 def compose_stack():
-    """Build + start docker-compose stack; yield; tear down with ``down -v``."""
+    """Build + start the compose stack if not already running; stop it afterwards.
+
+    Never removes volumes: the local stack holds the full ingested dataset and a
+    ``down -v`` here once destroyed it. If the stack was already running before
+    the session, it is left untouched on teardown.
+    """
+    if _stack_already_running():
+        yield
+        return
+
     result = subprocess.run(
         ["docker", "compose", "-f", COMPOSE_FILE, "build"],
         capture_output=True,
@@ -83,16 +103,16 @@ def compose_stack():
         if not _wait_for_health(url, STARTUP_TIMEOUT):
             _dump_logs()
             subprocess.run(
-                ["docker", "compose", "-f", COMPOSE_FILE, "down", "-v"], timeout=30
+                ["docker", "compose", "-f", COMPOSE_FILE, "stop"], timeout=120
             )
             pytest.fail(f"{name} did not become healthy within {STARTUP_TIMEOUT}s")
 
     yield
 
     subprocess.run(
-        ["docker", "compose", "-f", COMPOSE_FILE, "down", "-v"],
+        ["docker", "compose", "-f", COMPOSE_FILE, "stop"],
         capture_output=True,
-        timeout=30,
+        timeout=120,
     )
 
 
