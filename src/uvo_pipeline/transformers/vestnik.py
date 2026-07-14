@@ -5,7 +5,7 @@ from datetime import date
 
 from slugify import slugify
 
-from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer
+from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer
 
 logger = logging.getLogger(__name__)
 

@@ -9,11 +9,11 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from neo4j import AsyncGraphDatabase
 from pydantic_settings import BaseSettings
 
+from uvo_core.domain.models import CanonicalNotice
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.loaders.mongo import upsert_batch
 from uvo_pipeline.loaders.neo4j import merge_notice_batch
-from uvo_pipeline.models import CanonicalNotice
 from uvo_pipeline.pubsub import publish
 from uvo_pipeline.redis_client import RedisSettings, close_redis, get_redis
 from uvo_pipeline.streams import ack, decode_entry, ensure_consumer_group, read_group

@@ -4,7 +4,7 @@ import logging
 
 from neo4j import AsyncSession
 
-from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
+from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
 
 logger = logging.getLogger(__name__)
 

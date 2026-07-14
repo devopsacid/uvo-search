@@ -24,6 +24,7 @@ from uvo_api.models import (
 )
 from uvo_api.routers._agg import _firma_core_agg, _firma_partners_agg, _market_cpv_agg
 from uvo_api.routers.dashboard import _cpv_prefix, _load_cpv_labels
+from uvo_core.domain.companies import merge_companies_by_ico, primary_role
 
 router = APIRouter(prefix="/api/firma", tags=["firma"])
 firmy_router = APIRouter(prefix="/api/firmy", tags=["firmy"])
@@ -82,14 +83,12 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
     as_supplier = _block("as_supplier") if supplier_items else None
     as_procurer = _block("as_procurer") if procurer_items else None
 
-    supplier_count = as_supplier.contract_count if as_supplier else 0
-    procurer_count = as_procurer.contract_count if as_procurer else 0
-    if not supplier_items:
-        primary_role = "procurer"
-    elif not procurer_items or supplier_count >= procurer_count:
-        primary_role = "supplier"
-    else:
-        primary_role = "procurer"
+    primary = primary_role(
+        is_supplier=bool(supplier_items),
+        is_procurer=bool(procurer_items),
+        supplier_count=as_supplier.contract_count if as_supplier else 0,
+        procurer_count=as_procurer.contract_count if as_procurer else 0,
+    )
 
     # Top contracts (still via MCP for sort-by-value)
     top_s_coro = (
@@ -171,7 +170,7 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
         ico=ico,
         name=name,
         roles=roles,
-        primary_role=primary_role,
+        primary_role=primary,
         stats=FirmaStats(as_supplier=as_supplier, as_procurer=as_procurer),
         top_cpvs=top_cpvs,
         top_contracts=top_contracts,
@@ -267,39 +266,13 @@ async def list_firmy(
 
     supplier_result, procurer_result = await asyncio.gather(supplier_coro, procurer_coro)
 
-    # Merge by ICO
-    merged: dict[str, dict] = {}
-
-    for item in supplier_result.get("items", []):
-        ico = item.get("ico") or ""
-        if not ico:
-            continue
-        merged[ico] = {
-            "ico": ico,
-            "name": item.get("name") or "",
-            "roles": ["supplier"],
-            "contract_count": int(item.get("contract_count") or 0),
-            "total_value": float(item.get("total_value") or 0.0),
-        }
-
-    for item in procurer_result.get("items", []):
-        ico = item.get("ico") or ""
-        if not ico:
-            continue
-        if ico in merged:
-            merged[ico]["roles"].append("procurer")
-            merged[ico]["contract_count"] += int(item.get("contract_count") or 0)
-            merged[ico]["total_value"] += float(item.get("total_value") or 0.0)
-        else:
-            merged[ico] = {
-                "ico": ico,
-                "name": item.get("name") or "",
-                "roles": ["procurer"],
-                "contract_count": int(item.get("contract_count") or 0),
-                "total_value": float(item.get("total_value") or 0.0),
-            }
-
-    items = sorted(merged.values(), key=lambda x: x["contract_count"], reverse=True)
+    items = merge_companies_by_ico(
+        supplier_result.get("items", []),
+        procurer_result.get("items", []),
+        accumulate=True,
+        skip_empty_ico=True,
+        sort_by_count=True,
+    )
     total = len(items)
     page = items[offset : offset + limit]
 

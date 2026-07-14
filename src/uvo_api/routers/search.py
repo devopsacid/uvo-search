@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from uvo_api._schema import contract_date, contract_value, year_from_date
 from uvo_api.mcp_client import call_tool
+from uvo_core.domain.companies import merge_companies_by_ico
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -58,12 +59,12 @@ def _as_hit(item: dict, kind: str) -> EntityHit:
     )
 
 
-def _entity_to_firma(item: dict, role: str) -> FirmaHit:
+def _to_firma_hit(row: dict) -> FirmaHit:
     return FirmaHit(
-        ico=str(item.get("ico") or ""),
-        name=item.get("name") or "",
-        roles=[role],
-        contract_count=int(item.get("contract_count") or 0),
+        ico=row["ico"],
+        name=row["name"],
+        roles=row["roles"],
+        contract_count=row["contract_count"],
     )
 
 
@@ -81,17 +82,8 @@ def _contract_to_zakazka(item: dict) -> ZakazkaHit:
 
 
 def _merge_firmy(suppliers: list[dict], procurers: list[dict], limit: int) -> list[FirmaHit]:
-    merged: dict[str, FirmaHit] = {}
-    for item in suppliers:
-        ico = str(item.get("ico") or "")
-        merged[ico] = _entity_to_firma(item, "supplier")
-    for item in procurers:
-        ico = str(item.get("ico") or "")
-        if ico in merged:
-            merged[ico].roles.append("procurer")
-        else:
-            merged[ico] = _entity_to_firma(item, "procurer")
-    return list(merged.values())[:limit]
+    rows = merge_companies_by_ico(suppliers, procurers)
+    return [_to_firma_hit(r) for r in rows][:limit]
 
 
 def _merge_firmy_with_vector(
@@ -101,37 +93,8 @@ def _merge_firmy_with_vector(
     limit: int,
 ) -> list[FirmaHit]:
     """Merge text and vector hits; vector hits ranked first, then text hits fill remaining slots."""
-    result: dict[str, FirmaHit] = {}
-    for item in vector_items:
-        ico = str(item.get("ico") or "")
-        if not ico:
-            continue
-        roles = item.get("roles") or []
-        hit = FirmaHit(
-            ico=ico,
-            name=item.get("name") or "",
-            roles=roles,
-            contract_count=0,
-        )
-        result[ico] = hit
-
-    for item in suppliers:
-        ico = str(item.get("ico") or "")
-        if ico in result:
-            if "supplier" not in result[ico].roles:
-                result[ico].roles.append("supplier")
-        else:
-            result[ico] = _entity_to_firma(item, "supplier")
-
-    for item in procurers:
-        ico = str(item.get("ico") or "")
-        if ico in result:
-            if "procurer" not in result[ico].roles:
-                result[ico].roles.append("procurer")
-        else:
-            result[ico] = _entity_to_firma(item, "procurer")
-
-    return list(result.values())[:limit]
+    rows = merge_companies_by_ico(suppliers, procurers, vector=vector_items)
+    return [_to_firma_hit(r) for r in rows][:limit]
 
 
 @router.get("/entities", response_model=EntitySearchResponse)

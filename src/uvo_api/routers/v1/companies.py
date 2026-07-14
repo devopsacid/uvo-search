@@ -22,6 +22,7 @@ from uvo_api.routers.v1.models import (
     SpendYear,
 )
 from uvo_api.v1_errors import ApiV1Error
+from uvo_core.domain.companies import merge_companies_by_ico
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -33,38 +34,6 @@ _EMPTY: dict = {"items": []}
 
 async def _empty() -> dict:
     return _EMPTY
-
-
-def _merge_companies(suppliers: list[dict], procurers: list[dict]) -> list[dict]:
-    merged: dict[str, dict] = {}
-    for item in suppliers:
-        ico = item.get("ico") or ""
-        if not ico:
-            continue
-        merged[ico] = {
-            "ico": ico,
-            "name": item.get("name") or "",
-            "roles": ["supplier"],
-            "contract_count": int(item.get("contract_count") or 0),
-            "total_value": float(item.get("total_value") or 0.0),
-        }
-    for item in procurers:
-        ico = item.get("ico") or ""
-        if not ico:
-            continue
-        if ico in merged:
-            merged[ico]["roles"].append("procurer")
-            merged[ico]["contract_count"] += int(item.get("contract_count") or 0)
-            merged[ico]["total_value"] += float(item.get("total_value") or 0.0)
-        else:
-            merged[ico] = {
-                "ico": ico,
-                "name": item.get("name") or "",
-                "roles": ["procurer"],
-                "contract_count": int(item.get("contract_count") or 0),
-                "total_value": float(item.get("total_value") or 0.0),
-            }
-    return sorted(merged.values(), key=lambda x: x["contract_count"], reverse=True)
 
 
 @router.get("", response_model=CompanyListResponse)
@@ -83,9 +52,12 @@ async def search_companies(
         call_tool("find_supplier", args),
         call_tool("find_procurer", args),
     )
-    merged = _merge_companies(
+    merged = merge_companies_by_ico(
         supplier_result.get("items", []),
         procurer_result.get("items", []),
+        accumulate=True,
+        skip_empty_ico=True,
+        sort_by_count=True,
     )
     total = len(merged)
     page = merged[offset : offset + limit]
