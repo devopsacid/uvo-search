@@ -99,8 +99,15 @@ def test_transform_missing_authority_gives_none_procurer():
     assert r.procurer is None
 
 
-def test_transform_missing_signed_on_gives_none_date():
+def test_transform_missing_signed_on_falls_back_to_published_at():
+    """signed_on missing → fall back to published_at (date-truncated)."""
     raw = {**RAW, "signed_on": None}
+    r = transform_contract(raw)
+    assert r.publication_date == date(2024, 3, 5)
+
+
+def test_transform_missing_all_dates_gives_none_date():
+    raw = {**RAW, "signed_on": None, "published_at": None, "effective_from": None}
     r = transform_contract(raw)
     assert r.publication_date is None
 
@@ -151,3 +158,39 @@ def test_transform_attachment_missing_file_name_skipped():
     raw = {**RAW, "attachments": [{"id": 9, "title": "Bad", "file_name": None, "file_size": 0}]}
     r = transform_contract(raw)
     assert r.attachments == []
+
+
+# ---------------------------------------------------------------------------
+# Fix 4 — corrupted signed_on year guard + published_at/effective_from fallback
+# ---------------------------------------------------------------------------
+
+def test_transform_corrupted_signed_on_year_falls_back_to_published_at():
+    """A transposed-digit year (e.g. '3202' for '2023') must be rejected."""
+    raw = {**RAW, "signed_on": "3202-03-02"}
+    r = transform_contract(raw)
+    assert r.publication_date == date(2024, 3, 5)  # published_at, date-truncated
+
+
+def test_transform_corrupted_signed_on_year_too_low_rejected():
+    raw = {**RAW, "signed_on": "1024-10-24"}
+    r = transform_contract(raw)
+    assert r.publication_date == date(2024, 3, 5)
+
+
+def test_transform_signed_on_falls_back_to_effective_from_when_published_at_also_bad():
+    raw = {**RAW, "signed_on": "3202-03-02", "published_at": None}
+    r = transform_contract(raw)
+    assert r.publication_date == date(2024, 3, 15)  # effective_from, date-truncated
+
+
+def test_transform_award_signing_date_uses_same_fallback():
+    """Award signing_date must use the same corrupted-year guard + fallback."""
+    raw = {**RAW, "signed_on": "3202-03-02"}
+    r = transform_contract(raw)
+    assert r.awards[0].signing_date == date(2024, 3, 5)
+
+
+def test_transform_plausible_recent_year_accepted():
+    raw = {**RAW, "signed_on": "2026-06-01"}
+    r = transform_contract(raw)
+    assert r.publication_date == date(2026, 6, 1)
