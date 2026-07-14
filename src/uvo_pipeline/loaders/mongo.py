@@ -7,7 +7,7 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo.errors import OperationFailure
 
-from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
+from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
 from uvo_pipeline.utils.hashing import compute_notice_hash
 
 logger = logging.getLogger(__name__)

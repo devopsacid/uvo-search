@@ -2,7 +2,7 @@
 
 import hashlib
 
-from uvo_pipeline.models import CanonicalNotice
+from uvo_core.domain.models import CanonicalNotice
 
 
 def compute_notice_hash(notice: CanonicalNotice) -> str:

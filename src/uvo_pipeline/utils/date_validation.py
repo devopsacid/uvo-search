@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any
 
-from uvo_pipeline.models import CanonicalNotice
+from uvo_core.domain.models import CanonicalNotice
 
 MIN_YEAR = 1995
 MAX_YEAR_DELTA = 5  # allow 5 years into the future for tender deadlines

@@ -10,13 +10,13 @@ import httpx
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from neo4j import AsyncGraphDatabase
 
+from uvo_core.domain.models import CanonicalNotice, PipelineReport
 from uvo_pipeline.catalog.nkod import discover_vestnik_datasets
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.dedup import run_cross_source_dedup
 from uvo_pipeline.extractors.vestnik_nkod import fetch_bulletin
 from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
-from uvo_pipeline.models import CanonicalNotice, PipelineReport
 from uvo_pipeline.transformers.vestnik_nkod import transform_notice as transform_vestnik_notice
 from uvo_pipeline.utils.checkpoint import get_checkpoint, save_checkpoint
 from uvo_pipeline.utils.hashing import compute_notice_hash
