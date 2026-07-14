@@ -256,7 +256,9 @@ async def run_cross_source_dedup(
         ],
     }
 
-    ico_less = await db.notices.find(pass2_filter).to_list(length=None)
+    ico_less = await db.notices.find(
+        pass2_filter, {"source": 1, "publication_date": 1, "title_slug": 1}
+    ).to_list(length=None)
 
     by_slug: dict[str, list] = defaultdict(list)
     for n in ico_less:

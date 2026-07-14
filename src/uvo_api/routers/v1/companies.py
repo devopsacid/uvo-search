@@ -4,8 +4,7 @@ import asyncio
 
 from fastapi import APIRouter, Query
 
-from uvo_api.db import get_db
-from uvo_api.routers._agg import _firma_core_agg, _firma_partners_agg
+from uvo_api.db import get_analytics
 from uvo_api.routers.dashboard import _cpv_prefix, _load_cpv_labels
 from uvo_api.routers.v1._common import decode_cursor, next_pagination
 from uvo_api.routers.v1.models import (
@@ -23,6 +22,7 @@ from uvo_api.routers.v1.models import (
 from uvo_api.services import run_query
 from uvo_api.v1_errors import ApiV1Error
 from uvo_core.domain.companies import merge_companies_by_ico
+from uvo_core.domain.scoring import cpv_concentration
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -92,35 +92,30 @@ async def get_company(ico: str) -> CompanyRecordResponse:
 
 def _cpv_breakdown(rows: list[dict]) -> tuple[list[CpvBreakdownRow], float]:
     labels = _load_cpv_labels()
-    total = sum(float(r.get("total") or 0.0) for r in rows) or 1.0
-    breakdown: list[CpvBreakdownRow] = []
-    hhi = 0.0
-    for r in rows:
-        code = _cpv_prefix(r.get("_id"))
-        value = float(r.get("total") or 0.0)
-        share = value / total
-        hhi += share * share
-        breakdown.append(
-            CpvBreakdownRow(
-                code=code,
-                label=labels.get(code, {}).get("sk") or code,
-                contract_count=int(r.get("count") or 0),
-                total_value=value,
-                share=round(share * 100, 1),
-            )
+    values = [float(r.get("total") or 0.0) for r in rows]
+    shares, hhi = cpv_concentration(values)
+    breakdown = [
+        CpvBreakdownRow(
+            code=_cpv_prefix(r.get("_id")),
+            label=labels.get(_cpv_prefix(r.get("_id")), {}).get("sk") or _cpv_prefix(r.get("_id")),
+            contract_count=int(r.get("count") or 0),
+            total_value=float(r.get("total") or 0.0),
+            share=round(share * 100, 1),
         )
-    return breakdown, round(hhi, 4)
+        for r, share in zip(rows, shares)
+    ]
+    return breakdown, hhi
 
 
 @router.get("/{ico}/profile", response_model=CompanyProfileResponse)
 async def get_company_profile(ico: str) -> CompanyProfileResponse:
     """Flagship procurement profile: totals, spend by year, counterparties, CPV mix."""
-    db = get_db()
+    analytics = get_analytics()
     supplier_result, procurer_result, core, partners = await asyncio.gather(
         run_query("find_supplier", {"ico": ico, "limit": 1}),
         run_query("find_procurer", {"ico": ico, "limit": 1}),
-        _firma_core_agg(db, ico),
-        _firma_partners_agg(db, ico, "all", "value", 10, 0),
+        analytics.core_stats(ico),
+        analytics.partners(ico, "all", "value", 10, 0),
     )
 
     supplier_items = supplier_result.get("items", [])

@@ -1,36 +1,40 @@
 # tests/api/test_dashboard_phase3.py
-"""Phase 3 dashboard endpoint tests: by-cpv with year filters and by-month."""
+"""Phase 3 dashboard endpoint tests: by-cpv with year filters and by-month.
 
-from unittest.mock import AsyncMock, patch
+Driven through the in-memory CompanyAnalytics fake so the full-corpus year
+filtering and month bucketing (moved server-side in Phase 3) run for real.
+"""
+
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from uvo_api.app import create_app
+from uvo_core.testing import InMemoryCompanyAnalytics
 
-SAMPLE_CONTRACTS = {
-    "items": [
-        {
-            "_id": "1",
-            "title": "IT Project",
-            "procurer": {"ico": "12345678", "name": "Ministry"},
-            "awards": [{"supplier_ico": "87654321", "supplier_name": "Tech Corp"}],
-            "final_value": 500000.0,
-            "award_date": "2024-03-01",
-            "cpv_code": "72000000",
-        },
-        {
-            "_id": "2",
-            "title": "Road Works",
-            "procurer": {"ico": "11111111", "name": "NDS"},
-            "awards": [{"supplier_ico": "22222222", "supplier_name": "Build Co"}],
-            "final_value": 1000000.0,
-            "award_date": "2023-06-15",
-            "cpv_code": "45000000",
-        },
-    ],
-    "total": 2,
-}
+SAMPLE_NOTICES = [
+    {
+        "_id": "1",
+        "notice_type": "contract_award",
+        "title": "IT Project",
+        "procurer": {"ico": "12345678", "name": "Ministry"},
+        "awards": [{"supplier": {"ico": "87654321", "name": "Tech Corp"}}],
+        "final_value": 500000.0,
+        "award_date": "2024-03-01",
+        "cpv_code": "72000000",
+    },
+    {
+        "_id": "2",
+        "notice_type": "contract_award",
+        "title": "Road Works",
+        "procurer": {"ico": "11111111", "name": "NDS"},
+        "awards": [{"supplier": {"ico": "22222222", "name": "Build Co"}}],
+        "final_value": 1000000.0,
+        "award_date": "2023-06-15",
+        "cpv_code": "45000000",
+    },
+]
 
 
 @pytest.fixture
@@ -39,8 +43,13 @@ def client(monkeypatch):
     return TestClient(create_app())
 
 
-def test_by_cpv_no_year_filter(client):
-    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+@pytest.fixture
+def fake_analytics():
+    return InMemoryCompanyAnalytics(SAMPLE_NOTICES)
+
+
+def test_by_cpv_no_year_filter(client, fake_analytics):
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
         response = client.get("/api/dashboard/by-cpv")
     assert response.status_code == 200
     body = response.json()
@@ -49,8 +58,8 @@ def test_by_cpv_no_year_filter(client):
     assert "45000000" in cpv_codes
 
 
-def test_by_cpv_year_from_filter(client):
-    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+def test_by_cpv_year_from_filter(client, fake_analytics):
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
         response = client.get("/api/dashboard/by-cpv?year_from=2024")
     assert response.status_code == 200
     body = response.json()
@@ -60,8 +69,8 @@ def test_by_cpv_year_from_filter(client):
     assert "45000000" not in cpv_codes
 
 
-def test_by_cpv_year_to_filter(client):
-    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+def test_by_cpv_year_to_filter(client, fake_analytics):
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
         response = client.get("/api/dashboard/by-cpv?year_to=2023")
     assert response.status_code == 200
     body = response.json()
@@ -70,8 +79,8 @@ def test_by_cpv_year_to_filter(client):
     assert "72000000" not in cpv_codes
 
 
-def test_by_month_returns_12_buckets(client):
-    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+def test_by_month_returns_12_buckets(client, fake_analytics):
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
         response = client.get("/api/dashboard/by-month?year=2024")
     assert response.status_code == 200
     body = response.json()
@@ -80,8 +89,8 @@ def test_by_month_returns_12_buckets(client):
     assert months == list(range(1, 13))
 
 
-def test_by_month_counts_correctly(client):
-    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+def test_by_month_counts_correctly(client, fake_analytics):
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
         response = client.get("/api/dashboard/by-month?year=2024")
     assert response.status_code == 200
     body = response.json()

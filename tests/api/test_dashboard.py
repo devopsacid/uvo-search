@@ -5,6 +5,35 @@ import pytest
 from fastapi.testclient import TestClient
 
 from uvo_api.app import create_app
+from uvo_core.testing import InMemoryCompanyAnalytics
+
+# Full-corpus dashboard endpoints now aggregate server-side; the tests drive the
+# in-memory CompanyAnalytics fake so the shaping logic is exercised end-to-end.
+SAMPLE_NOTICES = [
+    {
+        "_id": "1",
+        "notice_type": "contract_award",
+        "title": "IT Project",
+        "procurer": {"ico": "12345678", "name": "Ministry"},
+        "awards": [{"supplier": {"ico": "87654321", "name": "Tech Corp"}}],
+        "final_value": 500000.0,
+        "publication_date": "2024-03-01",
+        "cpv_code": "72000000",
+    },
+    {
+        "_id": "2",
+        "notice_type": "contract_award",
+        "title": "Road Works",
+        "procurer": {"ico": "11111111", "name": "NDS"},
+        "awards": [{"supplier": {"ico": "22222222", "name": "Build Co"}}],
+        "final_value": 1000000.0,
+        "publication_date": "2023-06-15",
+        "cpv_code": "45000000",
+    },
+]
+
+SAMPLE_SUPPLIERS = {"items": [], "total": 2}
+SAMPLE_PROCURERS = {"items": [], "total": 1}
 
 SAMPLE_CONTRACTS = {
     "items": [
@@ -32,31 +61,6 @@ SAMPLE_CONTRACTS = {
     "total": 2,
 }
 
-SAMPLE_SUPPLIERS = {
-    "items": [
-        {
-            "ico": "87654321",
-            "name": "Tech Corp",
-            "contract_count": 10,
-            "total_value": 5000000.0,
-        },
-        {"ico": "22222222", "name": "Build Co", "contract_count": 5, "total_value": 2000000.0},
-    ],
-    "total": 2,
-}
-
-SAMPLE_PROCURERS = {
-    "items": [
-        {
-            "ico": "12345678",
-            "name": "Ministry",
-            "contract_count": 15,
-            "total_value": 8000000.0,
-        },
-    ],
-    "total": 1,
-}
-
 
 @pytest.fixture
 def client(monkeypatch):
@@ -65,15 +69,17 @@ def client(monkeypatch):
     return TestClient(app)
 
 
-def test_dashboard_summary(client):
-    with patch(
-        "uvo_api.routers.dashboard.run_query",
-        new=AsyncMock(
-            side_effect=[
-                SAMPLE_CONTRACTS,
-                SAMPLE_SUPPLIERS,
-                SAMPLE_PROCURERS,
-            ]
+@pytest.fixture
+def fake_analytics():
+    return InMemoryCompanyAnalytics(SAMPLE_NOTICES)
+
+
+def test_dashboard_summary(client, fake_analytics):
+    with (
+        patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics),
+        patch(
+            "uvo_api.routers.dashboard.run_query",
+            new=AsyncMock(side_effect=[SAMPLE_SUPPLIERS, SAMPLE_PROCURERS]),
         ),
     ):
         response = client.get("/api/dashboard/summary")
@@ -85,8 +91,8 @@ def test_dashboard_summary(client):
     assert body["active_suppliers"] == 2
 
 
-def test_dashboard_spend_by_year(client):
-    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+def test_dashboard_spend_by_year(client, fake_analytics):
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
         response = client.get("/api/dashboard/spend-by-year")
     assert response.status_code == 200
     body = response.json()
@@ -96,7 +102,7 @@ def test_dashboard_spend_by_year(client):
 
 
 def test_dashboard_top_suppliers(client):
-    mock_rows = [
+    rows = [
         {
             "_id": "31410952",
             "name": "MICROCOMP - Computersystém s r. o.",
@@ -110,14 +116,9 @@ def test_dashboard_top_suppliers(client):
             "contract_count": 373,
         },
     ]
-    mock_cursor = MagicMock()
-    mock_cursor.to_list = AsyncMock(return_value=mock_rows)
-    mock_collection = MagicMock()
-    mock_collection.aggregate.return_value = mock_cursor
-    mock_db = MagicMock()
-    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
-
-    with patch("uvo_api.routers.dashboard.get_db", return_value=mock_db):
+    analytics = MagicMock()
+    analytics.top_suppliers = AsyncMock(return_value=rows)
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=analytics):
         response = client.get("/api/dashboard/top-suppliers")
 
     assert response.status_code == 200
@@ -131,15 +132,10 @@ def test_dashboard_top_suppliers(client):
 
 
 def test_dashboard_top_procurers(client):
-    mock_rows = [{"_id": "12345678", "name": "Ministry", "total_value": 8000000.0, "contract_count": 15}]
-    mock_cursor = MagicMock()
-    mock_cursor.to_list = AsyncMock(return_value=mock_rows)
-    mock_collection = MagicMock()
-    mock_collection.aggregate.return_value = mock_cursor
-    mock_db = MagicMock()
-    mock_db.__getitem__ = MagicMock(return_value=mock_collection)
-
-    with patch("uvo_api.routers.dashboard.get_db", return_value=mock_db):
+    rows = [{"_id": "12345678", "name": "Ministry", "total_value": 8000000.0, "contract_count": 15}]
+    analytics = MagicMock()
+    analytics.top_procurers = AsyncMock(return_value=rows)
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=analytics):
         response = client.get("/api/dashboard/top-procurers")
     assert response.status_code == 200
     body = response.json()
@@ -147,8 +143,8 @@ def test_dashboard_top_procurers(client):
     assert body[0]["total_spend"] == 8000000.0
 
 
-def test_dashboard_by_cpv(client):
-    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+def test_dashboard_by_cpv(client, fake_analytics):
+    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
         response = client.get("/api/dashboard/by-cpv")
     assert response.status_code == 200
     body = response.json()

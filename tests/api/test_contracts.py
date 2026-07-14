@@ -1,5 +1,5 @@
 # tests/api/test_contracts.py
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -31,10 +31,16 @@ def client(monkeypatch):
     return TestClient(app)
 
 
+def _repo(*, search=None, detail=None):
+    repo = MagicMock()
+    repo.search = AsyncMock(return_value=search)
+    repo.get_by_source_id = AsyncMock(return_value=detail)
+    return repo
+
+
 def test_list_contracts_returns_paginated_response(client):
-    with patch(
-        "uvo_api.routers.contracts.run_query", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)
-    ):
+    repo = _repo(search=SAMPLE_MCP_RESPONSE)
+    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
         response = client.get("/api/contracts")
     assert response.status_code == 200
     body = response.json()
@@ -46,9 +52,8 @@ def test_list_contracts_returns_paginated_response(client):
 
 
 def test_list_contracts_maps_fields_correctly(client):
-    with patch(
-        "uvo_api.routers.contracts.run_query", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)
-    ):
+    repo = _repo(search=SAMPLE_MCP_RESPONSE)
+    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
         response = client.get("/api/contracts")
     row = response.json()["data"][0]
     assert row["title"] == "IT Infrastructure"
@@ -60,10 +65,20 @@ def test_list_contracts_maps_fields_correctly(client):
     assert row["year"] == 2024
 
 
+def test_list_contracts_pushes_value_filter_into_query(client):
+    repo = _repo(search=EMPTY_MCP_RESPONSE)
+    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+        response = client.get("/api/contracts?value_min=1000&value_max=5000")
+    assert response.status_code == 200
+    # The filter is pushed into the repository query, not applied post-pagination.
+    _, kwargs = repo.search.call_args
+    assert kwargs["value_min"] == 1000
+    assert kwargs["value_max"] == 5000
+
+
 def test_list_contracts_empty_result(client):
-    with patch(
-        "uvo_api.routers.contracts.run_query", new=AsyncMock(return_value=EMPTY_MCP_RESPONSE)
-    ):
+    repo = _repo(search=EMPTY_MCP_RESPONSE)
+    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
         response = client.get("/api/contracts")
     assert response.status_code == 200
     assert response.json()["data"] == []
@@ -80,7 +95,8 @@ def test_get_contract_detail_returns_detail(client):
         "publication_date": "2024-01-15",
         "cpv_code": "72000000",
     }
-    with patch("uvo_api.routers.contracts.run_query", new=AsyncMock(return_value=detail)):
+    repo = _repo(detail=detail)
+    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
         response = client.get("/api/contracts/1001")
     assert response.status_code == 200
     assert response.json()["id"] == "1001"
@@ -88,9 +104,7 @@ def test_get_contract_detail_returns_detail(client):
 
 
 def test_get_contract_detail_not_found(client):
-    with patch(
-        "uvo_api.routers.contracts.run_query",
-        new=AsyncMock(return_value={"error": "not found", "status_code": 404}),
-    ):
+    repo = _repo(detail={"error": "not found", "status_code": 404})
+    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
         response = client.get("/api/contracts/9999")
     assert response.status_code == 404
