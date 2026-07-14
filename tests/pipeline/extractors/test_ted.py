@@ -38,13 +38,43 @@ async def test_search_sk_notices_yields_items():
 
 
 @pytest.mark.asyncio
-async def test_search_handles_error():
+async def test_search_raises_on_error():
+    """A mid-search HTTP error must raise, not silently truncate iteration.
+
+    A swallowed error here would let the worker treat a truncated fetch as
+    complete and advance the checkpoint past data never fetched.
+    """
     with respx.mock(base_url="https://api.ted.europa.eu") as mock:
         mock.post("/v3/notices/search").mock(return_value=httpx.Response(503))
         async with httpx.AsyncClient(base_url="https://api.ted.europa.eu") as client:
-            results = [r async for r in search_sk_notices(client)]
+            with pytest.raises(httpx.HTTPStatusError):
+                async for _ in search_sk_notices(client):
+                    pass
 
-    assert results == []
+
+@pytest.mark.asyncio
+async def test_search_partial_page_then_error_raises():
+    """First page succeeds and is yielded; second-page failure still raises."""
+    page1 = {
+        "notices": [{"publication-number": "24", "publication-date": "20240101", "notice-title": "Notice 1"}],
+        "page": 1,
+        "totalNoticeCount": 2,
+    }
+    with respx.mock(base_url="https://api.ted.europa.eu") as mock:
+        mock.post("/v3/notices/search").mock(
+            side_effect=[
+                httpx.Response(200, json=page1),
+                httpx.Response(503),
+            ]
+        )
+        async with httpx.AsyncClient(base_url="https://api.ted.europa.eu") as client:
+            seen = []
+            with pytest.raises(httpx.HTTPStatusError):
+                async for notice in search_sk_notices(client, page_size=1):
+                    seen.append(notice)
+
+    assert len(seen) == 1
+    assert seen[0]["notice-title"] == "Notice 1"
 
 
 @pytest.mark.asyncio

@@ -28,8 +28,16 @@ async def xadd_notice(
 
 
 async def ensure_consumer_group(redis: aioredis.Redis, stream: str, group: str) -> None:
+    """Create the consumer group starting at id="0" (not "$").
+
+    "$" (tail-only) makes the group blind to any entries already XADDed
+    before the group exists — if an extractor starts before the ingestor,
+    those entries are permanently unreadable by the group. "0" replays the
+    whole stream from the beginning, which is safe because ingestion is
+    idempotent (upserts keyed on content_hash).
+    """
     try:
-        await redis.xgroup_create(stream, group, id="$", mkstream=True)
+        await redis.xgroup_create(stream, group, id="0", mkstream=True)
     except ResponseError as exc:
         if "BUSYGROUP" not in str(exc):
             raise

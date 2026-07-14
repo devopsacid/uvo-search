@@ -50,7 +50,10 @@ async def fetch_contracts_since(
     Paginates the sync endpoint using Link header cursor. On HTTP 429 the
     request is retried after the server-supplied ``Retry-After`` interval
     (or 60s default), up to ``_MAX_429_RETRIES`` times before giving up.
-    Other errors stop iteration.
+
+    A network or HTTP error mid-pagination is raised rather than swallowed —
+    the caller must not mistake a truncated fetch for a complete one (it
+    would otherwise advance the sync checkpoint past data never fetched).
     """
     params: dict = {}
     if since is not None:
@@ -72,8 +75,8 @@ async def fetch_contracts_since(
                     # Subsequent pages: url is already the full next URL
                     resp = await client.get(url)
             except httpx.RequestError as exc:
-                logger.error("CRZ sync request failed: %s", exc)
-                return
+                logger.error("CRZ sync request failed (page=%d): %s", page, exc)
+                raise
 
             if resp.status_code == 429:
                 wait = _parse_retry_after(resp.headers.get("Retry-After"))
@@ -81,7 +84,9 @@ async def fetch_contracts_since(
                     logger.error(
                         "CRZ sync: HTTP 429 after %d retries — giving up", attempt
                     )
-                    return
+                    raise RuntimeError(
+                        f"CRZ sync: HTTP 429 after {attempt} retries (page={page})"
+                    )
                 logger.warning(
                     "CRZ sync: HTTP 429 (page %d, attempt %d/%d) — sleeping %ds",
                     page, attempt + 1, _MAX_429_RETRIES, wait,
@@ -97,13 +102,13 @@ async def fetch_contracts_since(
                     exc.response.status_code,
                     exc.response.text[:200],
                 )
-                return
+                raise
 
             response = resp
             break
 
         if response is None:
-            return
+            raise RuntimeError(f"CRZ sync: no response obtained (page={page})")
 
         contracts = response.json()
         if not isinstance(contracts, list):

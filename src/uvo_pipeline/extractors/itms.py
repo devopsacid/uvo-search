@@ -101,10 +101,10 @@ async def fetch_procurements(
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.error("ITMS list HTTP %s: %s", exc.response.status_code, exc.response.text[:200])
-            return
+            raise
         except httpx.RequestError as exc:
             logger.error("ITMS list request failed: %s", exc)
-            return
+            raise
 
         items = response.json()
         if not items:

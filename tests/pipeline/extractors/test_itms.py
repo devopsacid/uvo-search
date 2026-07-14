@@ -166,13 +166,49 @@ async def test_fetch_contracts_404_gives_empty_list():
 
 
 @pytest.mark.asyncio
-async def test_fetch_list_http_error_yields_nothing():
+async def test_fetch_list_http_error_raises():
+    """A list-page HTTP error must raise, not silently truncate iteration.
+
+    A swallowed error here would let the worker treat a truncated fetch as
+    complete and advance the min_id checkpoint past data never fetched.
+    """
     rate_limiter = RateLimiter(rate=10000)
     with respx.mock(base_url=BASE, assert_all_called=False) as mock:
         mock.get("/v2/verejneObstaravania").mock(return_value=httpx.Response(500))
         async with httpx.AsyncClient(base_url=BASE) as client:
-            results = [r async for r in fetch_procurements(client, rate_limiter)]
-    assert results == []
+            with pytest.raises(httpx.HTTPStatusError):
+                async for _ in fetch_procurements(client, rate_limiter):
+                    pass
+
+
+@pytest.mark.asyncio
+async def test_fetch_partial_page_then_list_error_raises():
+    """First page succeeds and is yielded; second-page list failure still raises."""
+    rate_limiter = RateLimiter(rate=10000)
+    with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+        mock.get("/v2/verejneObstaravania").mock(
+            side_effect=[
+                httpx.Response(200, json=[STUB_1]),
+                httpx.Response(500),
+            ]
+        )
+        mock.get(f"/v2/verejneObstaravania/{STUB_1['id']}").mock(
+            return_value=httpx.Response(200, json=DETAIL_1)
+        )
+        mock.get(f"/v2/verejneObstaravania/{STUB_1['id']}/zmluvyVerejneObstaravanie").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        mock.get(f"/v2/subjekty/{SUBJECT_100184['id']}").mock(
+            return_value=httpx.Response(200, json=SUBJECT_100184)
+        )
+        async with httpx.AsyncClient(base_url=BASE) as client:
+            seen = []
+            with pytest.raises(httpx.HTTPStatusError):
+                async for item in fetch_procurements(client, rate_limiter):
+                    seen.append(item)
+
+    assert len(seen) == 1
+    assert seen[0]["id"] == STUB_1["id"]
 
 
 @pytest.mark.asyncio

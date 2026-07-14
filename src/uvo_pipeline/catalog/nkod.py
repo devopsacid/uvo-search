@@ -79,10 +79,10 @@ async def discover_vestnik_datasets(
                 exc.response.status_code,
                 exc.response.text[:200],
             )
-            return
+            raise
         except httpx.RequestError as exc:
             logger.warning("NKOD SPARQL request failed: %s", exc)
-            return
+            raise
 
         bindings = response.json().get("results", {}).get("bindings", [])
         if not bindings:

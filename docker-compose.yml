@@ -139,6 +139,8 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      ingestor:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/health')"]
       interval: 30s
@@ -158,6 +160,7 @@ services:
     depends_on:
       redis: { condition: service_healthy }
       mongo: { condition: service_healthy }
+      ingestor: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8092/health')"]
       interval: 30s
@@ -177,6 +180,7 @@ services:
     depends_on:
       redis: { condition: service_healthy }
       mongo: { condition: service_healthy }
+      ingestor: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8093/health')"]
       interval: 30s
@@ -198,6 +202,7 @@ services:
     depends_on:
       redis: { condition: service_healthy }
       mongo: { condition: service_healthy }
+      ingestor: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8094/health')"]
       interval: 30s

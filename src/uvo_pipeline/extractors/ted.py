@@ -79,7 +79,10 @@ async def search_sk_notices(
 
     When awards_only=True, the query is narrowed to Contract-Award-Notice
     types (can-*) — these are the ones that carry winner/supplier data.
-    Paginates through all result pages. On HTTP error, logs and stops.
+    Paginates through all result pages. A network or HTTP error mid-pagination
+    is raised rather than swallowed — the caller must not mistake a truncated
+    fetch for a complete one (it would otherwise advance the sync checkpoint
+    past data never fetched).
     """
     query = _build_query(date_from, date_to, awards_only=awards_only)
     page = 1
@@ -102,10 +105,10 @@ async def search_sk_notices(
                 page,
                 exc.response.text[:200],
             )
-            return
+            raise
         except httpx.RequestError as exc:
             logger.error("TED search request failed (page=%d): %s", page, exc)
-            return
+            raise
 
         data = response.json()
         notices: list[dict] = data.get("notices", [])

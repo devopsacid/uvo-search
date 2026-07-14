@@ -120,15 +120,17 @@ async def test_fetch_skips_bad_item_data(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_fetch_returns_on_http_error():
-    """HTTP error on download returns empty iteration."""
+async def test_fetch_raises_on_http_error():
+    """HTTP error on download raises rather than silently truncating iteration.
+
+    A swallowed error here would let the worker's vestnik_last_modified
+    checkpoint advance past a dataset whose bulletin was never fetched.
+    """
     rate_limiter = RateLimiter(rate=10000)
 
     with respx.mock(assert_all_called=False) as mock:
         mock.get(DATASET.download_url).mock(return_value=httpx.Response(500))
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            items = [item async for item in fetch_bulletin(
-                client, rate_limiter, DATASET
-            )]
-
-    assert items == []
+            with pytest.raises(httpx.HTTPStatusError):
+                async for _ in fetch_bulletin(client, rate_limiter, DATASET):
+                    pass

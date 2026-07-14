@@ -137,15 +137,55 @@ async def test_discover_uses_since_filter():
 
 
 @pytest.mark.asyncio
-async def test_discover_stops_on_http_error():
-    """HTTP 500 on first page yields nothing and stops iteration."""
+async def test_discover_raises_on_http_error():
+    """HTTP 500 on first page raises rather than silently truncating iteration.
+
+    A swallowed error here would let the caller (vestnik.py) advance its
+    last_modified checkpoint past datasets that were never discovered.
+    """
     with respx.mock(assert_all_called=False) as mock:
         mock.post(SPARQL_URL).mock(return_value=httpx.Response(500, text="Server error"))
         async with httpx.AsyncClient() as client:
-            datasets = [d async for d in discover_vestnik_datasets(
-                client,
-                publisher_uri=PUBLISHER_URI,
-                sparql_url=SPARQL_URL,
-            )]
+            with pytest.raises(httpx.HTTPStatusError):
+                async for _ in discover_vestnik_datasets(
+                    client,
+                    publisher_uri=PUBLISHER_URI,
+                    sparql_url=SPARQL_URL,
+                ):
+                    pass
 
-    assert datasets == []
+
+@pytest.mark.asyncio
+async def test_discover_partial_page_then_error_raises():
+    """A successful first page followed by a mid-pagination failure still raises.
+
+    Items from the first page are already yielded to the caller (and can be
+    XADDed) before the error propagates — that's fine, ingest is idempotent.
+    """
+    row = _binding(
+        "https://data.gov.sk/set/vestnik/V-75-2026",
+        "Vestník 75/2026",
+        "2026-04-16T00:00:00",
+        "2026-04-16T10:00:00",
+        "https://data.slovensko.sk/download?id=xyz-789",
+    )
+    first_page = _sparql_response(row)
+
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.post(SPARQL_URL)
+        route.side_effect = [
+            httpx.Response(200, json=first_page),
+            httpx.Response(500, text="Server error"),
+        ]
+        async with httpx.AsyncClient() as client:
+            seen = []
+            with pytest.raises(httpx.HTTPStatusError):
+                async for ds in discover_vestnik_datasets(
+                    client,
+                    publisher_uri=PUBLISHER_URI,
+                    sparql_url=SPARQL_URL,
+                ):
+                    seen.append(ds)
+
+    assert len(seen) == 1
+    assert seen[0].uri == "https://data.gov.sk/set/vestnik/V-75-2026"
