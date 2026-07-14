@@ -51,16 +51,51 @@ async def test_fetch_contracts_yields_items():
 
 
 @pytest.mark.asyncio
-async def test_fetch_handles_sync_error():
+async def test_fetch_raises_on_sync_error():
+    """A mid-sync HTTP error must raise, not silently truncate iteration.
+
+    A swallowed error here would let the worker treat a truncated fetch as
+    complete and advance the checkpoint past data never fetched.
+    """
     rate_limiter = RateLimiter(rate=30)
     with respx.mock(base_url="https://datahub.ekosystem.slovensko.digital") as mock:
         mock.get("/api/data/crz/contracts/sync").mock(return_value=httpx.Response(500))
         async with httpx.AsyncClient(
             base_url="https://datahub.ekosystem.slovensko.digital"
         ) as client:
-            results = [r async for r in fetch_contracts_since(client, rate_limiter)]
+            with pytest.raises(httpx.HTTPStatusError):
+                async for _ in fetch_contracts_since(client, rate_limiter):
+                    pass
 
-    assert results == []
+
+@pytest.mark.asyncio
+async def test_fetch_partial_page_then_error_raises():
+    """First page succeeds and is yielded; second-page failure still raises.
+
+    Items from the first page are already yielded to the caller (and can be
+    XADDed) before the error propagates — that's fine, ingest is idempotent.
+    """
+    rate_limiter = RateLimiter(rate=30)
+    next_url = "https://datahub.ekosystem.slovensko.digital/api/data/crz/contracts/sync/page2"
+    with respx.mock(base_url="https://datahub.ekosystem.slovensko.digital") as mock:
+        mock.get("/api/data/crz/contracts/sync").mock(
+            return_value=httpx.Response(
+                200,
+                json=SYNC_CONTRACTS,
+                headers={"Link": f'<{next_url}>; rel="next"'},
+            )
+        )
+        mock.get("/api/data/crz/contracts/sync/page2").mock(return_value=httpx.Response(500))
+        async with httpx.AsyncClient(
+            base_url="https://datahub.ekosystem.slovensko.digital"
+        ) as client:
+            seen = []
+            with pytest.raises(httpx.HTTPStatusError):
+                async for contract in fetch_contracts_since(client, rate_limiter):
+                    seen.append(contract)
+
+    assert len(seen) == 2
+    assert seen[0]["id"] == 5587100
 
 
 @pytest.mark.asyncio
@@ -179,7 +214,7 @@ async def test_fetch_429_without_retry_after_uses_default(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_gives_up_after_repeated_429(monkeypatch):
-    """After exhausting retries the extractor stops gracefully."""
+    """After exhausting retries the extractor raises rather than truncating silently."""
     rate_limiter = RateLimiter(rate=30)
 
     async def fake_sleep(_seconds):
@@ -195,9 +230,9 @@ async def test_fetch_gives_up_after_repeated_429(monkeypatch):
         async with httpx.AsyncClient(
             base_url="https://datahub.ekosystem.slovensko.digital"
         ) as client:
-            results = [r async for r in fetch_contracts_since(client, rate_limiter)]
-
-    assert results == []
+            with pytest.raises(RuntimeError):
+                async for _ in fetch_contracts_since(client, rate_limiter):
+                    pass
 
 
 # ---------------------------------------------------------------------------

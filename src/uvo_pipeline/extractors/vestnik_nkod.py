@@ -49,10 +49,10 @@ async def fetch_bulletin(
                 dataset.download_url,
                 exc.response.text[:200],
             )
-            return
+            raise
         except httpx.RequestError as exc:
             logger.warning("vestnik fetch failed %s: %s", dataset.download_url, exc)
-            return
+            raise
 
         try:
             envelope = response.json()
