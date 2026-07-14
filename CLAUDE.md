@@ -70,6 +70,12 @@ Docker Desktop context (`desktop-linux`) will fail with "pipe not found" — tha
 - New features: use `superpowers:using-git-worktrees` to create an isolated worktree before writing code. Skip for single-file fixes, docs-only edits, or changes to the in-progress branch.
 - Non-trivial multi-phase work (design + build + test): run the `feature-pipeline` workflow (`/home/max/.claude/workflows/feature-pipeline.js` via the Workflow tool) over ad-hoc subagent spawns.
 
+## Project agents (`.claude/agents/`)
+
+- `data-pipeline` (sonnet) — ingestion, Redis Streams workers, cross-source dedup, integrity invariants, backfills. Prefer over generic devops/developer for pipeline and data-quality work.
+- `search-tuner` (opus) — Atlas Search analyzers (`sk_folding`), autocomplete, FastEmbed hybrid vector search, relevance tuning. Prefer for any search-behavior change or relevance bug.
+- `procurement-domain` (opus, advisory/read-only) — Slovak procurement semantics: CPV, zákon 343/2015, vestník/CRZ/TED/ITMS meaning, IČO conventions. Use to validate features and labels against real-world semantics.
+
 ## React GUI notes
 
 - **URL-as-state:** Pagination, filters, sort, search live in URL query params (react-router) — enables bookmarking.

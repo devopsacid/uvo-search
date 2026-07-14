@@ -18,7 +18,8 @@ htmlcov/
 .ruff_cache/
 .worktrees/
 worktree/
-.claude/
+.claude/*
+!.claude/agents/
 logs/
 mongo-backup-20260420-145644/mongo-dump.archive
 mongo-backup-20260420-145644/mongo-raw-volume.tgz
