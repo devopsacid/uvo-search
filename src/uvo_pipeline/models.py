@@ -6,7 +6,9 @@ raw data to these models before writing to MongoDB or Neo4j.
 
 from datetime import date, datetime
 from typing import Literal
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, Field, model_validator
+from slugify import slugify
 
 
 class CanonicalAddress(BaseModel):
@@ -97,6 +99,17 @@ class CanonicalNotice(BaseModel):
     ingested_at: datetime = Field(default_factory=datetime.utcnow)
     pipeline_run_id: str | None = None
     content_hash: str | None = None
+
+    @model_validator(mode="after")
+    def _derive_title_slug(self) -> "CanonicalNotice":
+        """Fall back title_slug to slugify(title) — dedup pass 2 depends on it.
+
+        No transformer sets title_slug directly, so derive it centrally here
+        rather than duplicating the call in every source transformer.
+        """
+        if not self.title_slug and self.title:
+            self.title_slug = slugify(self.title)
+        return self
 
 
 class PipelineReport(BaseModel):
