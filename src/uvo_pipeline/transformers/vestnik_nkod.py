@@ -6,7 +6,13 @@ from datetime import date
 
 from slugify import slugify
 
-from uvo_pipeline.models import CanonicalAddress, CanonicalAward, CanonicalNotice, CanonicalProcurer, CanonicalSupplier
+from uvo_pipeline.models import (
+    CanonicalAddress,
+    CanonicalAward,
+    CanonicalNotice,
+    CanonicalProcurer,
+    CanonicalSupplier,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +196,21 @@ def _build_tender_map(components: list[dict]) -> dict[str, dict]:
     return ten_map
 
 
+def _find_org_by_name(org_map: dict[str, dict], name: str) -> dict | None:
+    """Find an org in the GR-Organisations map by normalized name match.
+
+    The buyer's org isn't linked to a role-specific id in the panels we walk
+    (unlike suppliers, reachable via GR-TenderingParty → GR-LotTender), so we
+    match on name: DL-Metadata-Partner's text label and BT-500-Organization-Company
+    both derive from the same underlying organisation record.
+    """
+    target = name.strip().casefold()
+    for org in org_map.values():
+        if org["name"].strip().casefold() == target:
+            return org
+    return None
+
+
 def _build_awards(components: list[dict]) -> list[CanonicalAward]:
     """Walk eForms tree to extract awards from LotResults with BT-142=selec-w."""
     org_map = _build_org_map(components)
@@ -262,15 +283,21 @@ def transform_notice(raw: dict) -> CanonicalNotice:
     order_name = _parse_order(_lookup(flat, "DL-Metadata-Order"))
     title = order_name or raw.get("name") or "Untitled notice"
 
+    all_components = raw.get("components", [])
+    org_map = _build_org_map(all_components)
+
     partner_name, _partner_id = _parse_partner(_lookup(flat, "DL-Metadata-Partner"))
     procurer = None
     if partner_name:
         # Vestník is UVO's official gazette; mark procurer provenance as both
         # so cross-source dedup links vestnik notices to any legacy UVO data.
+        # Prefer the structured GR-Organisations panel (has ICO); fall back to
+        # the plain-text DL-Metadata-Partner label when no matching org is found.
+        matched_org = _find_org_by_name(org_map, partner_name)
         procurer = CanonicalProcurer(
-            name=partner_name,
-            name_slug=slugify(partner_name),
-            ico=None,
+            name=matched_org["name"] if matched_org else partner_name,
+            name_slug=slugify(matched_org["name"] if matched_org else partner_name),
+            ico=matched_org.get("ico") if matched_org else None,
             organisation_type=None,
             sources=["vestnik", "uvo"],
         )
@@ -282,11 +309,10 @@ def transform_notice(raw: dict) -> CanonicalNotice:
     vestnik_number = f"{number}/{year}" if year is not None and number is not None else None
 
     cpv_code = _lookup(flat, "BT-262-Lot")
-    final_value = _parse_float(_lookup(flat, "BT-720-Tender"))
+    final_value = _parse_float(_lookup(flat, "BT-720-Tender_value"))
     estimated_value = _parse_float(_lookup(flat, "BT-27-Lot", "BT-27-Procedure"))
     currency = _lookup(flat, "BT-720-Tender-Currency", "BT-27-Lot-Currency") or "EUR"
 
-    all_components = raw.get("components", [])
     awards = _build_awards(all_components)
 
     return CanonicalNotice(

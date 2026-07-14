@@ -21,15 +21,42 @@ from uvo_pipeline.models import (
 logger = logging.getLogger(__name__)
 
 
+_MIN_PLAUSIBLE_YEAR = 2000
+
+
+def _is_plausible_year(d: date) -> bool:
+    return _MIN_PLAUSIBLE_YEAR <= d.year <= date.today().year + 1
+
+
 def _parse_date(value: str | None) -> date | None:
-    """Parse a YYYY-MM-DD (optionally with time) string to a date."""
+    """Parse a YYYY-MM-DD (optionally with time) string to a date.
+
+    Upstream CRZ occasionally sends corrupted years (e.g. "3202-03-02" or
+    "1024-10-24" instead of "2023-03-02"/"2024-10-24"). An implausible year
+    (<2000 or >current+1) is rejected the same as an unparseable value, so
+    callers can fall back to another date field.
+    """
     if not value:
         return None
     try:
-        return date.fromisoformat(value[:10])
+        parsed = date.fromisoformat(value[:10])
     except (ValueError, TypeError):
         logger.warning("CRZ: could not parse date: %r", value)
         return None
+    if not _is_plausible_year(parsed):
+        logger.warning("CRZ: rejected implausible date %r (year=%d)", value, parsed.year)
+        return None
+    return parsed
+
+
+def _resolve_signing_date(raw: dict) -> date | None:
+    """Signing date, falling back to published_at then effective_from when
+    signed_on is missing or corrupted (implausible year)."""
+    return (
+        _parse_date(raw.get("signed_on"))
+        or _parse_date(raw.get("published_at"))
+        or _parse_date(raw.get("effective_from"))
+    )
 
 
 def _parse_float(value) -> float | None:
@@ -98,7 +125,7 @@ def _build_awards(raw: dict) -> list[CanonicalAward]:
             supplier=supplier,
             value=_parse_float(raw.get("contract_price_total_amount")),
             currency="EUR",
-            signing_date=_parse_date(raw.get("signed_on")),
+            signing_date=_resolve_signing_date(raw),
         )
     ]
 
@@ -119,7 +146,7 @@ def transform_contract(raw: dict) -> CanonicalNotice:
         final_value=_parse_float(raw.get("contract_price_total_amount")),
         estimated_value=_parse_float(raw.get("contract_price_amount")),
         currency="EUR",
-        publication_date=_parse_date(raw.get("signed_on")),
+        publication_date=_resolve_signing_date(raw),
         crz_contract_id=contract_id,
         attachments=_build_attachments(raw),
     )

@@ -11,8 +11,8 @@ Pagination is cursor-based via the Link header (rel='next') or last_id param.
 import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator
 from datetime import date
-from typing import AsyncIterator
 
 import httpx
 
@@ -122,3 +122,64 @@ async def fetch_contracts_since(
 
         if not contracts:
             break
+
+
+async def fetch_contract_by_id(
+    client: httpx.AsyncClient,
+    rate_limiter: RateLimiter,
+    contract_id: str | int,
+    *,
+    api_token: str = "",
+) -> dict | None:
+    """Fetch a single CRZ contract by id (GET /api/data/crz/contracts/:id).
+
+    Used by the date-repair backfill to re-fetch contracts whose signed_on
+    year was corrupted upstream, so the corrected sync-shaped fields
+    (signed_on/published_at/effective_from) can be re-derived via the
+    transformer. Retries on HTTP 429 like fetch_contracts_since.
+    """
+    params: dict = {}
+    if api_token:
+        params["access_token"] = api_token
+
+    url = f"{_SYNC_PATH.rsplit('/sync', 1)[0]}/{contract_id}"
+
+    for attempt in range(_MAX_429_RETRIES + 1):
+        await rate_limiter.acquire()
+        try:
+            resp = await client.get(url, params=params)
+        except httpx.RequestError as exc:
+            logger.error("CRZ detail %s fetch failed: %s", contract_id, exc)
+            return None
+
+        if resp.status_code == 429:
+            wait = _parse_retry_after(resp.headers.get("Retry-After"))
+            if attempt >= _MAX_429_RETRIES:
+                logger.error(
+                    "CRZ detail %s: HTTP 429 after %d retries — giving up",
+                    contract_id, attempt,
+                )
+                return None
+            logger.warning(
+                "CRZ detail %s: HTTP 429 (attempt %d/%d) — sleeping %ds",
+                contract_id, attempt + 1, _MAX_429_RETRIES, wait,
+            )
+            await asyncio.sleep(wait)
+            continue
+
+        if resp.status_code == 404:
+            return None
+
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "CRZ detail %s returned HTTP %s: %s",
+                contract_id, exc.response.status_code, exc.response.text[:200],
+            )
+            return None
+
+        data = resp.json()
+        return data if isinstance(data, dict) else None
+
+    return None

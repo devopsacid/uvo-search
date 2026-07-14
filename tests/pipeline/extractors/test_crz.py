@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from uvo_pipeline.extractors.crz import fetch_contracts_since
+from uvo_pipeline.extractors.crz import fetch_contract_by_id, fetch_contracts_since
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 
 CONTRACT_1 = {
@@ -198,3 +198,69 @@ async def test_fetch_gives_up_after_repeated_429(monkeypatch):
             results = [r async for r in fetch_contracts_since(client, rate_limiter)]
 
     assert results == []
+
+
+# ---------------------------------------------------------------------------
+# fetch_contract_by_id — used by the date-repair backfill script
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_fetch_contract_by_id_returns_dict():
+    rate_limiter = RateLimiter(rate=30)
+    with respx.mock(base_url="https://datahub.ekosystem.slovensko.digital") as mock:
+        mock.get("/api/data/crz/contracts/5587100").mock(
+            return_value=httpx.Response(200, json=CONTRACT_1)
+        )
+        async with httpx.AsyncClient(
+            base_url="https://datahub.ekosystem.slovensko.digital"
+        ) as client:
+            result = await fetch_contract_by_id(client, rate_limiter, 5587100)
+
+    assert result == CONTRACT_1
+
+
+@pytest.mark.asyncio
+async def test_fetch_contract_by_id_404_returns_none():
+    rate_limiter = RateLimiter(rate=30)
+    with respx.mock(base_url="https://datahub.ekosystem.slovensko.digital") as mock:
+        mock.get("/api/data/crz/contracts/99999999").mock(
+            return_value=httpx.Response(404)
+        )
+        async with httpx.AsyncClient(
+            base_url="https://datahub.ekosystem.slovensko.digital"
+        ) as client:
+            result = await fetch_contract_by_id(client, rate_limiter, 99999999)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_contract_by_id_server_error_returns_none():
+    rate_limiter = RateLimiter(rate=30)
+    with respx.mock(base_url="https://datahub.ekosystem.slovensko.digital") as mock:
+        mock.get("/api/data/crz/contracts/5587100").mock(
+            return_value=httpx.Response(500)
+        )
+        async with httpx.AsyncClient(
+            base_url="https://datahub.ekosystem.slovensko.digital"
+        ) as client:
+            result = await fetch_contract_by_id(client, rate_limiter, 5587100)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_contract_by_id_sends_api_token():
+    rate_limiter = RateLimiter(rate=30)
+    with respx.mock(base_url="https://datahub.ekosystem.slovensko.digital") as mock:
+        route = mock.get("/api/data/crz/contracts/5587100").mock(
+            return_value=httpx.Response(200, json=CONTRACT_1)
+        )
+        async with httpx.AsyncClient(
+            base_url="https://datahub.ekosystem.slovensko.digital"
+        ) as client:
+            await fetch_contract_by_id(
+                client, rate_limiter, 5587100, api_token="secret-token"
+            )
+
+    assert "access_token" in str(route.calls.last.request.url)

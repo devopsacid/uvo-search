@@ -28,6 +28,12 @@ def _build_parser() -> argparse.ArgumentParser:
     # `health` subcommand
     health_p = sub.add_parser("health", help="Show per-source ingestion health report")
     health_p.add_argument("--json", action="store_true", help="Emit JSON instead of text")
+    health_p.add_argument(
+        "--stale-threshold-days",
+        type=int,
+        default=14,
+        help="Days since last ingest before a source is flagged stale (default: 14)",
+    )
 
     # Backwards-compat: allow bare `--mode=...` without subcommand
     parser.add_argument("--mode", choices=["recent", "historical"], help=argparse.SUPPRESS)
@@ -55,10 +61,12 @@ def _cmd_run(mode: str, dry_run: bool) -> None:
         sys.exit(1)
 
 
-def _cmd_health(as_json: bool) -> None:
+def _cmd_health(as_json: bool, stale_threshold_days: int) -> None:
     settings = PipelineSettings()
     try:
-        output = asyncio.run(run_health(settings, as_json=as_json))
+        output = asyncio.run(
+            run_health(settings, as_json=as_json, stale_threshold_days=stale_threshold_days)
+        )
         print(output)
     except Exception:
         logger.exception("Health check failed")
@@ -70,7 +78,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "health":
-        _cmd_health(args.json)
+        _cmd_health(args.json, args.stale_threshold_days)
         return
 
     # `run` subcommand, or legacy bare invocation

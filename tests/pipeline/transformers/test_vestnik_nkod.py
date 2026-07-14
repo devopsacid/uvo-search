@@ -1,7 +1,8 @@
 """Tests for Vestník NKOD transformer."""
 
-import pytest
 from datetime import date
+
+import pytest
 
 from uvo_pipeline.transformers.vestnik_nkod import transform_notice
 
@@ -26,7 +27,7 @@ def _raw(**overrides):
     ])
     tabs = _component("tabs", sub=[
         _component("BT-262-Lot", "72000000"),
-        _component("BT-720-Tender", "123456.78"),
+        _component("BT-720-Tender_value", "123456.78"),
         _component("BT-720-Tender-Currency", "EUR"),
     ])
     base = {
@@ -387,3 +388,64 @@ def test_award_lot_result_without_selec_w_yields_no_award():
     )
     r = transform_notice(raw)
     assert r.awards == []
+
+
+# ---------------------------------------------------------------------------
+# Top-level value tests (Fix 3 — top-level value must use the *_value key,
+# matching the per-award lookup semantics)
+# ---------------------------------------------------------------------------
+
+def test_transform_final_value_ignores_unsuffixed_key():
+    """A stray unsuffixed BT-720-Tender key (no _value suffix) must not be picked up."""
+    tabs = _component("tabs", sub=[
+        _component("BT-720-Tender", "999999.99"),  # wrong/legacy key — must be ignored
+    ])
+    raw = _raw(components=[_component("metadataWrapper", sub=[]), tabs])
+    r = transform_notice(raw)
+    assert r.final_value is None
+
+
+# ---------------------------------------------------------------------------
+# Procurer ICO from structured GR-Organisations panel (Fix 2)
+# ---------------------------------------------------------------------------
+
+def test_transform_procurer_ico_from_structured_panel():
+    """When the buyer's org appears in GR-Organisations, its ICO must be used."""
+    metadata = _component("metadataWrapper", sub=[
+        _component("BT-03-notice", "result"),
+        _component("DL-Metadata-Partner", "Hlavné mesto SR Bratislava (ID: 39686)"),
+        _component("DL-Metadata-Order", "IT HW a podpora (ID: 422123)"),
+    ])
+    org_panel = _org_panel("ORG-0001", "Hlavné mesto SR Bratislava", ico="00603481")
+    raw = _raw(components=[
+        metadata,
+        _component("GR-Organisations", sub=[org_panel]),
+    ])
+    r = transform_notice(raw)
+    assert r.procurer is not None
+    assert r.procurer.ico == "00603481"
+    assert r.procurer.name == "Hlavné mesto SR Bratislava"
+
+
+def test_transform_procurer_falls_back_to_text_when_no_org_match():
+    """When no org in GR-Organisations matches the buyer's name, keep text-parse fallback."""
+    org_panel = _org_panel("ORG-0001", "Some Other Org", ico="12341234")
+    raw = _raw(components=[
+        _component("metadataWrapper", sub=[
+            _component("DL-Metadata-Partner", "Hlavné mesto SR Bratislava (ID: 39686)"),
+        ]),
+        _component("GR-Organisations", sub=[org_panel]),
+    ])
+    r = transform_notice(raw)
+    assert r.procurer is not None
+    assert r.procurer.name == "Hlavné mesto SR Bratislava"
+    assert r.procurer.ico is None
+
+
+# ---------------------------------------------------------------------------
+# title_slug (Fix 1) — derived centrally on CanonicalNotice, not per-transformer
+# ---------------------------------------------------------------------------
+
+def test_transform_title_slug_derived():
+    r = transform_notice(_raw())
+    assert r.title_slug == "it-hw-a-podpora"
