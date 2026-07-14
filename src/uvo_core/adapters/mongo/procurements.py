@@ -11,7 +11,7 @@ _CACHE_TTL_SEARCH = 300
 @async_ttl_cache(
     maxsize=256,
     ttl=_CACHE_TTL_SEARCH,
-    key_from=lambda db, *, text_query, cpv_codes, procurer_id, supplier_ico, date_from, date_to, limit, offset: _make_key(
+    key_from=lambda db, *, text_query, cpv_codes, procurer_id, supplier_ico, date_from, date_to, value_min=None, value_max=None, limit, offset: _make_key(
         (),
         {
             "text_query": text_query,
@@ -20,6 +20,8 @@ _CACHE_TTL_SEARCH = 300
             "supplier_ico": supplier_ico,
             "date_from": date_from,
             "date_to": date_to,
+            "value_min": value_min,
+            "value_max": value_max,
             "limit": limit,
             "offset": offset,
         },
@@ -34,6 +36,8 @@ async def search_procurements(
     supplier_ico: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    value_min: float | None = None,
+    value_max: float | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
@@ -49,6 +53,17 @@ async def search_procurements(
         match_extra.setdefault("publication_date", {})["$gte"] = date_from
     if date_to:
         match_extra.setdefault("publication_date", {})["$lte"] = date_to
+    if value_min is not None or value_max is not None:
+        # Filter on the coalesced contract value (final → estimated), matching
+        # _schema.contract_value, so the $facet total reflects the value filter
+        # instead of the old post-pagination Python drop (plan §1.3.7).
+        value_expr = {"$ifNull": ["$final_value", {"$ifNull": ["$estimated_value", 0]}]}
+        conds: list[dict] = []
+        if value_min is not None:
+            conds.append({"$gte": [value_expr, value_min]})
+        if value_max is not None:
+            conds.append({"$lte": [value_expr, value_max]})
+        match_extra["$expr"] = {"$and": conds} if len(conds) > 1 else conds[0]
 
     search_stage = {
         "$search": {

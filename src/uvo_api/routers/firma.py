@@ -21,9 +21,13 @@ from uvo_api.models import (
     PartnerRow,
     SpendByYear,
 )
-from uvo_api.routers._agg import _firma_core_agg, _firma_partners_agg, _market_cpv_agg
 from uvo_api.routers.dashboard import _cpv_prefix, _load_cpv_labels
 from uvo_api.services import run_query
+from uvo_core.adapters.mongo.analytics import (
+    _firma_core_agg,
+    _firma_partners_agg,
+    _market_cpv_agg,
+)
 from uvo_core.domain.companies import merge_companies_by_ico, primary_role
 
 router = APIRouter(prefix="/api/firma", tags=["firma"])

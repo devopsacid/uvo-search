@@ -1,5 +1,23 @@
 """Neo4j graph relationship queries. Each takes a live AsyncDriver and returns plain dicts."""
 
+from __future__ import annotations
+
+
+class Neo4jGraphStore:
+    """GraphStore port binding a live Neo4j AsyncDriver to the query functions."""
+
+    def __init__(self, driver) -> None:
+        self._driver = driver
+
+    async def ego_network(self, ico: str, max_hops: int = 2) -> dict:
+        return await ego_network(self._driver, ico, max_hops)
+
+    async def cpv_network(self, cpv_code: str, year: int) -> dict:
+        return await cpv_network(self._driver, cpv_code, year)
+
+    async def supplier_concentration(self, procurer_ico: str, top_n: int = 10) -> dict:
+        return await supplier_concentration(self._driver, procurer_ico, top_n)
+
 
 async def supplier_concentration(driver, procurer_ico: str, top_n: int = 10) -> dict:
     """Top N suppliers by awarded contract value for a contracting authority."""

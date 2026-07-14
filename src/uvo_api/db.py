@@ -53,3 +53,34 @@ def get_embedder() -> Any | None:
         _embedder = load_embedder()
         _embedder_loaded = True
     return _embedder
+
+
+def get_notice_repo():
+    """NoticeRepository port bound to the shared Mongo handle."""
+    from uvo_core.adapters.mongo.repositories import MongoNoticeRepository
+
+    return MongoNoticeRepository(get_db())
+
+
+def get_company_repo():
+    """CompanyRepository port bound to the shared Mongo handle."""
+    from uvo_core.adapters.mongo.repositories import MongoCompanyRepository
+
+    return MongoCompanyRepository(get_db())
+
+
+def get_analytics():
+    """CompanyAnalytics port bound to the shared Mongo handle."""
+    from uvo_core.adapters.mongo.analytics import MongoCompanyAnalytics
+
+    return MongoCompanyAnalytics(get_db())
+
+
+def get_graph_store():
+    """GraphStore port, or None when Neo4j is not configured."""
+    driver = get_neo4j_driver()
+    if driver is None:
+        return None
+    from uvo_core.adapters.neo4j.graph import Neo4jGraphStore
+
+    return Neo4jGraphStore(driver)
