@@ -7,27 +7,27 @@ from fastapi.testclient import TestClient
 from uvo_api.app import create_app
 
 SAMPLE_PROCURER_RESPONSE = {
-    "data": [
+    "items": [
         {
             "ico": "12345678",
-            "nazov": "Ministry of Finance",
-            "pocet_zakaziek": 20,
-            "celkova_hodnota": 10000000.0,
+            "name": "Ministry of Finance",
+            "contract_count": 20,
+            "total_value": 10000000.0,
         },
     ],
     "total": 1,
 }
 
 SAMPLE_CONTRACTS_FOR_PROCURER = {
-    "data": [
+    "items": [
         {
-            "id": "2001",
-            "nazov": "Cloud Services",
-            "obstaravatel": {"ico": "12345678", "nazov": "Ministry of Finance"},
-            "dodavatelia": [{"ico": "87654321", "nazov": "Tech Corp"}],
-            "hodnota_zmluvy": 300000.0,
-            "datum_zverejnenia": "2023-03-10",
-            "cpv_kod": "72000000",
+            "_id": "2001",
+            "title": "Cloud Services",
+            "procurer": {"ico": "12345678", "name": "Ministry of Finance"},
+            "awards": [{"supplier_ico": "87654321", "supplier_name": "Tech Corp"}],
+            "final_value": 300000.0,
+            "publication_date": "2023-03-10",
+            "cpv_code": "72000000",
         }
     ],
     "total": 1,
@@ -43,7 +43,7 @@ def client(monkeypatch):
 
 def test_list_procurers(client):
     with patch(
-        "uvo_api.routers.procurers.call_tool", new=AsyncMock(return_value=SAMPLE_PROCURER_RESPONSE)
+        "uvo_api.routers.procurers.run_query", new=AsyncMock(return_value=SAMPLE_PROCURER_RESPONSE)
     ):
         response = client.get("/api/procurers")
     assert response.status_code == 200
@@ -56,7 +56,7 @@ def test_list_procurers(client):
 
 def test_get_procurer_detail(client):
     with patch(
-        "uvo_api.routers.procurers.call_tool",
+        "uvo_api.routers.procurers.run_query",
         new=AsyncMock(
             side_effect=[
                 SAMPLE_PROCURER_RESPONSE,
@@ -76,7 +76,7 @@ def test_get_procurer_detail(client):
 
 def test_get_procurer_summary(client):
     with patch(
-        "uvo_api.routers.procurers.call_tool",
+        "uvo_api.routers.procurers.run_query",
         new=AsyncMock(
             side_effect=[
                 SAMPLE_PROCURER_RESPONSE,
@@ -93,7 +93,7 @@ def test_get_procurer_summary(client):
 
 def test_get_procurer_not_found(client):
     with patch(
-        "uvo_api.routers.procurers.call_tool", new=AsyncMock(return_value={"data": [], "total": 0})
+        "uvo_api.routers.procurers.run_query", new=AsyncMock(return_value={"data": [], "total": 0})
     ):
         response = client.get("/api/procurers/00000000")
     assert response.status_code == 404

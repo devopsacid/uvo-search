@@ -67,7 +67,7 @@ def client(monkeypatch):
 
 def test_dashboard_summary(client):
     with patch(
-        "uvo_api.routers.dashboard.call_tool",
+        "uvo_api.routers.dashboard.run_query",
         new=AsyncMock(
             side_effect=[
                 SAMPLE_CONTRACTS,
@@ -86,7 +86,7 @@ def test_dashboard_summary(client):
 
 
 def test_dashboard_spend_by_year(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
         response = client.get("/api/dashboard/spend-by-year")
     assert response.status_code == 200
     body = response.json()
@@ -148,7 +148,7 @@ def test_dashboard_top_procurers(client):
 
 
 def test_dashboard_by_cpv(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
         response = client.get("/api/dashboard/by-cpv")
     assert response.status_code == 200
     body = response.json()
@@ -158,7 +158,7 @@ def test_dashboard_by_cpv(client):
 
 
 def test_dashboard_recent(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
         response = client.get("/api/dashboard/recent")
     assert response.status_code == 200
     body = response.json()

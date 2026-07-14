@@ -9,7 +9,6 @@ from fastapi import APIRouter, Query
 
 from uvo_api._schema import contract_date, contract_value, year_from_date
 from uvo_api.db import get_db
-from uvo_api.mcp_client import call_tool
 from uvo_api.models import (
     CpvShare,
     DashboardDelta,
@@ -20,6 +19,7 @@ from uvo_api.models import (
     TopProcurer,
     TopSupplier,
 )
+from uvo_api.services import run_query
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -56,7 +56,7 @@ async def _fetch_contracts_sample(ico_filter: dict) -> tuple[list[dict], int]:
     total = 0
     for page in range(_AGG_PAGES):
         args = {"limit": _AGG_PAGE, "offset": page * _AGG_PAGE, **ico_filter}
-        result = await call_tool("search_completed_procurements", args)
+        result = await run_query("search_completed_procurements", args)
         items = result.get("items", [])
         total = max(total, int(result.get("total") or 0))
         if not items:
@@ -89,9 +89,9 @@ async def dashboard_summary(
     total_value = sum(values)
     avg_value = total_value / len(values) if values else 0.0
 
-    suppliers_result = await call_tool("find_supplier", {"limit": 1})
+    suppliers_result = await run_query("find_supplier", {"limit": 1})
     active_suppliers = int(suppliers_result.get("total") or 0)
-    procurers_result = await call_tool("find_procurer", {"limit": 1})
+    procurers_result = await run_query("find_procurer", {"limit": 1})
     active_procurers = int(procurers_result.get("total") or 0)
 
     # Per-year comparison against the previous year (within the sampled slice).
@@ -291,7 +291,7 @@ async def recent_contracts(
     entity_type: str | None = Query(None),
 ) -> list[RecentContract]:
     args: dict = {"limit": limit, **_ico_filter(ico, entity_type)}
-    result = await call_tool("search_completed_procurements", args)
+    result = await run_query("search_completed_procurements", args)
     contracts = result.get("items", [])
 
     rows: list[RecentContract] = []

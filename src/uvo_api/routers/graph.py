@@ -3,8 +3,8 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
-from uvo_api.mcp_client import call_tool
 from uvo_api.models import CytoEdge, CytoEdgeData, CytoNode, CytoNodeData, GraphResponse
+from uvo_api.services import run_query
 
 router = APIRouter(prefix="/api/graph", tags=["graph"])
 
@@ -57,7 +57,7 @@ async def ego_graph(
     hops: int = Query(2, ge=1, le=3),
 ) -> GraphResponse:
     """Ego network around an entity (ICO). Returns Cytoscape-compatible JSON."""
-    raw = await call_tool("graph_ego_network", {"ico": ico, "max_hops": hops})
+    raw = await run_query("graph_ego_network", {"ico": ico, "max_hops": hops})
     if not raw.get("nodes") and not raw.get("error"):
         raise HTTPException(status_code=404, detail=f"No graph data found for ICO {ico}")
     return _nodes_edges_from_mcp(raw)
@@ -69,5 +69,5 @@ async def cpv_graph(
     year: int = Query(..., ge=2010, le=2100),
 ) -> GraphResponse:
     """Bipartite procurer-supplier network for a CPV prefix and year."""
-    raw = await call_tool("graph_cpv_network", {"cpv_code": cpv, "year": year})
+    raw = await run_query("graph_cpv_network", {"cpv_code": cpv, "year": year})
     return _nodes_edges_from_mcp(raw)

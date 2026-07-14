@@ -5,7 +5,6 @@ import asyncio
 from fastapi import APIRouter, Query
 
 from uvo_api.db import get_db
-from uvo_api.mcp_client import call_tool
 from uvo_api.routers._agg import _firma_core_agg, _firma_partners_agg
 from uvo_api.routers.dashboard import _cpv_prefix, _load_cpv_labels
 from uvo_api.routers.v1._common import decode_cursor, next_pagination
@@ -21,6 +20,7 @@ from uvo_api.routers.v1.models import (
     Pagination,
     SpendYear,
 )
+from uvo_api.services import run_query
 from uvo_api.v1_errors import ApiV1Error
 from uvo_core.domain.companies import merge_companies_by_ico
 
@@ -49,8 +49,8 @@ async def search_companies(
         args["name_query"] = q
 
     supplier_result, procurer_result = await asyncio.gather(
-        call_tool("find_supplier", args),
-        call_tool("find_procurer", args),
+        run_query("find_supplier", args),
+        run_query("find_procurer", args),
     )
     merged = merge_companies_by_ico(
         supplier_result.get("items", []),
@@ -72,8 +72,8 @@ async def search_companies(
 async def get_company(ico: str) -> CompanyRecordResponse:
     """Core identity record for a company by ICO."""
     supplier_result, procurer_result = await asyncio.gather(
-        call_tool("find_supplier", {"ico": ico, "limit": 1}),
-        call_tool("find_procurer", {"ico": ico, "limit": 1}),
+        run_query("find_supplier", {"ico": ico, "limit": 1}),
+        run_query("find_procurer", {"ico": ico, "limit": 1}),
     )
     supplier_items = supplier_result.get("items", [])
     procurer_items = procurer_result.get("items", [])
@@ -117,8 +117,8 @@ async def get_company_profile(ico: str) -> CompanyProfileResponse:
     """Flagship procurement profile: totals, spend by year, counterparties, CPV mix."""
     db = get_db()
     supplier_result, procurer_result, core, partners = await asyncio.gather(
-        call_tool("find_supplier", {"ico": ico, "limit": 1}),
-        call_tool("find_procurer", {"ico": ico, "limit": 1}),
+        run_query("find_supplier", {"ico": ico, "limit": 1}),
+        run_query("find_procurer", {"ico": ico, "limit": 1}),
         _firma_core_agg(db, ico),
         _firma_partners_agg(db, ico, "all", "value", 10, 0),
     )

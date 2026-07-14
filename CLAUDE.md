@@ -9,14 +9,14 @@ Five Python packages under `src/` + one React frontend:
 | Package | Port | Entrypoint | Role |
 | ------- | ---- | ---------- | ---- |
 | `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` | FastMCP server — search, detail, graph tools |
-| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI bridge (frontend → MCP); dashboard + ingestion endpoints |
+| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI delivery adapter; routers → `uvo_core.services` in-process; dashboard + ingestion + `/v1` |
 | `uvo-gui-react` | 8080 host / 5174 dev | `cd src/uvo-gui-react && npm run dev` | React 18 SPA public frontend (Slovak UI) |
 | `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | Shared lib + one-shot backfill CLI (legacy; new long-lived services below) |
 | `uvo_workers` | 8091–8096 | `uv run python -m uvo_workers.<service>` | Long-lived microservices (4 extractors + ingestor + dedup-worker; Redis Streams) |
 
 **Storage:** MongoDB Atlas Local (27017, with `mongot` for Atlas Search) + Neo4j 5 with APOC (7474/7687). Both required for `uvo_mcp` to start.
 
-**Frontend ↔ backend:** the GUI goes through `mcp_client.call_tool(name, args)`. Don't bypass it.
+**Frontend ↔ backend:** React → `uvo_api` (FastAPI) → **`uvo_core.services`** in-process (no HTTP hop). Routers call the shared query services directly; FastMCP (`uvo_mcp`) is a separate *external* delivery surface exposing the same services as LLM tools. Don't reintroduce an intra-cluster MCP HTTP call from `uvo_api`.
 
 ## Dev commands
 

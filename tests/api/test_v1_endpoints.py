@@ -72,7 +72,7 @@ def client(monkeypatch):
 
 def test_search_companies_merges_and_envelopes(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.call_tool",
+        "uvo_api.routers.v1.companies.run_query",
         AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT]),
     )
     resp = client.get("/v1/companies?q=tech&limit=10", headers=AUTH_HEADERS)
@@ -85,7 +85,7 @@ def test_search_companies_merges_and_envelopes(client, monkeypatch):
 
 def test_get_company_record(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.call_tool",
+        "uvo_api.routers.v1.companies.run_query",
         AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY]),
     )
     resp = client.get("/v1/companies/87654321", headers=AUTH_HEADERS)
@@ -97,7 +97,7 @@ def test_get_company_record(client, monkeypatch):
 
 def test_get_company_record_not_found(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.call_tool",
+        "uvo_api.routers.v1.companies.run_query",
         AsyncMock(side_effect=[EMPTY, EMPTY]),
     )
     resp = client.get("/v1/companies/00000000", headers=AUTH_HEADERS)
@@ -107,7 +107,7 @@ def test_get_company_record_not_found(client, monkeypatch):
 
 def test_company_profile(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.call_tool",
+        "uvo_api.routers.v1.companies.run_query",
         AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY]),
     )
     monkeypatch.setattr("uvo_api.routers.v1.companies.get_db", lambda: MagicMock())
@@ -132,7 +132,7 @@ def test_company_profile(client, monkeypatch):
 
 def test_search_contracts(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.contracts.call_tool",
+        "uvo_api.routers.v1.contracts.run_query",
         AsyncMock(return_value={"items": [CONTRACT_ITEM], "total": 1}),
     )
     resp = client.get("/v1/contracts?q=IT&limit=20", headers=AUTH_HEADERS)
@@ -148,7 +148,7 @@ def test_search_contracts(client, monkeypatch):
 
 def test_search_contracts_min_value_filter(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.contracts.call_tool",
+        "uvo_api.routers.v1.contracts.run_query",
         AsyncMock(return_value={"items": [CONTRACT_ITEM], "total": 1}),
     )
     resp = client.get("/v1/contracts?min_value=200000", headers=AUTH_HEADERS)
@@ -158,7 +158,7 @@ def test_search_contracts_min_value_filter(client, monkeypatch):
 
 def test_get_contract_detail(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.contracts.call_tool",
+        "uvo_api.routers.v1.contracts.run_query",
         AsyncMock(return_value=CONTRACT_ITEM),
     )
     resp = client.get("/v1/contracts/c001", headers=AUTH_HEADERS)
@@ -171,7 +171,7 @@ def test_get_contract_detail(client, monkeypatch):
 
 def test_get_contract_detail_not_found(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.contracts.call_tool",
+        "uvo_api.routers.v1.contracts.run_query",
         AsyncMock(return_value={"error": "not found", "status_code": 404}),
     )
     resp = client.get("/v1/contracts/9999", headers=AUTH_HEADERS)
@@ -181,7 +181,7 @@ def test_get_contract_detail_not_found(client, monkeypatch):
 
 def test_invalid_cursor_returns_400(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.call_tool",
+        "uvo_api.routers.v1.companies.run_query",
         AsyncMock(side_effect=[EMPTY, EMPTY]),
     )
     resp = client.get("/v1/companies?cursor=!!!notbase64", headers=AUTH_HEADERS)

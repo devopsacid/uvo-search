@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from uvo_api._schema import contract_date, contract_value, year_from_date
-from uvo_api.mcp_client import call_tool
+from uvo_api.services import run_query
 from uvo_core.domain.companies import merge_companies_by_ico
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -117,14 +117,14 @@ async def search_entities(
 
     if q:
         supp_result, proc_result, vec_result = await asyncio.gather(
-            call_tool("find_supplier", args),
-            call_tool("find_procurer", args),
-            call_tool("search_companies_vector", vec_args),
+            run_query("find_supplier", args),
+            run_query("find_procurer", args),
+            run_query("search_companies_vector", vec_args),
         )
     else:
         supp_result, proc_result = await asyncio.gather(
-            call_tool("find_supplier", args),
-            call_tool("find_procurer", args),
+            run_query("find_supplier", args),
+            run_query("find_procurer", args),
         )
         vec_result = {}
 
@@ -176,8 +176,8 @@ async def unified_search(
 
     if _ICO_RE.match(q.strip()):
         supp_result, proc_result = await asyncio.gather(
-            call_tool("find_supplier", {"ico": q.strip(), "limit": limit}),
-            call_tool("find_procurer", {"ico": q.strip(), "limit": limit}),
+            run_query("find_supplier", {"ico": q.strip(), "limit": limit}),
+            run_query("find_procurer", {"ico": q.strip(), "limit": limit}),
         )
         firmy = _merge_firmy(
             supp_result.get("items", []),
@@ -193,17 +193,17 @@ async def unified_search(
     try:
         (supp_result, proc_result, vec_result), contract_result = await asyncio.gather(
             asyncio.gather(
-                call_tool("find_supplier", entity_args),
-                call_tool("find_procurer", entity_args),
-                call_tool("search_companies_vector", vec_args),
+                run_query("find_supplier", entity_args),
+                run_query("find_procurer", entity_args),
+                run_query("search_companies_vector", vec_args),
             ),
-            call_tool("search_completed_procurements", contract_args),
+            run_query("search_completed_procurements", contract_args),
         )
     except Exception:
         (supp_result, proc_result, vec_result) = await asyncio.gather(
-            call_tool("find_supplier", entity_args),
-            call_tool("find_procurer", entity_args),
-            call_tool("search_companies_vector", vec_args),
+            run_query("find_supplier", entity_args),
+            run_query("find_procurer", entity_args),
+            run_query("search_companies_vector", vec_args),
         )
         contract_result = {}
 

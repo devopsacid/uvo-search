@@ -313,7 +313,7 @@ def test_cpv_profile_market_only_has_matching_codes(client):
 
 def test_firmy_returns_merged_list(client):
     with patch(
-        "uvo_api.routers.firma.call_tool",
+        "uvo_api.routers.firma.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT, PROCURER_FIND_RESULT]),
     ):
         response = client.get("/api/firmy")
@@ -332,7 +332,7 @@ def test_firmy_returns_merged_list(client):
 def test_firmy_merges_dual_role_ico(client):
     """AAA00001 appears in both supplier and procurer results — must be merged."""
     with patch(
-        "uvo_api.routers.firma.call_tool",
+        "uvo_api.routers.firma.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT, PROCURER_FIND_RESULT]),
     ):
         response = client.get("/api/firmy")
@@ -347,7 +347,7 @@ def test_firmy_merges_dual_role_ico(client):
 
 def test_firmy_role_filter_supplier_only(client):
     with patch(
-        "uvo_api.routers.firma.call_tool",
+        "uvo_api.routers.firma.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT]),
     ):
         response = client.get("/api/firmy?role=supplier")
@@ -359,7 +359,7 @@ def test_firmy_role_filter_supplier_only(client):
 
 def test_firmy_role_filter_procurer_only(client):
     with patch(
-        "uvo_api.routers.firma.call_tool",
+        "uvo_api.routers.firma.run_query",
         new=AsyncMock(side_effect=[PROCURER_FIND_RESULT]),
     ):
         response = client.get("/api/firmy?role=procurer")
@@ -371,7 +371,7 @@ def test_firmy_role_filter_procurer_only(client):
 
 def test_firmy_sorted_by_contract_count_desc(client):
     with patch(
-        "uvo_api.routers.firma.call_tool",
+        "uvo_api.routers.firma.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT, PROCURER_FIND_RESULT]),
     ):
         response = client.get("/api/firmy")
@@ -383,7 +383,7 @@ def test_firmy_sorted_by_contract_count_desc(client):
 
 def test_firmy_pagination(client):
     with patch(
-        "uvo_api.routers.firma.call_tool",
+        "uvo_api.routers.firma.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT, PROCURER_FIND_RESULT]),
     ):
         response = client.get("/api/firmy?limit=1&offset=0")

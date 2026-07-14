@@ -6,7 +6,6 @@ from collections import defaultdict
 from fastapi import APIRouter, HTTPException, Query
 
 from uvo_api._schema import contract_date, contract_value, map_contract_row, year_from_date
-from uvo_api.mcp_client import call_tool
 from uvo_api.models import (
     ContractRow,
     PaginationMeta,
@@ -17,6 +16,7 @@ from uvo_api.models import (
     SupplierListResponse,
     SupplierSummary,
 )
+from uvo_api.services import run_query
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
@@ -34,7 +34,7 @@ async def list_suppliers(
     if ico:
         args["ico"] = ico
 
-    result = await call_tool("find_supplier", args)
+    result = await run_query("find_supplier", args)
     items = result.get("items", [])
     total = int(result.get("total") or len(items))
 
@@ -54,13 +54,13 @@ async def list_suppliers(
 
 
 async def _fetch_supplier_and_contracts(ico: str) -> tuple[dict, list[dict]]:
-    supplier_result = await call_tool("find_supplier", {"ico": ico, "limit": 1})
+    supplier_result = await run_query("find_supplier", {"ico": ico, "limit": 1})
     suppliers = supplier_result.get("items", [])
     if not suppliers:
         raise HTTPException(status_code=404, detail=f"Supplier {ico} not found")
     supplier = suppliers[0]
 
-    contracts_result = await call_tool(
+    contracts_result = await run_query(
         "search_completed_procurements", {"supplier_ico": ico, "limit": 100}
     )
     contracts = contracts_result.get("items", [])

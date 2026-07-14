@@ -36,7 +36,7 @@ def client(monkeypatch):
 
 
 def test_ego_graph_happy_path(client):
-    with patch("uvo_api.routers.graph.call_tool", new=AsyncMock(return_value=SAMPLE_EGO)):
+    with patch("uvo_api.routers.graph.run_query", new=AsyncMock(return_value=SAMPLE_EGO)):
         response = client.get("/api/graph/ego/12345678?hops=2")
     assert response.status_code == 200
     body = response.json()
@@ -52,7 +52,7 @@ def test_ego_graph_happy_path(client):
 
 
 def test_ego_graph_not_found(client):
-    with patch("uvo_api.routers.graph.call_tool", new=AsyncMock(return_value={"nodes": [], "edges": []})):
+    with patch("uvo_api.routers.graph.run_query", new=AsyncMock(return_value={"nodes": [], "edges": []})):
         response = client.get("/api/graph/ego/00000000")
     assert response.status_code == 404
 
@@ -63,7 +63,7 @@ def test_ego_graph_hops_validation(client):
 
 
 def test_cpv_graph_happy_path(client):
-    with patch("uvo_api.routers.graph.call_tool", new=AsyncMock(return_value=SAMPLE_CPV)):
+    with patch("uvo_api.routers.graph.run_query", new=AsyncMock(return_value=SAMPLE_CPV)):
         response = client.get("/api/graph/cpv/72000000?year=2024")
     assert response.status_code == 200
     body = response.json()
@@ -80,7 +80,7 @@ def test_cpv_graph_missing_year(client):
 
 def test_graph_503_on_neo4j_down(client):
     with patch(
-        "uvo_api.routers.graph.call_tool",
+        "uvo_api.routers.graph.run_query",
         new=AsyncMock(return_value={"error": "Neo4j not connected", "status_code": 503}),
     ):
         response = client.get("/api/graph/ego/12345678")

@@ -40,7 +40,7 @@ def client(monkeypatch):
 
 
 def test_by_cpv_no_year_filter(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
         response = client.get("/api/dashboard/by-cpv")
     assert response.status_code == 200
     body = response.json()
@@ -50,7 +50,7 @@ def test_by_cpv_no_year_filter(client):
 
 
 def test_by_cpv_year_from_filter(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
         response = client.get("/api/dashboard/by-cpv?year_from=2024")
     assert response.status_code == 200
     body = response.json()
@@ -61,7 +61,7 @@ def test_by_cpv_year_from_filter(client):
 
 
 def test_by_cpv_year_to_filter(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
         response = client.get("/api/dashboard/by-cpv?year_to=2023")
     assert response.status_code == 200
     body = response.json()
@@ -71,7 +71,7 @@ def test_by_cpv_year_to_filter(client):
 
 
 def test_by_month_returns_12_buckets(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
         response = client.get("/api/dashboard/by-month?year=2024")
     assert response.status_code == 200
     body = response.json()
@@ -81,7 +81,7 @@ def test_by_month_returns_12_buckets(client):
 
 
 def test_by_month_counts_correctly(client):
-    with patch("uvo_api.routers.dashboard.call_tool", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
         response = client.get("/api/dashboard/by-month?year=2024")
     assert response.status_code == 200
     body = response.json()

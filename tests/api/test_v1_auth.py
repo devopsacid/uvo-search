@@ -30,7 +30,7 @@ def client(monkeypatch, fake_redis):
     monkeypatch.setenv("API_MCP_SERVER_URL", "http://localhost:8000/mcp")
     monkeypatch.setattr("uvo_api.ratelimit.get_redis", AsyncMock(return_value=fake_redis))
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.call_tool", AsyncMock(return_value=EMPTY_ENTITY)
+        "uvo_api.routers.v1.companies.run_query", AsyncMock(return_value=EMPTY_ENTITY)
     )
     app = create_app()
     return TestClient(app)

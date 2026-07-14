@@ -27,9 +27,15 @@ services:
       - "8001:8001"
     env_file: .env
     environment:
-      API_MCP_SERVER_URL: http://mcp-server:8000/mcp
+      # The API runs queries in-process via uvo_core (no MCP hop); it needs its own
+      # Mongo + Neo4j handles. Mongo comes from .env (API_MONGODB_URI); Neo4j below.
+      API_NEO4J_URI: bolt://neo4j:7687
+      API_NEO4J_USER: neo4j
+      API_NEO4J_PASSWORD: ${NEO4J_PASSWORD:-changeme}
     depends_on:
-      mcp-server:
+      mongo:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]

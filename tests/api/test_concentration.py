@@ -52,7 +52,7 @@ def client(monkeypatch):
 
 def test_concentration_happy_path(client):
     with patch(
-        "uvo_api.routers.procurers.call_tool",
+        "uvo_api.routers.procurers.run_query",
         new=AsyncMock(side_effect=[SAMPLE_PROCURER, SAMPLE_CONTRACTS]),
     ):
         response = client.get("/api/procurers/12345678/concentration")
@@ -71,7 +71,7 @@ def test_concentration_happy_path(client):
 
 def test_concentration_not_found(client):
     with patch(
-        "uvo_api.routers.procurers.call_tool",
+        "uvo_api.routers.procurers.run_query",
         new=AsyncMock(return_value={"items": [], "total": 0}),
     ):
         response = client.get("/api/procurers/00000000/concentration")
@@ -80,7 +80,7 @@ def test_concentration_not_found(client):
 
 def test_concentration_top_n_param(client):
     with patch(
-        "uvo_api.routers.procurers.call_tool",
+        "uvo_api.routers.procurers.run_query",
         new=AsyncMock(side_effect=[SAMPLE_PROCURER, SAMPLE_CONTRACTS]),
     ):
         response = client.get("/api/procurers/12345678/concentration?top_n=1")

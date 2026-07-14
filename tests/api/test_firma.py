@@ -126,7 +126,7 @@ def test_supplier_only_ico_returns_200(client):
 
     with (
         patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
-        patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma.run_query", new=AsyncMock(side_effect=call_tool_effects)),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
     ):
         response = client.get(f"/api/firma/{SUPPLIER_ONLY_ICO}")
@@ -182,7 +182,7 @@ def test_dual_role_ico_returns_200(client):
 
     with (
         patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
-        patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma.run_query", new=AsyncMock(side_effect=call_tool_effects)),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=dual_core_agg)),
     ):
         response = client.get(f"/api/firma/{DUAL_ROLE_ICO}")
@@ -215,7 +215,7 @@ def test_unknown_ico_returns_404(client):
 
     with (
         patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
-        patch("uvo_api.routers.firma.call_tool", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma.run_query", new=AsyncMock(side_effect=call_tool_effects)),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value={})),
     ):
         response = client.get(f"/api/firma/{UNKNOWN_ICO}")

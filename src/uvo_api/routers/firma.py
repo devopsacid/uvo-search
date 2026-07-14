@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, Query
 
 from uvo_api._schema import contract_date, contract_value, year_from_date
 from uvo_api.db import get_db
-from uvo_api.mcp_client import call_tool
 from uvo_api.models import (
     CpvProfileResponse,
     CpvProfileRow,
@@ -24,6 +23,7 @@ from uvo_api.models import (
 )
 from uvo_api.routers._agg import _firma_core_agg, _firma_partners_agg, _market_cpv_agg
 from uvo_api.routers.dashboard import _cpv_prefix, _load_cpv_labels
+from uvo_api.services import run_query
 from uvo_core.domain.companies import merge_companies_by_ico, primary_role
 
 router = APIRouter(prefix="/api/firma", tags=["firma"])
@@ -47,8 +47,8 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
 
     # Identity + top contracts (still via MCP — cached at MCP layer)
     supplier_result, procurer_result, core = await asyncio.gather(
-        call_tool("find_supplier", {"ico": ico, "limit": 1}),
-        call_tool("find_procurer", {"ico": ico, "limit": 1}),
+        run_query("find_supplier", {"ico": ico, "limit": 1}),
+        run_query("find_procurer", {"ico": ico, "limit": 1}),
         _firma_core_agg(db, ico),
     )
 
@@ -92,7 +92,7 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
 
     # Top contracts (still via MCP for sort-by-value)
     top_s_coro = (
-        call_tool(
+        run_query(
             "search_completed_procurements",
             {"supplier_ico": ico, "limit": 5, "sort_by": "value_desc"},
         )
@@ -100,7 +100,7 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
         else _empty()
     )
     top_p_coro = (
-        call_tool(
+        run_query(
             "search_completed_procurements",
             {"procurer_id": ico, "limit": 5, "sort_by": "value_desc"},
         )
@@ -254,12 +254,12 @@ async def list_firmy(
         search_args["name_query"] = q
 
     supplier_coro = (
-        call_tool("find_supplier", {**search_args, "limit": 100})
+        run_query("find_supplier", {**search_args, "limit": 100})
         if role in ("supplier", "all")
         else _empty()
     )
     procurer_coro = (
-        call_tool("find_procurer", {**search_args, "limit": 100})
+        run_query("find_procurer", {**search_args, "limit": 100})
         if role in ("procurer", "all")
         else _empty()
     )

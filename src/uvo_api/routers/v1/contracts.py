@@ -3,7 +3,6 @@
 from fastapi import APIRouter, Query
 
 from uvo_api._schema import map_contract_detail, map_contract_row
-from uvo_api.mcp_client import call_tool
 from uvo_api.routers.v1._common import decode_cursor, next_pagination
 from uvo_api.routers.v1.models import (
     Contract,
@@ -12,6 +11,7 @@ from uvo_api.routers.v1.models import (
     ContractListResponse,
     Pagination,
 )
+from uvo_api.services import run_query
 from uvo_api.v1_errors import ApiV1Error
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
@@ -39,7 +39,7 @@ async def search_contracts(
     if date_to:
         args["date_to"] = date_to
 
-    result = await call_tool("search_completed_procurements", args)
+    result = await run_query("search_completed_procurements", args)
     items = result.get("items", [])
     total = result.get("total", len(items))
 
@@ -57,7 +57,7 @@ async def search_contracts(
 @router.get("/{contract_id}", response_model=ContractDetailResponse)
 async def get_contract(contract_id: str) -> ContractDetailResponse:
     """Full detail for a single contract by id."""
-    result = await call_tool("get_procurement_detail", {"procurement_id": contract_id})
+    result = await run_query("get_procurement_detail", {"procurement_id": contract_id})
     if "error" in result:
         raise ApiV1Error(404, "contract_not_found", f"No contract found for id {contract_id}.")
 
