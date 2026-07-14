@@ -4,8 +4,8 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from uvo_api._schema import map_contract_detail, map_contract_row
+from uvo_api.db import get_notice_repo
 from uvo_api.models import ContractDetail, ContractListResponse, PaginationMeta
-from uvo_api.services import run_query
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
 
@@ -24,35 +24,24 @@ async def list_contracts(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ) -> ContractListResponse:
-    args: dict = {"limit": limit, "offset": offset}
-    if q:
-        args["text_query"] = q
-    if cpv:
-        args["cpv_codes"] = [cpv]
-    if date_from:
-        args["date_from"] = date_from
-    if date_to:
-        args["date_to"] = date_to
-    # `ico` is legacy; prefer explicit supplier_ico / procurer_ico
-    if supplier_ico:
-        args["supplier_ico"] = supplier_ico
-    elif ico:
-        args["supplier_ico"] = ico
-    if procurer_ico:
-        args["procurer_id"] = procurer_ico
-
-    result = await run_query("search_completed_procurements", args)
+    # `ico` is legacy; prefer explicit supplier_ico / procurer_ico.
+    eff_supplier = supplier_ico or ico
+    result = await get_notice_repo().search(
+        text_query=q or None,
+        cpv_codes=[cpv] if cpv else None,
+        procurer_id=procurer_ico,
+        supplier_ico=eff_supplier,
+        date_from=date_from,
+        date_to=date_to,
+        value_min=value_min,
+        value_max=value_max,
+        limit=limit,
+        offset=offset,
+    )
 
     items = result.get("items", [])
     total = result.get("total", len(items))
-
     rows = [map_contract_row(i) for i in items]
-    if value_min is not None:
-        rows = [r for r in rows if r.value >= value_min]
-    if value_max is not None:
-        rows = [r for r in rows if r.value <= value_max]
-    if value_min is not None or value_max is not None:
-        total = len(rows)
 
     return ContractListResponse(
         data=rows,
@@ -62,7 +51,7 @@ async def list_contracts(
 
 @router.get("/{contract_id}", response_model=ContractDetail)
 async def get_contract(contract_id: str) -> ContractDetail:
-    result = await run_query("get_procurement_detail", {"procurement_id": contract_id})
+    result = await get_notice_repo().get_by_source_id(contract_id)
     if "error" in result:
         raise HTTPException(status_code=result.get("status_code", 404), detail=result["error"])
 

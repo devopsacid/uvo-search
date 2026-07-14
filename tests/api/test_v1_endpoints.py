@@ -110,13 +110,10 @@ def test_company_profile(client, monkeypatch):
         "uvo_api.routers.v1.companies.run_query",
         AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY]),
     )
-    monkeypatch.setattr("uvo_api.routers.v1.companies.get_db", lambda: MagicMock())
-    monkeypatch.setattr(
-        "uvo_api.routers.v1.companies._firma_core_agg", AsyncMock(return_value=CORE_AGG)
-    )
-    monkeypatch.setattr(
-        "uvo_api.routers.v1.companies._firma_partners_agg", AsyncMock(return_value=PARTNERS_AGG)
-    )
+    analytics = MagicMock()
+    analytics.core_stats = AsyncMock(return_value=CORE_AGG)
+    analytics.partners = AsyncMock(return_value=PARTNERS_AGG)
+    monkeypatch.setattr("uvo_api.routers.v1.companies.get_analytics", lambda: analytics)
     resp = client.get("/v1/companies/87654321/profile", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()["data"]
@@ -130,11 +127,16 @@ def test_company_profile(client, monkeypatch):
     assert data["cpv_breakdown"][0]["code"] == "72000000"
 
 
+def _contracts_repo(*, search=None, detail=None):
+    repo = MagicMock()
+    repo.search = AsyncMock(return_value=search)
+    repo.get_by_source_id = AsyncMock(return_value=detail)
+    return repo
+
+
 def test_search_contracts(client, monkeypatch):
-    monkeypatch.setattr(
-        "uvo_api.routers.v1.contracts.run_query",
-        AsyncMock(return_value={"items": [CONTRACT_ITEM], "total": 1}),
-    )
+    repo = _contracts_repo(search={"items": [CONTRACT_ITEM], "total": 1})
+    monkeypatch.setattr("uvo_api.routers.v1.contracts.get_notice_repo", lambda: repo)
     resp = client.get("/v1/contracts?q=IT&limit=20", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
@@ -147,20 +149,19 @@ def test_search_contracts(client, monkeypatch):
 
 
 def test_search_contracts_min_value_filter(client, monkeypatch):
-    monkeypatch.setattr(
-        "uvo_api.routers.v1.contracts.run_query",
-        AsyncMock(return_value={"items": [CONTRACT_ITEM], "total": 1}),
-    )
+    # The value filter is pushed into the query; a filtered corpus returns empty.
+    repo = _contracts_repo(search={"items": [], "total": 0})
+    monkeypatch.setattr("uvo_api.routers.v1.contracts.get_notice_repo", lambda: repo)
     resp = client.get("/v1/contracts?min_value=200000", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["data"] == []
+    _, kwargs = repo.search.call_args
+    assert kwargs["value_min"] == 200000
 
 
 def test_get_contract_detail(client, monkeypatch):
-    monkeypatch.setattr(
-        "uvo_api.routers.v1.contracts.run_query",
-        AsyncMock(return_value=CONTRACT_ITEM),
-    )
+    repo = _contracts_repo(detail=CONTRACT_ITEM)
+    monkeypatch.setattr("uvo_api.routers.v1.contracts.get_notice_repo", lambda: repo)
     resp = client.get("/v1/contracts/c001", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()["data"]
@@ -170,10 +171,8 @@ def test_get_contract_detail(client, monkeypatch):
 
 
 def test_get_contract_detail_not_found(client, monkeypatch):
-    monkeypatch.setattr(
-        "uvo_api.routers.v1.contracts.run_query",
-        AsyncMock(return_value={"error": "not found", "status_code": 404}),
-    )
+    repo = _contracts_repo(detail={"error": "not found", "status_code": 404})
+    monkeypatch.setattr("uvo_api.routers.v1.contracts.get_notice_repo", lambda: repo)
     resp = client.get("/v1/contracts/9999", headers=AUTH_HEADERS)
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "contract_not_found"
