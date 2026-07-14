@@ -7,21 +7,21 @@ from fastapi.testclient import TestClient
 from uvo_api.app import create_app
 
 SAMPLE_MCP_RESPONSE = {
-    "data": [
+    "items": [
         {
-            "id": "1001",
-            "nazov": "IT Infrastructure",
-            "obstaravatel": {"ico": "12345678", "nazov": "Ministry of Finance"},
-            "dodavatelia": [{"ico": "87654321", "nazov": "Tech Corp"}],
-            "hodnota_zmluvy": 150000.0,
-            "datum_zverejnenia": "2024-01-15",
-            "cpv_kod": "72000000",
+            "_id": "1001",
+            "title": "IT Infrastructure",
+            "procurer": {"ico": "12345678", "name": "Ministry of Finance"},
+            "awards": [{"supplier_ico": "87654321", "supplier_name": "Tech Corp"}],
+            "final_value": 150000.0,
+            "publication_date": "2024-01-15",
+            "cpv_code": "72000000",
         }
     ],
     "total": 1,
 }
 
-EMPTY_MCP_RESPONSE = {"data": [], "total": 0}
+EMPTY_MCP_RESPONSE = {"items": [], "total": 0}
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def client(monkeypatch):
 
 def test_list_contracts_returns_paginated_response(client):
     with patch(
-        "uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)
+        "uvo_api.routers.contracts.run_query", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)
     ):
         response = client.get("/api/contracts")
     assert response.status_code == 200
@@ -47,7 +47,7 @@ def test_list_contracts_returns_paginated_response(client):
 
 def test_list_contracts_maps_fields_correctly(client):
     with patch(
-        "uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)
+        "uvo_api.routers.contracts.run_query", new=AsyncMock(return_value=SAMPLE_MCP_RESPONSE)
     ):
         response = client.get("/api/contracts")
     row = response.json()["data"][0]
@@ -62,7 +62,7 @@ def test_list_contracts_maps_fields_correctly(client):
 
 def test_list_contracts_empty_result(client):
     with patch(
-        "uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=EMPTY_MCP_RESPONSE)
+        "uvo_api.routers.contracts.run_query", new=AsyncMock(return_value=EMPTY_MCP_RESPONSE)
     ):
         response = client.get("/api/contracts")
     assert response.status_code == 200
@@ -72,15 +72,15 @@ def test_list_contracts_empty_result(client):
 
 def test_get_contract_detail_returns_detail(client):
     detail = {
-        "id": "1001",
-        "nazov": "IT Infrastructure",
-        "obstaravatel": {"ico": "12345678", "nazov": "Ministry of Finance"},
-        "dodavatelia": [{"ico": "87654321", "nazov": "Tech Corp"}],
-        "hodnota_zmluvy": 150000.0,
-        "datum_zverejnenia": "2024-01-15",
-        "cpv_kod": "72000000",
+        "_id": "1001",
+        "title": "IT Infrastructure",
+        "procurer": {"ico": "12345678", "name": "Ministry of Finance"},
+        "awards": [{"ico": "87654321", "supplier_ico": "87654321", "supplier_name": "Tech Corp"}],
+        "final_value": 150000.0,
+        "publication_date": "2024-01-15",
+        "cpv_code": "72000000",
     }
-    with patch("uvo_api.routers.contracts.call_tool", new=AsyncMock(return_value=detail)):
+    with patch("uvo_api.routers.contracts.run_query", new=AsyncMock(return_value=detail)):
         response = client.get("/api/contracts/1001")
     assert response.status_code == 200
     assert response.json()["id"] == "1001"
@@ -89,7 +89,7 @@ def test_get_contract_detail_returns_detail(client):
 
 def test_get_contract_detail_not_found(client):
     with patch(
-        "uvo_api.routers.contracts.call_tool",
+        "uvo_api.routers.contracts.run_query",
         new=AsyncMock(return_value={"error": "not found", "status_code": 404}),
     ):
         response = client.get("/api/contracts/9999")

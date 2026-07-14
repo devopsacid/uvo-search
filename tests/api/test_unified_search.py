@@ -66,7 +66,7 @@ def _make_call_tool_side_effect(*results):
 
 def test_unified_returns_grouped_shape(client):
     with patch(
-        "uvo_api.routers.search.call_tool",
+        "uvo_api.routers.search.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]),
     ):
         response = client.get("/api/search/unified?q=acme")
@@ -79,7 +79,7 @@ def test_unified_returns_grouped_shape(client):
 
 def test_unified_firmy_shape(client):
     with patch(
-        "uvo_api.routers.search.call_tool",
+        "uvo_api.routers.search.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]),
     ):
         response = client.get("/api/search/unified?q=acme")
@@ -95,7 +95,7 @@ def test_unified_firmy_shape(client):
 
 def test_unified_zakazky_shape(client):
     with patch(
-        "uvo_api.routers.search.call_tool",
+        "uvo_api.routers.search.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]),
     ):
         response = client.get("/api/search/unified?q=road")
@@ -112,7 +112,7 @@ def test_unified_zakazky_shape(client):
 def test_unified_firmy_deduplication(client):
     """Supplier + procurer with same ICO → single FirmaHit with both roles."""
     with patch(
-        "uvo_api.routers.search.call_tool",
+        "uvo_api.routers.search.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_RESULT, OVERLAP_PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]),
     ):
         response = client.get("/api/search/unified?q=acme")
@@ -129,7 +129,7 @@ def test_unified_firmy_deduplication(client):
 
 def test_unified_ico_query_returns_only_firmy(client):
     with patch(
-        "uvo_api.routers.search.call_tool",
+        "uvo_api.routers.search.run_query",
         new=AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY_RESULT]),
     ):
         response = client.get("/api/search/unified?q=11223344")
@@ -141,7 +141,7 @@ def test_unified_ico_query_returns_only_firmy(client):
 
 def test_unified_ico_query_does_not_call_contract_search(client):
     mock = AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY_RESULT])
-    with patch("uvo_api.routers.search.call_tool", new=mock):
+    with patch("uvo_api.routers.search.run_query", new=mock):
         client.get("/api/search/unified?q=11223344")
     tool_names = [call.args[0] for call in mock.call_args_list]
     assert "search_completed_procurements" not in tool_names
@@ -154,7 +154,7 @@ def test_unified_ico_query_does_not_call_contract_search(client):
 
 def test_unified_short_query_returns_empty(client):
     mock = AsyncMock(return_value=EMPTY_RESULT)
-    with patch("uvo_api.routers.search.call_tool", new=mock):
+    with patch("uvo_api.routers.search.run_query", new=mock):
         response = client.get("/api/search/unified?q=a")
     assert response.status_code == 200
     body = response.json()
@@ -165,7 +165,7 @@ def test_unified_short_query_returns_empty(client):
 
 def test_unified_empty_query_returns_empty(client):
     mock = AsyncMock(return_value=EMPTY_RESULT)
-    with patch("uvo_api.routers.search.call_tool", new=mock):
+    with patch("uvo_api.routers.search.run_query", new=mock):
         response = client.get("/api/search/unified?q=")
     assert response.status_code == 200
     body = response.json()
@@ -188,7 +188,7 @@ def test_unified_respects_limit(client):
         "total": 15,
     }
     with patch(
-        "uvo_api.routers.search.call_tool",
+        "uvo_api.routers.search.run_query",
         new=AsyncMock(side_effect=[many_suppliers, EMPTY_RESULT, EMPTY_RESULT, EMPTY_RESULT]),
     ):
         response = client.get("/api/search/unified?q=firm&limit=5")

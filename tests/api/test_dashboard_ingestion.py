@@ -45,11 +45,12 @@ def _now() -> datetime:
 
 async def _seed_notices(db, source: str, count: int, ingested_at: datetime) -> None:
     """Insert `count` minimal notice documents for a source."""
+    # Production stores ingested_at as an ISO-8601 string (loader uses .isoformat()).
     docs = [
         {
             "source": source,
             "source_id": f"{source}-{i}",
-            "ingested_at": ingested_at,
+            "ingested_at": ingested_at.isoformat(),
             "pipeline_run_id": "run-abc",
         }
         for i in range(count)
