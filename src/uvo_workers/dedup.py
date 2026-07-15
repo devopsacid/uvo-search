@@ -13,6 +13,7 @@ from pydantic_settings import BaseSettings
 from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.dedup import run_cross_source_dedup
 from uvo_pipeline.ingestion_log import log_event
+from uvo_pipeline.loaders.mongo import recompute_entity_stats
 from uvo_pipeline.pubsub import subscribe
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
 from uvo_workers.health import serve_health
@@ -133,6 +134,18 @@ async def run_dedup_worker() -> None:
                 message=f"dedup found {match_groups} match groups",
                 details={"match_groups": match_groups, "window_days": settings.dedup_window_days},
             )
+            # Refresh denormalized entity stats on the same debounced cadence.
+            # Recompute (not inline $inc) — see scripts/backfill_entity_stats.py.
+            # Isolated so a stats failure never marks the dedup cycle failed.
+            try:
+                stats = await recompute_entity_stats(db)
+                logger.info(
+                    "dedup: recomputed entity stats (procurers=%d, suppliers=%d)",
+                    stats.get("procurers_updated", 0),
+                    stats.get("suppliers_updated", 0),
+                )
+            except Exception as exc:
+                logger.error("dedup: entity-stats recompute failed: %s", exc)
         except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"
             logger.error("dedup: run failed: %s", msg)

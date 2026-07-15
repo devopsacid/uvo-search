@@ -91,5 +91,9 @@ async def test_name_query_builds_search_pipeline():
     assert out["total"] == 1
     (pipeline,) = coll.aggregate.call_args.args
     assert "$search" in pipeline[0]
-    assert any("$lookup" in s for s in pipeline)
+    # Stats now come from denormalized fields on the entity doc, not a per-row
+    # $lookup that scanned notices.
+    assert not any("$lookup" in s for s in pipeline)
+    items_stages = pipeline[-1]["$facet"]["items"]
+    assert any("contract_count" in s.get("$addFields", {}) for s in items_stages)
     assert "$facet" in pipeline[-1]
