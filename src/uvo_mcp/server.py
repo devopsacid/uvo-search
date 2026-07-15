@@ -11,7 +11,7 @@ from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from uvo_mcp.config import Settings
+from uvo_mcp.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class AppContext:
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
-    settings = Settings()
+    settings = get_settings()
 
     mongo_db = None
     mongo_client = None

@@ -4,6 +4,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -15,9 +16,9 @@ from pydantic_settings import BaseSettings
 from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
 from uvo_core.adapters.redis.notice_stream import RedisNoticeStream
 from uvo_pipeline.catalog.nkod import discover_vestnik_datasets
-from uvo_pipeline.config import PipelineSettings
+from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.extractors.vestnik_nkod import fetch_bulletin
-from uvo_pipeline.redis_client import RedisSettings
+from uvo_pipeline.redis_client import get_redis_settings
 from uvo_pipeline.transformers.vestnik_nkod import transform_notice as transform_vestnik_notice
 from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
@@ -37,9 +38,15 @@ class VestnikSettings(BaseSettings):
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
 
+@lru_cache
+def get_settings() -> VestnikSettings:
+    """One VestnikSettings construction per process (cached factory idiom)."""
+    return VestnikSettings()
+
+
 async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
-    settings = VestnikSettings()
-    pipeline_settings = PipelineSettings()
+    settings = get_settings()
+    pipeline_settings = get_pipeline_settings()
     run_id = uuid.uuid4().hex
 
     # Reuse the runner's long-lived Motor client/checkpoint store when running
@@ -130,8 +137,8 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    settings = VestnikSettings()
-    redis_settings = RedisSettings()
+    settings = get_settings()
+    redis_settings = get_redis_settings()
     await run_extractor_loop(
         source="vestnik",
         interval_seconds=settings.vestnik_interval_seconds,

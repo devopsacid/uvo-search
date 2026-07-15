@@ -7,7 +7,7 @@ import redis.asyncio as aioredis
 from fastapi import Depends
 
 from uvo_api.auth import ApiKeyContext, require_api_key
-from uvo_api.config import ApiSettings
+from uvo_api.config import get_settings
 from uvo_api.v1_errors import ApiV1Error
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ _redis_client: aioredis.Redis | None = None
 async def get_redis() -> aioredis.Redis:
     global _redis_client
     if _redis_client is None:
-        settings = ApiSettings()
+        settings = get_settings()
         _redis_client = aioredis.from_url(
             settings.redis_url,
             password=settings.redis_password or None,

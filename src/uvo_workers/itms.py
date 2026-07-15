@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import uuid
+from functools import lru_cache
 from typing import Literal
 
 import httpx
@@ -13,9 +14,9 @@ from pydantic_settings import BaseSettings
 from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
 from uvo_core.adapters.redis.notice_stream import RedisNoticeStream
 from uvo_pipeline.cache import MemoryCache, RedisCache
-from uvo_pipeline.config import PipelineSettings
+from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.extractors.itms import fetch_procurements as fetch_itms_procurements
-from uvo_pipeline.redis_client import RedisSettings
+from uvo_pipeline.redis_client import get_redis_settings
 from uvo_pipeline.transformers.itms import transform_procurement as transform_itms
 from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
@@ -36,9 +37,15 @@ class ItmsSettings(BaseSettings):
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
 
+@lru_cache
+def get_settings() -> ItmsSettings:
+    """One ItmsSettings construction per process (cached factory idiom)."""
+    return ItmsSettings()
+
+
 async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
-    settings = ItmsSettings()
-    pipeline_settings = PipelineSettings()
+    settings = get_settings()
+    pipeline_settings = get_pipeline_settings()
     run_id = uuid.uuid4().hex
 
     # Reuse the runner's long-lived Motor client/checkpoint store when running
@@ -115,8 +122,8 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    settings = ItmsSettings()
-    redis_settings = RedisSettings()
+    settings = get_settings()
+    redis_settings = get_redis_settings()
     await run_extractor_loop(
         source="itms",
         interval_seconds=settings.itms_interval_seconds,

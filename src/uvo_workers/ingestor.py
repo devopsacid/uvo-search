@@ -4,18 +4,19 @@ import asyncio
 import logging
 import signal
 import uuid
+from functools import lru_cache
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from neo4j import AsyncGraphDatabase
 from pydantic_settings import BaseSettings
 
 from uvo_core.domain.models import CanonicalNotice
-from uvo_pipeline.config import PipelineSettings
+from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.loaders.mongo import upsert_batch
 from uvo_pipeline.loaders.neo4j import merge_notice_batch
 from uvo_pipeline.pubsub import publish
-from uvo_pipeline.redis_client import RedisSettings, close_redis, get_redis
+from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
 from uvo_pipeline.streams import ack, decode_entry, ensure_consumer_group, read_group
 from uvo_pipeline.utils.date_validation import validate_notice_dates
 from uvo_workers.health import serve_health
@@ -31,6 +32,12 @@ class IngestorSettings(BaseSettings):
     health_port: int = 8095
 
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
+
+
+@lru_cache
+def get_settings() -> IngestorSettings:
+    """One IngestorSettings construction per process (cached factory idiom)."""
+    return IngestorSettings()
 
 
 async def process_batch_logs(
@@ -70,9 +77,9 @@ async def process_batch_logs(
 
 async def run_ingestor() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    settings = IngestorSettings()
-    pipeline_settings = PipelineSettings()
-    redis_settings = RedisSettings()
+    settings = get_settings()
+    pipeline_settings = get_pipeline_settings()
+    redis_settings = get_redis_settings()
     instance_id = uuid.uuid4().hex
 
     mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)

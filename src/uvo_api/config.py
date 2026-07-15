@@ -1,5 +1,7 @@
 """Analytics API configuration via environment variables."""
 
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings
 
 
@@ -22,3 +24,9 @@ class ApiSettings(BaseSettings):
     redis_password: str = ""
 
     model_config = {"env_file": ".env", "env_prefix": "API_", "secrets_dir": "/run/secrets", "extra": "ignore"}
+
+
+@lru_cache
+def get_settings() -> ApiSettings:
+    """One ApiSettings construction per process (cached factory idiom)."""
+    return ApiSettings()

@@ -340,3 +340,74 @@ async def upsert_batch(
         inserted, updated, skipped, errors,
     )
     return {"inserted": inserted, "updated": updated, "skipped": skipped, "errors": errors}
+
+
+def _entity_stats_pipeline(kind: str) -> list[dict]:
+    """Per-ICO (contract_count, total_value) grouped from ``notices``.
+
+    Mirrors the old per-row ``$lookup`` in ``adapters/mongo/subjects.py``: counts
+    at the *notice* level (each matching notice once, even if a supplier appears
+    in several awards of that notice) and sums ``final_value`` once per notice —
+    hence ``$setUnion`` to dedupe the supplier ICOs within a notice rather than
+    ``$unwind``ing the awards array.
+    """
+    value = {"$sum": {"$ifNull": ["$final_value", 0]}}
+    if kind == "procurers":
+        return [
+            {"$match": {"procurer.ico": {"$nin": [None, ""]}}},
+            {"$group": {"_id": "$procurer.ico", "contract_count": {"$sum": 1}, "total_value": value}},
+        ]
+    return [
+        {"$match": {"awards.supplier.ico": {"$nin": [None, ""]}}},
+        {"$project": {"final_value": 1, "_icos": {"$setUnion": ["$awards.supplier.ico", []]}}},
+        {"$unwind": "$_icos"},
+        {"$match": {"_icos": {"$nin": [None, ""]}}},
+        {"$group": {"_id": "$_icos", "contract_count": {"$sum": 1}, "total_value": value}},
+    ]
+
+
+async def recompute_entity_stats(
+    db: AsyncIOMotorDatabase,
+    *,
+    batch_size: int = 1000,
+    dry_run: bool = False,
+) -> dict[str, int]:
+    """Recompute denormalized ``contract_count``/``total_value`` on entities.
+
+    Full-corpus aggregation over ``notices`` → ``$set`` onto matching
+    ``procurers``/``suppliers`` docs (keyed by ICO). Only ICO-bearing entities
+    are maintained (the entity search's stats path only ever resolved ICOs).
+
+    Idempotent by construction — it derives the counts from the current corpus
+    rather than incrementing, so it is safe to re-run and safe under the
+    loader's content-hash skip semantics. Returns per-collection matched/updated
+    counts; ``dry_run`` computes and reports without writing.
+    """
+    result: dict[str, int] = {}
+    for kind in ("procurers", "suppliers"):
+        matched = updated = 0
+        ops: list[UpdateOne] = []
+        cursor = db.notices.aggregate(_entity_stats_pipeline(kind), allowDiskUse=True)
+        async for row in cursor:
+            matched += 1
+            if dry_run:
+                continue
+            ops.append(UpdateOne(
+                {"ico": row["_id"]},
+                {"$set": {
+                    "contract_count": int(row.get("contract_count") or 0),
+                    "total_value": float(row.get("total_value") or 0.0),
+                }},
+            ))
+            if len(ops) >= batch_size:
+                res = await db[kind].bulk_write(ops, ordered=False)
+                updated += res.modified_count
+                ops.clear()
+        if ops:
+            res = await db[kind].bulk_write(ops, ordered=False)
+            updated += res.modified_count
+        result[f"{kind}_matched"] = matched
+        result[f"{kind}_updated"] = updated
+        logger.info("recompute_entity_stats: %s matched=%d updated=%d (dry_run=%s)",
+                    kind, matched, updated, dry_run)
+    return result

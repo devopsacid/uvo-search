@@ -50,77 +50,23 @@ async def entity_search(
         "$search": {"index": "default", **build_search_stage(name_query or "", ["name"])}
     }
 
-    # awards.supplier.ico traverses an array, so $expr returns an array of values;
-    # $eq against scalar is always false. Wrap with $isArray/$in for both code paths.
-    lookup_stages: list[dict] = [
-        {
-            "$lookup": {
-                "from": "notices",
-                "let": {"ico": "$ico"},
-                "pipeline": [
-                    {
-                        "$match": {
-                            "$expr": {
-                                "$and": [
-                                    {"$ne": ["$$ico", None]},
-                                    {"$ne": ["$$ico", ""]},
-                                    {
-                                        "$or": [
-                                            {"$eq": [f"${lookup_match_field}", "$$ico"]},
-                                            {
-                                                "$in": [
-                                                    "$$ico",
-                                                    {
-                                                        "$cond": [
-                                                            {"$isArray": f"${lookup_match_field}"},
-                                                            f"${lookup_match_field}",
-                                                            [],
-                                                        ]
-                                                    },
-                                                ]
-                                            },
-                                        ]
-                                    },
-                                ]
-                            }
-                        }
-                    },
-                    {"$project": {"_id": 0, "final_value": 1}},
-                ],
-                "as": "_notices",
-            }
-        },
-        {
-            "$addFields": {
-                "contract_count": {"$size": "$_notices"},
-                "total_value": {
-                    "$sum": {
-                        "$map": {
-                            "input": "$_notices",
-                            "as": "n",
-                            "in": {"$ifNull": ["$$n.final_value", 0]},
-                        }
-                    }
-                },
-            }
-        },
-        {"$project": {"_notices": 0}},
+    # Read the denormalized contract stats stored on the entity docs (maintained
+    # by loaders.mongo.recompute_entity_stats) instead of a per-row $lookup that
+    # scanned `notices` for every result row. $ifNull defaults entities not yet
+    # covered by a recompute pass to 0 so the hot path never touches `notices`.
+    add_stats = {
+        "$addFields": {
+            "contract_count": {"$ifNull": ["$contract_count", 0]},
+            "total_value": {"$ifNull": ["$total_value", 0]},
+        }
+    }
+    items_stages: list[dict] = [
+        add_stats,
+        {"$sort": _sort_spec(sort_by)},
+        {"$skip": offset},
+        {"$limit": limit},
     ]
-
-    items_stages: list[dict] = [{"$sort": _sort_spec(sort_by)}]
-    if sort_by == "name":
-        # Sorting by name doesn't depend on lookup output — paginate first,
-        # run the expensive lookup only on the page we return.
-        items_stages += [{"$skip": offset}, {"$limit": limit}, *lookup_stages]
-        pipeline = [search_stage, {"$facet": {"items": items_stages, "total": [{"$count": "count"}]}}]
-    else:
-        # Sorting by aggregate fields requires the lookup before $sort.
-        items_stages += [{"$skip": offset}, {"$limit": limit}]
-        pipeline = [
-            search_stage,
-            *lookup_stages,
-            {"$facet": {"items": items_stages, "total": [{"$count": "count"}]}},
-        ]
+    pipeline = [search_stage, {"$facet": {"items": items_stages, "total": [{"$count": "count"}]}}]
 
     cursor = db[collection].aggregate(pipeline)
     result_list = await cursor.to_list(1)
