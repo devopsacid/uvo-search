@@ -66,11 +66,52 @@ the object in `data` with an empty `pagination`.
 | GET | `/v1/companies` | Search companies (suppliers + procurers) by name (`q`, `cursor`, `limit`). |
 | GET | `/v1/companies/{ico}` | Core company record (name, roles). |
 | GET | `/v1/companies/{ico}/profile` | Procurement profile: contract count & total value, spend by year, top counterparties, CPV breakdown + concentration (HHI). |
+| GET | `/v1/companies/{ico}/risk` | Red-flag risk profile: 0-100 score, band, and per-flag detail with evidence. |
 | GET | `/v1/contracts` | Search contracts (`q`, `cpv`, `date_from`, `date_to`, `min_value`, `cursor`, `limit`). |
 | GET | `/v1/contracts/{id}` | Contract/notice detail. |
 
 `limit` ranges 1–100 (default 20). `404` responses use `code: company_not_found`
 or `code: contract_not_found`.
+
+### Risk profile
+
+`GET /v1/companies/{ico}/risk` blends four independent red flags into an overall
+`risk_score` (0-100) and `risk_band` (`low` / `moderate` / `high`). Each flag
+reports whether it `triggered`, its own `severity` and `score`, a human-readable
+`summary`, and the `evidence` it was computed from:
+
+| Flag | Signal |
+| ---- | ------ |
+| `supplier_concentration` | Herfindahl-Hirschman index over the authority's per-supplier awarded value (single-source dependency). |
+| `repeat_pair_share` | Share of the company's total value concentrated on one counterparty. |
+| `market_deviation` | Average contract value vs. the CPV-market average (over/under-pricing outlier). |
+| `award_clustering` | Bursts of awards to the same counterparty in a short window (contract-splitting signal). |
+
+```json
+{
+  "data": {
+    "ico": "12345678",
+    "name": "Example s.r.o.",
+    "roles": ["procurer"],
+    "risk_score": 62.5,
+    "risk_band": "high",
+    "flags": [
+      {
+        "code": "supplier_concentration",
+        "triggered": true,
+        "severity": "high",
+        "score": 100.0,
+        "summary": "Supplier-spend concentration HHI 1.00 (high).",
+        "evidence": { "hhi": 1.0, "supplier_count": 1, "top_supplier": { "ico": "87654321", "name": "Sole Vendor", "value_share": 1.0 } }
+      }
+    ]
+  },
+  "pagination": { "next_cursor": null }
+}
+```
+
+Flag semantics follow zákon 343/2015 red-flag conventions; thresholds are
+conservative module constants documented in `uvo_core/domain/scoring.py`.
 
 ## Usage metering
 
@@ -89,6 +130,9 @@ curl -s -H "X-API-Key: $KEY" "$BASE/v1/companies?q=stavby&limit=5"
 
 # Company profile
 curl -s -H "X-API-Key: $KEY" "$BASE/v1/companies/12345678/profile"
+
+# Company risk profile
+curl -s -H "X-API-Key: $KEY" "$BASE/v1/companies/12345678/risk"
 
 # Contract search
 curl -s -H "X-API-Key: $KEY" \
