@@ -219,15 +219,15 @@ async def test_timeseries_ascending_dates(client, mock_db):
 @pytest.mark.asyncio
 async def test_timeseries_counts_ingested_today(client, mock_db):
     """Notices ingested today must show up in today's timeseries bucket."""
-    now = _now()
-    await _seed_notices(mock_db, "crz", 3, now - timedelta(hours=2))
+    ingested_at = _now() - timedelta(hours=2)
+    await _seed_notices(mock_db, "crz", 3, ingested_at)
 
     with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
     daily = resp.json()["timeseries"]["daily_ingestion"]
-    today_str = now.strftime("%Y-%m-%d")
+    today_str = ingested_at.strftime("%Y-%m-%d")
     today = next((e for e in daily if e["date"] == today_str), None)
     assert today is not None
     assert today["crz"] == 3
