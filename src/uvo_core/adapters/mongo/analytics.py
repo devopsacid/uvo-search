@@ -190,7 +190,13 @@ async def _firma_partners_agg(
     key_from=lambda db, limit=20: _make_key((limit,), {}),
 )
 async def _market_cpv_agg(db, limit: int = 20) -> list[dict]:
-    """Market-wide CPV distribution — cached 24 h."""
+    """Market-wide CPV distribution + per-CPV median contract value — cached 24 h.
+
+    ``median`` is the robust baseline the market_deviation flag compares against
+    (a few very large contracts can't drag a median the way they drag a mean). The
+    ``$median`` accumulator needs MongoDB 7.0+ (Atlas Local ships it); the scoring
+    layer falls back to ``total/count`` if a row lacks ``median``.
+    """
     pipeline = [
         {"$match": {"cpv_code": {"$nin": [None, ""]}}},
         {
@@ -198,6 +204,12 @@ async def _market_cpv_agg(db, limit: int = 20) -> list[dict]:
                 "_id": "$cpv_code",
                 "count": {"$sum": 1},
                 "total": {"$sum": {"$ifNull": ["$final_value", 0]}},
+                "median": {
+                    "$median": {
+                        "input": {"$ifNull": ["$final_value", 0]},
+                        "method": "approximate",
+                    }
+                },
             }
         },
         {"$sort": {"total": -1}},
@@ -288,6 +300,8 @@ def build_award_timeline_pipelines(ico: str) -> tuple[list[dict], list[dict]]:
                 "date": _DATE_EXPR,
                 "counterparty_ico": "$awards.supplier.ico",
                 "value": _VALUE_EXPR,
+                "cpv_code": "$cpv_code",
+                "procedure_type": "$procedure_type",
             }
         },
     ]
@@ -299,6 +313,8 @@ def build_award_timeline_pipelines(ico: str) -> tuple[list[dict], list[dict]]:
                 "date": _DATE_EXPR,
                 "counterparty_ico": "$procurer.ico",
                 "value": _VALUE_EXPR,
+                "cpv_code": "$cpv_code",
+                "procedure_type": "$procedure_type",
             }
         },
     ]

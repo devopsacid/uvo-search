@@ -11,8 +11,10 @@ from collections import defaultdict
 from dataclasses import asdict
 
 from uvo_core.domain.scoring import (
+    RISK_DISCLAIMER,
     RiskFlag,
     award_clustering,
+    is_framework_or_dns,
     market_deviation,
     repeat_pair_share,
     risk_summary,
@@ -27,18 +29,29 @@ _MARKET_CPV_FETCH = 200
 
 
 def _worst_award_cluster(timeline: list[dict]) -> RiskFlag:
-    """Group the award timeline by counterparty, keep the densest-burst flag."""
-    by_counterparty: dict[str, list[str]] = defaultdict(list)
+    """Group the award timeline by counterparty, keep the densest-burst flag.
+
+    Framework-agreement / DNS call-offs legitimately cluster in time (they are the
+    known false-positive source), so awards whose ``procedure_type`` marks one are
+    excluded before grouping. Each award carries its ``cpv_code`` and ``value`` so
+    the scoring can apply the shared-CPV-division and low-value-ceiling guards.
+    """
+    by_counterparty: dict[str, list[dict]] = defaultdict(list)
     for row in timeline:
         ico = row.get("counterparty_ico")
         date = row.get("date")
-        if ico and date:
-            by_counterparty[ico].append(date)
+        if not ico or not date:
+            continue
+        if is_framework_or_dns(row.get("procedure_type")):
+            continue
+        by_counterparty[ico].append(
+            {"date": date, "cpv_code": row.get("cpv_code"), "value": row.get("value")}
+        )
 
     worst = award_clustering([])
     worst_ico: str | None = None
-    for ico, dates in by_counterparty.items():
-        flag = award_clustering(dates)
+    for ico, awards in by_counterparty.items():
+        flag = award_clustering(awards)
         if flag.score > worst.score:
             worst, worst_ico = flag, ico
     if worst_ico is not None:
@@ -84,4 +97,5 @@ async def company_risk_profile(
         "risk_score": summary["risk_score"],
         "risk_band": summary["risk_band"],
         "flags": [asdict(f) for f in flags],
+        "disclaimer": RISK_DISCLAIMER,
     }
