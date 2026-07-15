@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 import redis.asyncio
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.locks import lock
@@ -130,7 +131,13 @@ async def run_extractor_loop(
             name=f"health-{source}",
         )
 
-    state: dict = {}
+    # Share this loop's already-long-lived `db` handle with the extract
+    # callable via state, instead of each worker opening its own per-cycle
+    # Motor client (plan §1.3.5). Keyed with a leading underscore so it reads
+    # as loop-owned plumbing, distinct from a worker's own state (e.g. ITMS's
+    # itms_min_id). Workers that call _extract directly (unit tests) get
+    # state.get("_checkpoint_store") is None and fall back to their own client.
+    state: dict = {"_checkpoint_store": MongoCheckpointStore(db)}
     lock_key = f"extractor:lock:{source}"
     lock_ttl = max(2 * interval_seconds, 10)
 

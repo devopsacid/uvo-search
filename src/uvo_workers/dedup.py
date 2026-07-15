@@ -104,8 +104,11 @@ async def run_dedup_worker() -> None:
     last_write_time: list[float] = [time.monotonic()]
 
     async def _run_dedup() -> None:
-        mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
-        db = mongo_client[pipeline_settings.mongodb_database]
+        # Reuse the worker's single long-lived Motor client (log_mongo_client)
+        # instead of opening a fresh one per dedup run (plan §1.3.5) — this
+        # runs on every debounced write and on every interval tick, so a
+        # per-call client was the highest-frequency connection churn here.
+        db = log_db
         try:
             logger.info("dedup: running cross-source dedup (window=%dd)", settings.dedup_window_days)
             match_groups = await run_cross_source_dedup(
@@ -138,8 +141,6 @@ async def run_dedup_worker() -> None:
                 )
             except Exception:
                 pass
-        finally:
-            mongo_client.close()
 
     async def _subscriber() -> None:
         async for _msg in subscribe(redis_client, "notices:written"):
