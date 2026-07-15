@@ -84,6 +84,29 @@ class CompanyProfileResponse(BaseModel):
     pagination: Pagination = Pagination()
 
 
+class RiskFlagModel(BaseModel):
+    code: str
+    triggered: bool
+    severity: str  # "low" | "moderate" | "high"
+    score: float  # 0-100 intensity of this individual flag
+    summary: str
+    evidence: dict
+
+
+class CompanyRisk(BaseModel):
+    ico: str
+    name: str
+    roles: list[str]
+    risk_score: float  # 0-100 weighted blend of the flags
+    risk_band: str  # "low" | "moderate" | "high"
+    flags: list[RiskFlagModel]
+
+
+class CompanyRiskResponse(BaseModel):
+    data: CompanyRisk
+    pagination: Pagination = Pagination()
+
+
 # --- Contracts ---------------------------------------------------------------
 
 

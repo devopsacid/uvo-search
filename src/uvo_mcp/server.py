@@ -89,6 +89,7 @@ mcp = FastMCP(
 import uvo_mcp.tools.autocomplete  # noqa: F401, E402
 import uvo_mcp.tools.graph  # noqa: F401, E402
 import uvo_mcp.tools.procurements  # noqa: F401, E402
+import uvo_mcp.tools.risk  # noqa: F401, E402
 import uvo_mcp.tools.subjects  # noqa: F401, E402
 import uvo_mcp.tools.vector_search  # noqa: F401, E402
 

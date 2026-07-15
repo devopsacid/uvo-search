@@ -271,6 +271,40 @@ def build_monthly_buckets_pipeline(year: int) -> list[dict]:
     ]
 
 
+def build_award_timeline_pipelines(ico: str) -> tuple[list[dict], list[dict]]:
+    """Per-award (date, counterparty_ico, value) rows for a company, both roles.
+
+    Procurer side: the company issued the award → the awarded supplier is the
+    counterparty. Supplier side: the company won the award → the procurer is the
+    counterparty. The scoring engine groups the union by counterparty to detect
+    short-window award bursts (contract-splitting signal).
+    """
+    as_procurer = [
+        {"$match": {"notice_type": "contract_award", "procurer.ico": ico}},
+        {"$unwind": "$awards"},
+        {
+            "$project": {
+                "_id": 0,
+                "date": _DATE_EXPR,
+                "counterparty_ico": "$awards.supplier.ico",
+                "value": _VALUE_EXPR,
+            }
+        },
+    ]
+    as_supplier = [
+        {"$match": {"notice_type": "contract_award", "awards.supplier.ico": ico}},
+        {
+            "$project": {
+                "_id": 0,
+                "date": _DATE_EXPR,
+                "counterparty_ico": "$procurer.ico",
+                "value": _VALUE_EXPR,
+            }
+        },
+    ]
+    return as_procurer, as_supplier
+
+
 def build_top_entities_pipeline(field: str, unwind: bool, n: int) -> list[dict]:
     """Top-N entities by awarded/spent value (top-suppliers / top-procurers)."""
     match = {field: {"$nin": [None, ""]}}
@@ -334,3 +368,9 @@ class MongoCompanyAnalytics:
     async def monthly_buckets(self, year: int) -> list[dict]:
         pipeline = build_monthly_buckets_pipeline(year)
         return await self._db["notices"].aggregate(pipeline).to_list(None)
+
+    async def award_timeline(self, ico: str) -> list[dict]:
+        as_procurer, as_supplier = build_award_timeline_pipelines(ico)
+        proc_rows = await self._db["notices"].aggregate(as_procurer).to_list(None)
+        supp_rows = await self._db["notices"].aggregate(as_supplier).to_list(None)
+        return proc_rows + supp_rows

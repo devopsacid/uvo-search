@@ -95,6 +95,8 @@ class CompanyAnalytics(Protocol):
 
     async def monthly_buckets(self, year: int) -> list[dict]: ...
 
+    async def award_timeline(self, ico: str) -> list[dict]: ...
+
 
 class GraphStore(Protocol):
     """Neo4j-backed relationship queries."""

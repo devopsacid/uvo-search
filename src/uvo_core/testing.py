@@ -241,6 +241,22 @@ class InMemoryCompanyAnalytics:
 
         return await self._top_entities(icos, None, n)
 
+    async def award_timeline(self, ico: str) -> list[dict]:
+        rows: list[dict] = []
+        for notice in self._awarded():
+            date = _date(notice)
+            value = float(notice.get("final_value") or 0)
+            if (notice.get("procurer") or {}).get("ico") == ico:
+                for award in notice.get("awards") or []:
+                    supplier = award.get("supplier") or {}
+                    rows.append(
+                        {"date": date, "counterparty_ico": supplier.get("ico"), "value": value}
+                    )
+            if ico in _supplier_icos(notice):
+                procurer = notice.get("procurer") or {}
+                rows.append({"date": date, "counterparty_ico": procurer.get("ico"), "value": value})
+        return rows
+
     async def partners(self, ico: str, role: str, sort_by: str, limit: int, offset: int) -> dict:
         sort_field = "contract_count" if sort_by == "count" else "total_value"
         rows: dict[tuple[str, str], dict] = {}
