@@ -11,7 +11,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
-from uvo_api.config import ApiSettings
+from uvo_api.config import get_settings
 
 _client: AsyncIOMotorClient | None = None
 _neo4j_driver: Any | None = None
@@ -22,7 +22,7 @@ _embedder_loaded = False
 def get_db() -> AsyncIOMotorDatabase:
     """Return the shared Motor database handle, creating the client on first call."""
     global _client
-    settings = ApiSettings()
+    settings = get_settings()
     if _client is None:
         _client = AsyncIOMotorClient(settings.mongodb_uri)
     return _client[settings.mongodb_database]
@@ -31,7 +31,7 @@ def get_db() -> AsyncIOMotorDatabase:
 def get_neo4j_driver() -> Any | None:
     """Return the shared Neo4j async driver, or None when Neo4j is not configured."""
     global _neo4j_driver
-    settings = ApiSettings()
+    settings = get_settings()
     if not settings.neo4j_uri or not settings.neo4j_password:
         return None
     if _neo4j_driver is None:

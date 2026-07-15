@@ -1,5 +1,7 @@
 """MCP server configuration via environment variables."""
 
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings
 
 
@@ -21,3 +23,9 @@ class Settings(BaseSettings):
     neo4j_password: str | None = None
 
     model_config = {"env_file": ".env", "env_prefix": "", "secrets_dir": "/run/secrets", "extra": "ignore"}
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """One Settings construction per process (cached factory idiom)."""
+    return Settings()

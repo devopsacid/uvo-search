@@ -11,7 +11,7 @@ import redis.asyncio
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
-from uvo_pipeline.config import PipelineSettings
+from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.locks import lock
 from uvo_pipeline.redis_client import RedisSettings, close_redis, get_redis
@@ -61,7 +61,7 @@ async def run_extractor_loop(
     instance_id: str | None = None,
 ) -> None:
     instance_id = instance_id or uuid.uuid4().hex
-    pipeline_settings = PipelineSettings()
+    pipeline_settings = get_pipeline_settings()
     mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
     db = mongo_client[pipeline_settings.mongodb_database]
     started_at = datetime.now(UTC).isoformat()

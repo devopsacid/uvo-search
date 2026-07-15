@@ -2,11 +2,11 @@
 
 import uvicorn
 
-from uvo_api.config import ApiSettings
+from uvo_api.config import get_settings
 
 
 def main() -> None:
-    settings = ApiSettings()
+    settings = get_settings()
     uvicorn.run(
         "uvo_api.app:create_app",
         factory=True,

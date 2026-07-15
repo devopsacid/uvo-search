@@ -1,6 +1,7 @@
 """Async Redis client factory."""
 
 import os
+from functools import lru_cache
 
 import redis.asyncio as aioredis
 from pydantic_settings import BaseSettings
@@ -9,6 +10,12 @@ from pydantic_settings import BaseSettings
 class RedisSettings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     redis_password: str = ""
+
+
+@lru_cache
+def get_redis_settings() -> RedisSettings:
+    """One RedisSettings construction per process (cached factory idiom)."""
+    return RedisSettings()
 
 
 async def get_redis(

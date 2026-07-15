@@ -5,15 +5,16 @@ import logging
 import signal
 import time
 import uuid
+from functools import lru_cache
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic_settings import BaseSettings
 
-from uvo_pipeline.config import PipelineSettings
+from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.dedup import run_cross_source_dedup
 from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.pubsub import subscribe
-from uvo_pipeline.redis_client import RedisSettings, close_redis, get_redis
+from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
 from uvo_workers.health import serve_health
 
 logger = logging.getLogger(__name__)
@@ -28,11 +29,17 @@ class DedupWorkerSettings(BaseSettings):
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
 
+@lru_cache
+def get_settings() -> DedupWorkerSettings:
+    """One DedupWorkerSettings construction per process (cached factory idiom)."""
+    return DedupWorkerSettings()
+
+
 async def run_dedup_worker() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    settings = DedupWorkerSettings()
-    pipeline_settings = PipelineSettings()
-    redis_settings = RedisSettings()
+    settings = get_settings()
+    pipeline_settings = get_pipeline_settings()
+    redis_settings = get_redis_settings()
     instance_id = uuid.uuid4().hex
 
     log_mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)

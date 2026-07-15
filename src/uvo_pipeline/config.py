@@ -1,5 +1,6 @@
 """Pipeline configuration settings."""
 
+from functools import lru_cache
 from typing import Literal
 
 from pydantic_settings import BaseSettings
@@ -36,3 +37,13 @@ class PipelineSettings(BaseSettings):
     request_timeout: float = 60.0
 
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
+
+
+@lru_cache
+def get_pipeline_settings() -> PipelineSettings:
+    """One PipelineSettings construction per process (cached factory idiom).
+
+    Workers call ``_extract`` every cycle; without this each cycle re-read env
+    and re-parsed settings.
+    """
+    return PipelineSettings()
