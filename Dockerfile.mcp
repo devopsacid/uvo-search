@@ -15,6 +15,7 @@ RUN uv sync --frozen --no-dev
 RUN .venv/bin/python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
 
 # Copy application source
+COPY src/uvo_core/ src/uvo_core/
 COPY src/uvo_mcp/ src/uvo_mcp/
 
 EXPOSE 8000

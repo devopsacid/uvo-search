@@ -8,6 +8,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
+COPY src/uvo_core/ src/uvo_core/
 COPY src/uvo_pipeline/ src/uvo_pipeline/
 COPY src/uvo_workers/ src/uvo_workers/
 
