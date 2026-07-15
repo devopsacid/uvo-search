@@ -12,11 +12,15 @@ ACTIVE_KEY = {"_id": "key_pro", "plan": "pro", "owner_email": "a@b.sk", "active"
 AUTH_HEADERS = {"X-API-Key": "raw"}
 
 SUPPLIER_RESULT = {
-    "items": [{"ico": "87654321", "name": "Tech Corp", "contract_count": 10, "total_value": 5_000_000.0}],
+    "items": [
+        {"ico": "87654321", "name": "Tech Corp", "contract_count": 10, "total_value": 5_000_000.0}
+    ],
     "total": 1,
 }
 PROCURER_RESULT = {
-    "items": [{"ico": "12345678", "name": "Ministry", "contract_count": 20, "total_value": 9_000_000.0}],
+    "items": [
+        {"ico": "12345678", "name": "Ministry", "contract_count": 20, "total_value": 9_000_000.0}
+    ],
     "total": 1,
 }
 EMPTY = {"items": [], "total": 0}
@@ -125,6 +129,71 @@ def test_company_profile(client, monkeypatch):
     # HHI over shares 0.8/0.2 => 0.64 + 0.04 = 0.68
     assert data["cpv_concentration"] == pytest.approx(0.68, abs=0.01)
     assert data["cpv_breakdown"][0]["code"] == "72000000"
+
+
+def test_company_risk(client, monkeypatch):
+    monkeypatch.setattr(
+        "uvo_api.routers.v1.companies.run_query",
+        AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY]),
+    )
+    analytics = MagicMock()
+    analytics.core_stats = AsyncMock(
+        return_value={"cpv": [{"_id": "72000000", "count": 8, "total": 4_000_000.0}]}
+    )
+    analytics.partners = AsyncMock(
+        return_value={
+            "total": 1,
+            "items": [
+                {
+                    "ico": "12345678",
+                    "name": "Ministry",
+                    "role": "procurer",
+                    "contract_count": 10,
+                    "total_value": 5_000_000.0,
+                }
+            ],
+        }
+    )
+    analytics.market_cpv = AsyncMock(
+        return_value=[{"_id": "72000000", "count": 100, "total": 10_000_000.0}]
+    )
+    analytics.award_timeline = AsyncMock(
+        return_value=[
+            {"date": f"2024-01-{d:02d}", "counterparty_ico": "12345678", "value": 1.0}
+            for d in (1, 3, 6, 9)
+        ]
+    )
+    monkeypatch.setattr("uvo_api.routers.v1.companies.get_analytics", lambda: analytics)
+    monkeypatch.setattr("uvo_api.routers.v1.companies.get_graph_store", lambda: None)
+
+    resp = client.get("/v1/companies/87654321/risk", headers=AUTH_HEADERS)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["ico"] == "87654321"
+    assert data["roles"] == ["supplier"]
+    assert 0 <= data["risk_score"] <= 100
+    assert data["risk_band"] in {"low", "moderate", "high"}
+    codes = {f["code"] for f in data["flags"]}
+    assert codes == {
+        "supplier_concentration",
+        "repeat_pair_share",
+        "market_deviation",
+        "award_clustering",
+    }
+    by_code = {f["code"]: f for f in data["flags"]}
+    # Single counterparty at 100% value + 4 awards in 9 days → both fire.
+    assert by_code["repeat_pair_share"]["triggered"] is True
+    assert by_code["award_clustering"]["triggered"] is True
+
+
+def test_company_risk_not_found(client, monkeypatch):
+    monkeypatch.setattr(
+        "uvo_api.routers.v1.companies.run_query",
+        AsyncMock(side_effect=[EMPTY, EMPTY]),
+    )
+    resp = client.get("/v1/companies/00000000/risk", headers=AUTH_HEADERS)
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "company_not_found"
 
 
 def _contracts_repo(*, search=None, detail=None):
