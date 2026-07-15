@@ -82,10 +82,14 @@ reports whether it `triggered`, its own `severity` and `score`, a human-readable
 
 | Flag | Signal |
 | ---- | ------ |
-| `supplier_concentration` | Herfindahl-Hirschman index over the authority's per-supplier awarded value (single-source dependency). |
-| `repeat_pair_share` | Share of the company's total value concentrated on one counterparty. |
-| `market_deviation` | Average contract value vs. the CPV-market average (over/under-pricing outlier). |
-| `award_clustering` | Bursts of awards to the same counterparty in a short window (contract-splitting signal). |
+| `supplier_concentration` | Herfindahl-Hirschman index over the authority's per-supplier awarded value (single-source dependency; only triggers with ≥5 suppliers and material value). |
+| `repeat_pair_share` | Share of the company's total value concentrated on one counterparty (only triggers with ≥3 counterparties and material value). |
+| `market_deviation` | Average contract value vs. the CPV-market **median** (atypical value). |
+| `award_clustering` | Bursts of awards to the same counterparty in a short window, escalated only when they share a CPV division and approach a §5 low-value ceiling. |
+
+Each flag also carries a `severity` of `informational`, `low`, `moderate`, or
+`high`. `informational` means the measurement is reported but the materiality
+guard was not met, so it does not contribute to the blended `risk_score`.
 
 ```json
 {
@@ -101,17 +105,32 @@ reports whether it `triggered`, its own `severity` and `score`, a human-readable
         "triggered": true,
         "severity": "high",
         "score": 100.0,
-        "summary": "Supplier-spend concentration HHI 1.00 (high).",
-        "evidence": { "hhi": 1.0, "supplier_count": 1, "top_supplier": { "ico": "87654321", "name": "Sole Vendor", "value_share": 1.0 } }
+        "summary": "Awarded value spread across 7 suppliers, top holds 62% (HHI 0.41) (warrants review).",
+        "evidence": { "hhi": 0.41, "supplier_count": 7, "total_value": 5000000.0, "top_supplier": { "ico": "87654321", "name": "Top Vendor", "value_share": 0.62 } }
       }
-    ]
+    ],
+    "disclaimer": "Upozornenie: Rizikové signály v tomto profile sú automaticky vypočítané štatistické indikátory ..."
   },
   "pagination": { "next_cursor": null }
 }
 ```
 
-Flag semantics follow zákon 343/2015 red-flag conventions; thresholds are
-conservative module constants documented in `uvo_core/domain/scoring.py`.
+Flag semantics **sú inšpirované** (are inspired by) zákon 343/2015 red-flag
+conventions; thresholds are conservative module constants documented in
+`uvo_core/domain/scoring.py`.
+
+> **Upozornenie:** Rizikové signály v tomto profile sú automaticky vypočítané
+> štatistické indikátory z verejne dostupných údajov o verejnom obstarávaní
+> (Vestník VO, CRZ, TED, ITMS). Nie sú tvrdením ani obvinením z porušenia zákona
+> č. 343/2015 Z. z., z protiprávneho konania, korupcie ani nekalej súťaže. Mnohé
+> signály majú legitímne vysvetlenie — najmä rámcové dohody, dynamické nákupné
+> systémy, špecializované trhy s malým počtom dodávateľov či veľké investičné
+> projekty. Signály slúžia výhradne ako podnet na ďalšie overenie a nemožno ich
+> použiť ako jediný podklad pre rozhodnutie o konkrétnej osobe. Dotknutá osoba
+> môže proti spracúvaniu svojich osobných údajov namietať.
+
+The same text ships verbatim in the `disclaimer` field of every risk response
+(and the MCP `company_risk_profile_tool` output).
 
 ## Usage metering
 

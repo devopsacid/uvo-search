@@ -140,9 +140,10 @@ def test_company_risk(client, monkeypatch):
     analytics.core_stats = AsyncMock(
         return_value={"cpv": [{"_id": "72000000", "count": 8, "total": 4_000_000.0}]}
     )
+    # 3 counterparties, dominant one → clears the repeat-pair materiality guard.
     analytics.partners = AsyncMock(
         return_value={
-            "total": 1,
+            "total": 3,
             "items": [
                 {
                     "ico": "12345678",
@@ -150,16 +151,37 @@ def test_company_risk(client, monkeypatch):
                     "role": "procurer",
                     "contract_count": 10,
                     "total_value": 5_000_000.0,
-                }
+                },
+                {
+                    "ico": "22222222",
+                    "name": "Dept B",
+                    "role": "procurer",
+                    "contract_count": 2,
+                    "total_value": 200_000.0,
+                },
+                {
+                    "ico": "33333333",
+                    "name": "Dept C",
+                    "role": "procurer",
+                    "contract_count": 2,
+                    "total_value": 200_000.0,
+                },
             ],
         }
     )
     analytics.market_cpv = AsyncMock(
-        return_value=[{"_id": "72000000", "count": 100, "total": 10_000_000.0}]
+        return_value=[{"_id": "72000000", "count": 100, "total": 10_000_000.0, "median": 100_000.0}]
     )
+    # 4 same-CPV awards in a 9-day window → clears the shared-division guard.
     analytics.award_timeline = AsyncMock(
         return_value=[
-            {"date": f"2024-01-{d:02d}", "counterparty_ico": "12345678", "value": 1.0}
+            {
+                "date": f"2024-01-{d:02d}",
+                "counterparty_ico": "12345678",
+                "value": 1.0,
+                "cpv_code": "72000000",
+                "procedure_type": None,
+            }
             for d in (1, 3, 6, 9)
         ]
     )
@@ -173,6 +195,7 @@ def test_company_risk(client, monkeypatch):
     assert data["roles"] == ["supplier"]
     assert 0 <= data["risk_score"] <= 100
     assert data["risk_band"] in {"low", "moderate", "high"}
+    assert data["disclaimer"].startswith("Upozornenie")
     codes = {f["code"] for f in data["flags"]}
     assert codes == {
         "supplier_concentration",
@@ -181,7 +204,7 @@ def test_company_risk(client, monkeypatch):
         "award_clustering",
     }
     by_code = {f["code"]: f for f in data["flags"]}
-    # Single counterparty at 100% value + 4 awards in 9 days → both fire.
+    # Dominant counterparty across 3 partners + 4 same-CPV awards in 9 days → both fire.
     assert by_code["repeat_pair_share"]["triggered"] is True
     assert by_code["award_clustering"]["triggered"] is True
 

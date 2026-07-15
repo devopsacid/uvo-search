@@ -10,6 +10,12 @@ without MongoDB. They mirror the adapters' value/date precedence:
 from __future__ import annotations
 
 from collections import defaultdict
+from statistics import median as _statistics_median
+
+
+def _median(values: list[float]) -> float:
+    """Median of a value list (0.0 when empty), mirroring the adapter's $median."""
+    return float(_statistics_median(values)) if values else 0.0
 
 
 def _value(notice: dict) -> float:
@@ -192,16 +198,17 @@ class InMemoryCompanyAnalytics:
         return [{"_id": m, **v} for m, v in sorted(buckets.items())]
 
     async def market_cpv(self, limit: int = 20) -> list[dict]:
-        buckets: dict[str, dict] = defaultdict(lambda: {"count": 0, "total": 0.0})
+        values: dict[str, list[float]] = defaultdict(list)
         for n in self._awarded():
             code = n.get("cpv_code")
             if not code:
                 continue
-            b = buckets[code]
-            b["count"] += 1
-            b["total"] += float(n.get("final_value") or 0)
+            values[code].append(float(n.get("final_value") or 0))
         rows = sorted(
-            ({"_id": k, **v} for k, v in buckets.items()),
+            (
+                {"_id": k, "count": len(v), "total": sum(v), "median": _median(v)}
+                for k, v in values.items()
+            ),
             key=lambda r: r["total"],
             reverse=True,
         )
@@ -246,15 +253,31 @@ class InMemoryCompanyAnalytics:
         for notice in self._awarded():
             date = _date(notice)
             value = float(notice.get("final_value") or 0)
+            cpv = notice.get("cpv_code")
+            procedure_type = notice.get("procedure_type")
             if (notice.get("procurer") or {}).get("ico") == ico:
                 for award in notice.get("awards") or []:
                     supplier = award.get("supplier") or {}
                     rows.append(
-                        {"date": date, "counterparty_ico": supplier.get("ico"), "value": value}
+                        {
+                            "date": date,
+                            "counterparty_ico": supplier.get("ico"),
+                            "value": value,
+                            "cpv_code": cpv,
+                            "procedure_type": procedure_type,
+                        }
                     )
             if ico in _supplier_icos(notice):
                 procurer = notice.get("procurer") or {}
-                rows.append({"date": date, "counterparty_ico": procurer.get("ico"), "value": value})
+                rows.append(
+                    {
+                        "date": date,
+                        "counterparty_ico": procurer.get("ico"),
+                        "value": value,
+                        "cpv_code": cpv,
+                        "procedure_type": procedure_type,
+                    }
+                )
         return rows
 
     async def partners(self, ico: str, role: str, sort_by: str, limit: int, offset: int) -> dict:

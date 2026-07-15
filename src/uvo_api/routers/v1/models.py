@@ -100,6 +100,7 @@ class CompanyRisk(BaseModel):
     risk_score: float  # 0-100 weighted blend of the flags
     risk_band: str  # "low" | "moderate" | "high"
     flags: list[RiskFlagModel]
+    disclaimer: str  # statistical, non-accusatory nature of the signals (Slovak)
 
 
 class CompanyRiskResponse(BaseModel):
