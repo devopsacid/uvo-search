@@ -159,6 +159,18 @@ Split dedup passes 1–2 into pure builders + shared `persist_match_groups` (cop
 Settings singletons; documented cache policy (TTLs per query class); optional invalidation hook on `notices:written`; denormalized `contract_count/total_value` on entities (kills the per-row `$lookup`).
 **Acceptance:** one Settings construction per process; entity search p95 down after denormalization.
 
+**Implemented:**
+- Settings are constructed once per process via `@lru_cache` factory functions
+  (`get_settings` / `get_pipeline_settings` / `get_redis_settings` and the
+  per-worker equivalents), replacing the per-call/per-cycle `Settings()` sites.
+- Cache policy is documented in [`caching.md`](caching.md). The API subscribes to
+  `notices:written` (`uvo_api/cache_invalidation.py`, via the FastAPI lifespan)
+  and clears the analytics caches, debounced to ≤ once/60 s; degrades gracefully
+  when Redis is down.
+- `contract_count`/`total_value` are denormalized onto `procurers`/`suppliers`
+  (recompute-only, see `scripts/backfill_entity_stats.py`); `entity_search` reads
+  the stored fields instead of the per-row `$lookup` over `notices`.
+
 **Parallelizable:** Phase 4 can start against port interfaces while phase 3 adapters finish; phase 5 independent of 4; phase 6 items are fillers.
 
 ---

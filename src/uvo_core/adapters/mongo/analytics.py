@@ -23,6 +23,20 @@ _DATE_EXPR = {"$ifNull": ["$award_date", "$publication_date"]}
 _YEAR_STR = {"$substrCP": [{"$ifNull": [_DATE_EXPR, "0000"]}, 0, 4]}
 
 
+def clear_analytics_caches() -> None:
+    """Drop all in-process analytics caches.
+
+    Called by the API's ``notices:written`` invalidation subscriber so freshly
+    ingested data surfaces without waiting for each query's TTL to lapse. The
+    three caches below are the only long-lived analytics caches (up to 24 h for
+    ``_market_cpv_agg``); the search/detail caches have short TTLs and are left
+    to expire naturally.
+    """
+    _firma_core_agg.cache_clear()
+    _firma_partners_agg.cache_clear()
+    _market_cpv_agg.cache_clear()
+
+
 def _dashboard_match(ico: str | None, entity_type: str | None) -> dict:
     """Mongo match for the dashboard corpus, mirroring the old sample's filter.
 
