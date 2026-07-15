@@ -10,12 +10,12 @@ import redis.asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic_settings import BaseSettings
 
+from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
+from uvo_core.adapters.redis.notice_stream import RedisNoticeStream
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.extractors.ted import search_sk_notices
 from uvo_pipeline.redis_client import RedisSettings
-from uvo_pipeline.streams import xadd_notice
 from uvo_pipeline.transformers.ted import transform_ted_notice
-from uvo_pipeline.utils.checkpoint import get_checkpoint, save_checkpoint
 from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_workers.runner import run_extractor_loop
 
@@ -37,11 +37,19 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
     pipeline_settings = PipelineSettings()
     run_id = uuid.uuid4().hex
 
-    mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
-    db = mongo_client[pipeline_settings.mongodb_database]
+    # Reuse the runner's long-lived Motor client/checkpoint store when running
+    # inside run_extractor_loop; only open a fresh (short-lived) client when
+    # _extract is invoked directly, e.g. in unit tests (plan §1.3.5).
+    checkpoint_store = state.get("_checkpoint_store")
+    mongo_client: AsyncIOMotorClient | None = None
+    if checkpoint_store is None:
+        mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
+        checkpoint_store = MongoCheckpointStore(mongo_client[pipeline_settings.mongodb_database])
+
+    notice_stream = RedisNoticeStream(redis_client, "ted", maxlen=settings.stream_maxlen_approx)
 
     try:
-        checkpoint = await get_checkpoint(db, "ted")
+        checkpoint = await checkpoint_store.get("ted")
         ted_checkpoint = checkpoint.get("ted_since")
         if ted_checkpoint:
             try:
@@ -71,33 +79,20 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
 
                 if len(buffer) >= FLUSH_BATCH:
                     for n in buffer:
-                        await xadd_notice(
-                            redis_client,
-                            "ted",
-                            n.model_dump(mode="json"),
-                            content_hash=n.content_hash,
-                            run_id=run_id,
-                            maxlen=settings.stream_maxlen_approx,
-                        )
+                        await notice_stream.xadd_notice(n.model_dump(mode="json"))
                         count += 1
                     buffer.clear()
 
         for n in buffer:
-            await xadd_notice(
-                redis_client,
-                "ted",
-                n.model_dump(mode="json"),
-                content_hash=n.content_hash,
-                run_id=run_id,
-                maxlen=settings.stream_maxlen_approx,
-            )
+            await notice_stream.xadd_notice(n.model_dump(mode="json"))
             count += 1
         buffer.clear()
 
-        await save_checkpoint(db, "ted", {"ted_since": datetime.utcnow().isoformat()})
+        await checkpoint_store.save("ted", {"ted_since": datetime.utcnow().isoformat()})
 
     finally:
-        mongo_client.close()
+        if mongo_client is not None:
+            mongo_client.close()
 
     return count
 

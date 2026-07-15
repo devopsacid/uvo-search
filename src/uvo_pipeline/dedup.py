@@ -162,47 +162,12 @@ async def build_ico_value_window_groups(
     return groups, skipped_high_freq
 
 
-async def persist_match_groups(db: AsyncIOMotorDatabase, groups: list[dict]) -> int:
-    """Write pre-built match groups to notices.canonical_id + cross_source_matches.
+async def build_ico_cpv_groups(db: AsyncIOMotorDatabase, base_filter: dict) -> list[dict]:
+    """Build pass-1 match groups: shared procurer ICO + CPV code.
 
-    Shared by run_cross_source_dedup (pass 3) and ad-hoc validation scripts so
-    the write path stays identical between a dry-run preview and a real run.
+    Read-only — does not write to Mongo. Mirrors build_ico_value_window_groups's
+    contract: returns groups ready to be persisted via persist_match_groups().
     """
-    for group in groups:
-        await db.notices.update_many(
-            {"_id": {"$in": [ObjectId(nid) for nid in group["notice_ids"]]}},
-            {"$set": {"canonical_id": group["canonical_id"]}},
-        )
-        await db.cross_source_matches.update_one(
-            {"canonical_id": group["canonical_id"]},
-            {"$set": group},
-            upsert=True,
-        )
-    return len(groups)
-
-
-async def run_cross_source_dedup(
-    db: AsyncIOMotorDatabase,
-    *,
-    run_id: str | None = None,
-    window_days: int = 30,
-) -> int:
-    """Find cross-source duplicate notices and assign them a shared canonical_id.
-
-    Filter predicate:
-      - canonical_id is null (or absent)
-      - ingested_at >= now - window_days
-      - if run_id is given, ALSO restrict to pipeline_run_id == run_id (legacy mode)
-    """
-    if run_id is not None:
-        base_filter: dict = {"pipeline_run_id": run_id}
-    else:
-        cutoff = (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=window_days)).isoformat()
-        base_filter = {"ingested_at": {"$gte": cutoff}}
-
-    match_count = 0
-
-    # --- Pass 1: procurer.ico + cpv_code ---
     pass1_match = {
         **base_filter,
         "procurer.ico": {"$ne": None, "$exists": True},
@@ -219,33 +184,34 @@ async def run_cross_source_dedup(
         {"$match": {"sources.1": {"$exists": True}}},
     ]
 
-    groups = await db.notices.aggregate(pipeline_pass1).to_list(length=None)
+    mongo_groups = await db.notices.aggregate(pipeline_pass1).to_list(length=None)
 
-    for group in groups:
+    groups: list[dict] = []
+    for group in mongo_groups:
         notices_in_group = group["notices"]
         notices_in_group.sort(key=lambda x: x.get("pub_date") or "")
         canonical_id = str(notices_in_group[0]["id"])
         notice_ids = [str(n["id"]) for n in notices_in_group]
 
-        await db.notices.update_many(
-            {"_id": {"$in": [ObjectId(nid) for nid in notice_ids]}},
-            {"$set": {"canonical_id": canonical_id}},
-        )
-        await db.cross_source_matches.update_one(
-            {"canonical_id": canonical_id},
-            {"$set": {
-                "canonical_id": canonical_id,
-                "notice_ids": notice_ids,
-                "sources": group["sources"],
-                "procurer_ico": group["_id"]["procurer_ico"],
-                "cpv_code": group["_id"]["cpv_code"],
-                "match_type": "ico_cpv",
-            }},
-            upsert=True,
-        )
-        match_count += 1
+        groups.append({
+            "canonical_id": canonical_id,
+            "notice_ids": notice_ids,
+            "sources": group["sources"],
+            "procurer_ico": group["_id"]["procurer_ico"],
+            "cpv_code": group["_id"]["cpv_code"],
+            "match_type": "ico_cpv",
+        })
 
-    # --- Pass 2: title_slug + publication_date ±7 days (for notices without ICO) ---
+    return groups
+
+
+async def build_title_slug_groups(db: AsyncIOMotorDatabase, base_filter: dict) -> list[dict]:
+    """Build pass-2 match groups: title_slug + publication_date within 7 days,
+    for notices lacking a procurer ICO.
+
+    Read-only — does not write to Mongo. Mirrors build_ico_value_window_groups's
+    contract: returns groups ready to be persisted via persist_match_groups().
+    """
     pass2_filter = {
         **base_filter,
         "title_slug": {"$ne": None, "$exists": True},
@@ -265,6 +231,8 @@ async def run_cross_source_dedup(
         slug = n.get("title_slug")
         if slug:
             by_slug[slug].append(n)
+
+    groups: list[dict] = []
 
     for slug, slug_notices in by_slug.items():
         if len(slug_notices) < 2:
@@ -312,24 +280,73 @@ async def run_cross_source_dedup(
             canonical_id = str(cluster[0]["_id"])
             notice_ids = [str(n["_id"]) for n in cluster]
 
-            await db.notices.update_many(
-                {"_id": {"$in": [ObjectId(nid) for nid in notice_ids]}},
-                {"$set": {"canonical_id": canonical_id}},
-            )
-            await db.cross_source_matches.update_one(
-                {"canonical_id": canonical_id},
-                {"$set": {
-                    "canonical_id": canonical_id,
-                    "notice_ids": notice_ids,
-                    "sources": list(cluster_sources),
-                    "title_slug": slug,
-                    "match_type": "title_slug_date",
-                }},
-                upsert=True,
-            )
+            groups.append({
+                "canonical_id": canonical_id,
+                "notice_ids": notice_ids,
+                "sources": list(cluster_sources),
+                "title_slug": slug,
+                "match_type": "title_slug_date",
+            })
             for n in cluster:
                 processed.add(str(n["_id"]))
-            match_count += 1
+
+    return groups
+
+
+async def persist_match_groups(db: AsyncIOMotorDatabase, groups: list[dict]) -> int:
+    """Write pre-built match groups to notices.canonical_id + cross_source_matches.
+
+    Shared by run_cross_source_dedup (pass 3) and ad-hoc validation scripts so
+    the write path stays identical between a dry-run preview and a real run.
+    """
+    for group in groups:
+        await db.notices.update_many(
+            {"_id": {"$in": [ObjectId(nid) for nid in group["notice_ids"]]}},
+            {"$set": {"canonical_id": group["canonical_id"]}},
+        )
+        await db.cross_source_matches.update_one(
+            {"canonical_id": group["canonical_id"]},
+            {"$set": group},
+            upsert=True,
+        )
+    return len(groups)
+
+
+async def run_cross_source_dedup(
+    db: AsyncIOMotorDatabase,
+    *,
+    run_id: str | None = None,
+    window_days: int = 30,
+) -> int:
+    """Find cross-source duplicate notices and assign them a shared canonical_id.
+
+    Filter predicate:
+      - canonical_id is null (or absent)
+      - ingested_at >= now - window_days
+      - if run_id is given, ALSO restrict to pipeline_run_id == run_id (legacy mode)
+
+    Orchestrates the three pure group-builders in sequence, persisting after each
+    one via the shared persist_match_groups() write path. The sequencing matters:
+    pass 2 and pass 3 both filter on canonical_id being null, so each pass must be
+    persisted before the next pass builds its candidate query — building all three
+    passes' groups up front (before any writes) would let pass 3 re-match notices
+    that pass 1/2 already canonicalized.
+    """
+    if run_id is not None:
+        base_filter: dict = {"pipeline_run_id": run_id}
+    else:
+        cutoff = (datetime.now(UTC).replace(tzinfo=None) - timedelta(days=window_days)).isoformat()
+        base_filter = {"ingested_at": {"$gte": cutoff}}
+
+    match_count = 0
+
+    # --- Pass 1: procurer.ico + cpv_code ---
+    pass1_groups = await build_ico_cpv_groups(db, base_filter)
+    match_count += await persist_match_groups(db, pass1_groups)
+
+    # --- Pass 2: title_slug + publication_date ±7 days (for notices without ICO) ---
+    pass2_groups = await build_title_slug_groups(db, base_filter)
+    match_count += await persist_match_groups(db, pass2_groups)
 
     # --- Pass 3: shared award supplier ICO + publication_date ±14 days + value proximity ---
     pass3_groups, _skipped_high_freq = await build_ico_value_window_groups(db, base_filter)

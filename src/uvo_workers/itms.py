@@ -10,13 +10,13 @@ import redis.asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic_settings import BaseSettings
 
+from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
+from uvo_core.adapters.redis.notice_stream import RedisNoticeStream
 from uvo_pipeline.cache import MemoryCache, RedisCache
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.extractors.itms import fetch_procurements as fetch_itms_procurements
 from uvo_pipeline.redis_client import RedisSettings
-from uvo_pipeline.streams import xadd_notice
 from uvo_pipeline.transformers.itms import transform_procurement as transform_itms
-from uvo_pipeline.utils.checkpoint import get_checkpoint, save_checkpoint
 from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 from uvo_workers.runner import run_extractor_loop
@@ -41,11 +41,19 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
     pipeline_settings = PipelineSettings()
     run_id = uuid.uuid4().hex
 
-    mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
-    db = mongo_client[pipeline_settings.mongodb_database]
+    # Reuse the runner's long-lived Motor client/checkpoint store when running
+    # inside run_extractor_loop; only open a fresh (short-lived) client when
+    # _extract is invoked directly, e.g. in unit tests (plan §1.3.5).
+    checkpoint_store = state.get("_checkpoint_store")
+    mongo_client: AsyncIOMotorClient | None = None
+    if checkpoint_store is None:
+        mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
+        checkpoint_store = MongoCheckpointStore(mongo_client[pipeline_settings.mongodb_database])
+
+    notice_stream = RedisNoticeStream(redis_client, "itms", maxlen=settings.stream_maxlen_approx)
 
     try:
-        checkpoint = await get_checkpoint(db, "itms")
+        checkpoint = await checkpoint_store.get("itms")
         itms_min_id = int(checkpoint.get("itms_min_id") or state.get("itms_min_id") or 0)
         logger.info("itms: extracting min_id=%d", itms_min_id)
 
@@ -81,39 +89,26 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
 
                 if len(buffer) >= FLUSH_BATCH:
                     for n in buffer:
-                        await xadd_notice(
-                            redis_client,
-                            "itms",
-                            n.model_dump(mode="json"),
-                            content_hash=n.content_hash,
-                            run_id=run_id,
-                            maxlen=settings.stream_maxlen_approx,
-                        )
+                        await notice_stream.xadd_notice(n.model_dump(mode="json"))
                         count += 1
                     buffer.clear()
                     # Checkpoint after each flush so a crash only loses the partial buffer
                     new_min_id = str(itms_max_seen + 1)
-                    await save_checkpoint(db, "itms", {"itms_min_id": new_min_id})
+                    await checkpoint_store.save("itms", {"itms_min_id": new_min_id})
                     state["itms_min_id"] = new_min_id
 
         for n in buffer:
-            await xadd_notice(
-                redis_client,
-                "itms",
-                n.model_dump(mode="json"),
-                content_hash=n.content_hash,
-                run_id=run_id,
-                maxlen=settings.stream_maxlen_approx,
-            )
+            await notice_stream.xadd_notice(n.model_dump(mode="json"))
             count += 1
         buffer.clear()
 
         new_min_id = str(itms_max_seen + 1)
-        await save_checkpoint(db, "itms", {"itms_min_id": new_min_id})
+        await checkpoint_store.save("itms", {"itms_min_id": new_min_id})
         state["itms_min_id"] = new_min_id
 
     finally:
-        mongo_client.close()
+        if mongo_client is not None:
+            mongo_client.close()
 
     return count
 

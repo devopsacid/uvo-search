@@ -11,7 +11,10 @@ from typing import Any
 
 from uvo_core.adapters.mongo.procurements import fetch_procurement_detail, search_procurements
 from uvo_core.adapters.mongo.subjects import entity_search
+from uvo_core.domain.models import CanonicalNotice
 from uvo_core.services.search import vector_search_companies
+from uvo_pipeline.dedup import persist_match_groups as _persist_match_groups
+from uvo_pipeline.loaders.mongo import upsert_batch as _upsert_batch
 
 
 class MongoNoticeRepository:
@@ -57,10 +60,13 @@ class MongoNoticeRepository:
         return await self._db.notices.find(filter, projection).to_list(length=None)
 
     async def upsert_batch(self, notices: list[dict]) -> dict:
-        raise NotImplementedError("upsert_batch lands in Phase 5 (write-side)")
+        canonical = [
+            n if isinstance(n, CanonicalNotice) else CanonicalNotice.model_validate(n) for n in notices
+        ]
+        return await _upsert_batch(self._db, canonical)
 
     async def persist_match_groups(self, groups: list[dict]) -> int:
-        raise NotImplementedError("persist_match_groups lands in Phase 5 (write-side)")
+        return await _persist_match_groups(self._db, groups)
 
 
 class MongoCompanyRepository:
