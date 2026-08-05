@@ -13,6 +13,7 @@ DOCKERFILES = [
     "Dockerfile.api",
     "Dockerfile.workers",
     "Dockerfile.pipeline",
+    "src/uvo-gui-react/Dockerfile",
 ]
 
 
