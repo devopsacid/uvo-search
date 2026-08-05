@@ -48,6 +48,11 @@ spec:
       containers:
         - name: mcp-server
           image: REGISTRY_PLACEHOLDER/uvo-search-mcp:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: 8000
@@ -79,3 +84,12 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+          volumeMounts:
+            - name: tmp
+              # readOnlyRootFilesystem leaves nowhere for uv's cache dir
+              # (UV_CACHE_DIR=/tmp/uv-cache, set in Dockerfile.mcp) or for
+              # fastembed's runtime model-load scratch space.
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

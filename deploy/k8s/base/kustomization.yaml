@@ -21,3 +21,8 @@ labels:
   - pairs:
       app.kubernetes.io/part-of: uvo-search
     includeSelectors: true
+
+patches:
+  - path: security-context-patch.yaml
+    target:
+      kind: Deployment
