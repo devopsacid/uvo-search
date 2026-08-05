@@ -67,3 +67,18 @@ async def test_readyz_is_200_when_ready():
         assert status == 200
     finally:
         server.cancel()
+
+
+@pytest.mark.asyncio
+async def test_readyz_with_query_string_is_503_when_not_ready():
+    """A query string on the path must not bypass the readiness check — the
+    path match must strip it, or /readyz?x=1 silently falls through to the
+    unconditional-200 branch."""
+    metrics = {"redis_connected": False, "last_error": "boom"}
+    server = asyncio.create_task(serve_health(18096, lambda: dict(metrics)))
+    await asyncio.sleep(0.1)
+    try:
+        status, _ = await _request(18096, "/readyz?x=1")
+        assert status == 503
+    finally:
+        server.cancel()

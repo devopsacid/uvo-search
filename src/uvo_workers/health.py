@@ -40,6 +40,7 @@ async def serve_health(
 
             parts = request_line.decode("latin-1").split()
             path = parts[1] if len(parts) > 1 else "/"
+            path = path.split("?", 1)[0]
 
             metrics = snapshot()
             if path in _READY_PATHS and not ready_check(metrics):
