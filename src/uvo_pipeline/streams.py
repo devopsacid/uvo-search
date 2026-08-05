@@ -4,7 +4,7 @@ import json
 import logging
 
 import redis.asyncio as aioredis
-from redis.exceptions import ResponseError
+from redis.exceptions import RedisError, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +96,11 @@ async def autoclaim_stale(
     without this they are stranded permanently and the PEL grows without
     bound. Returns entries in the same shape read_group yields.
 
-    Failures are swallowed and reported as "nothing reclaimed": a reclaim
-    problem must never stop the main ingest loop from making progress.
+    Only RedisError (connectivity blips, transient protocol errors) is
+    swallowed. A non-Redis exception here is a bug, not an operational
+    condition — letting it propagate surfaces it loudly (the ingestor loop
+    crashes and the pod restarts) instead of silently disabling reclaim
+    forever behind an indistinguishable "xautoclaim failed" warning.
     """
     try:
         _cursor, entries, _deleted = await redis.xautoclaim(
@@ -108,7 +111,7 @@ async def autoclaim_stale(
             start_id="0-0",
             count=count,
         )
-    except Exception as exc:
+    except RedisError as exc:
         logger.warning("xautoclaim failed on %s: %s", stream, exc)
         return []
     return list(entries or [])

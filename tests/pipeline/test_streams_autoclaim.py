@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+from redis.exceptions import ResponseError
 
 from uvo_pipeline.streams import autoclaim_stale
 
@@ -31,8 +32,21 @@ async def test_autoclaim_passes_min_idle_time():
 
 
 @pytest.mark.asyncio
-async def test_autoclaim_returns_empty_on_error():
-    """A reclaim failure must not take down the ingest loop."""
+async def test_autoclaim_returns_empty_on_redis_error():
+    """A Redis-level reclaim failure (e.g. a transient connectivity blip)
+    must not take down the ingest loop."""
     redis = AsyncMock()
-    redis.xautoclaim.side_effect = RuntimeError("NOGROUP")
+    redis.xautoclaim.side_effect = ResponseError("NOGROUP no such key or consumer group")
     assert await autoclaim_stale(redis, "notices:crz", "ingestor", "ingestor-0") == []
+
+
+@pytest.mark.asyncio
+async def test_autoclaim_propagates_non_redis_errors():
+    """A non-Redis exception is a bug, not an operational condition — it must
+    surface loudly rather than being silently swallowed as if it were a
+    routine reclaim failure (which would otherwise disable reclaim forever
+    with no visible signal beyond a WARNING log line)."""
+    redis = AsyncMock()
+    redis.xautoclaim.side_effect = TypeError("unexpected keyword argument")
+    with pytest.raises(TypeError):
+        await autoclaim_stale(redis, "notices:crz", "ingestor", "ingestor-0")
