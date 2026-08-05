@@ -50,23 +50,54 @@ jobs:
       - name: Run ruff format check
         run: uv run ruff format --check src/ tests/
 
-  build-docker:
+  images:
     name: Build Docker images
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dockerfile: [Dockerfile.mcp, Dockerfile.api, Dockerfile.workers, Dockerfile.pipeline]
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build MCP server image
+      - name: Build ${{ matrix.dockerfile }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.mcp
+          file: ${{ matrix.dockerfile }}
           push: false
-          cache-from: type=gha,scope=mcp
-          cache-to: type=gha,mode=max,scope=mcp
+          cache-from: type=gha,scope=${{ matrix.dockerfile }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.dockerfile }}
+
+  manifests:
+    name: Validate k8s manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL -o kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform.tar.gz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Render and validate manifests
+        run: |
+          kubectl kustomize deploy/k8s/overlays/hetzner > /tmp/rendered.yaml
+          kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/rendered.yaml
+
+      - name: Fail if any application image is unpinned
+        run: |
+          if grep -E 'image:.*:(latest)$' /tmp/rendered.yaml; then
+            echo "::error::Unpinned :latest image found in rendered manifests"
+            exit 1
+          fi
 
   docker-compose:
     name: Docker Compose Build & E2E

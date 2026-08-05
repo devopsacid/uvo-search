@@ -54,12 +54,15 @@ services:
       context: ./src/uvo-gui-react
       dockerfile: Dockerfile
     ports:
-      - "8080:80"
+      # nginx listens on 8080 inside the container -- see
+      # src/uvo-gui-react/nginx.conf (changed so it can also run as
+      # non-root under k8s, which forbids binding <1024).
+      - "8080:8080"
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080"]
       interval: 10s
       timeout: 5s
       retries: 5
