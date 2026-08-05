@@ -25,6 +25,10 @@ spec:
         app.kubernetes.io/name: extractor-vestnik
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8091"
     spec:
       # read_group blocks 5s and a batch write can take longer; the default 30s
       # risks SIGKILL mid-batch, which strands entries in the PEL.
@@ -113,6 +117,10 @@ spec:
         app.kubernetes.io/name: extractor-crz
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8092"
     spec:
       terminationGracePeriodSeconds: 60
       initContainers:
@@ -195,6 +203,10 @@ spec:
         app.kubernetes.io/name: extractor-ted
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8093"
     spec:
       terminationGracePeriodSeconds: 60
       initContainers:
@@ -277,6 +289,10 @@ spec:
         app.kubernetes.io/name: extractor-itms
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8094"
     spec:
       terminationGracePeriodSeconds: 60
       initContainers:
@@ -361,6 +377,10 @@ spec:
         app.kubernetes.io/name: ingestor
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8095"
     spec:
       terminationGracePeriodSeconds: 60
       initContainers:
@@ -446,6 +466,10 @@ spec:
         app.kubernetes.io/name: dedup-worker
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8096"
     spec:
       terminationGracePeriodSeconds: 60
       initContainers:

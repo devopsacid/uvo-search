@@ -18,6 +18,7 @@ from uvo_pipeline.pubsub import subscribe
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
+from uvo_workers.metrics import build_registry
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +145,9 @@ async def run_dedup_worker() -> None:
         except (NotImplementedError, RuntimeError):
             pass
 
+    metrics_registry = build_registry("dedup-worker")
     health_task = asyncio.create_task(
-        serve_health(settings.health_port, lambda: dict(metrics)),
+        serve_health(settings.health_port, lambda: dict(metrics), registry=metrics_registry),
         name="health-dedup",
     )
 
