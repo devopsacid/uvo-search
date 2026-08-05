@@ -21,6 +21,12 @@ data:
   # -- API / Mongo (non-secret parts; credentials live in the Secret)
   API_MONGODB_DATABASE: "uvo_search"
 
+  # -- CORS: exactly the public origin served by the ingress. Never "*".
+  API_CORS_ORIGINS: '["https://uvo.example.com"]'
+
+  # -- Interactive API docs enumerate every route, including operational ones.
+  API_DOCS_ENABLED: "false"
+
   # -- Caching
   CACHE_TTL_SEARCH: "300"
   CACHE_TTL_ENTITY: "3600"

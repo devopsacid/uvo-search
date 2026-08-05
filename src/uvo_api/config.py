@@ -29,6 +29,10 @@ class ApiSettings(BaseSettings):
     # worker-status). Empty means those routes are disabled entirely.
     ops_token: str = ""
 
+    # Interactive docs enumerate every route including operational ones.
+    # Off in production; enable explicitly for local development.
+    docs_enabled: bool = False
+
     model_config = {"env_file": ".env", "env_prefix": "API_", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
 

@@ -54,14 +54,18 @@ def create_app() -> FastAPI:
         description="Aggregated analytics endpoints for Slovak government procurement data",
         version="0.1.0",
         lifespan=lifespan,
+        docs_url="/docs" if settings.docs_enabled else None,
+        redoc_url="/redoc" if settings.docs_enabled else None,
+        openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        # No cookies or sessions are used; credentialed CORS is pure risk.
+        allow_credentials=False,
+        allow_methods=["GET"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     @app.get("/health")
