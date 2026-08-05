@@ -240,6 +240,41 @@ async def run_ingestor() -> None:
                             instance_id=instance_id,
                             message=f"decode failed: {redact_exception(exc)}",
                         )
+                        # Ack immediately rather than leaving it pending: the
+                        # failure is already durably logged above, and a
+                        # payload that fails to decode/validate cannot
+                        # possibly succeed on retry. Left unacked, autoclaim_stale
+                        # redelivers it every idle cycle forever — a poison
+                        # entry would otherwise never leave the PEL.
+                        try:
+                            await ack(redis_client, stream_name, "ingestor", [entry_id])
+                        except Exception as ack_exc:
+                            logger.error(
+                                "ingestor: failed to ack poison entry from %s: %s",
+                                stream_name,
+                                ack_exc,
+                            )
+                        # Best-effort: preserve the raw payload for inspection.
+                        # Never blocks acking above — a dead-letter write
+                        # failure must not resurrect a poison entry.
+                        try:
+                            await redis_client.xadd(
+                                "notices:dead",
+                                {
+                                    "stream": stream_name,
+                                    "entry_id": entry_id,
+                                    "error": str(exc),
+                                    "payload": fields.get(b"payload", b""),
+                                },
+                                maxlen=10_000,
+                                approximate=True,
+                            )
+                        except Exception as dead_letter_exc:
+                            logger.debug(
+                                "ingestor: failed to dead-letter poison entry from %s: %s",
+                                stream_name,
+                                dead_letter_exc,
+                            )
 
                 if not notices:
                     continue
@@ -263,6 +298,11 @@ async def run_ingestor() -> None:
 
                     metrics["batches_processed"] += 1
                     metrics["notices_written"] += len(notices)
+                    # Clear a prior cycle's error now that a batch has written
+                    # cleanly — last_error must reflect the last cycle, not
+                    # "any cycle ever this process lifetime", or a single
+                    # transient failure marks /readyz unready until restart.
+                    metrics["last_error"] = None
                     logger.info("ingestor: wrote %d notices from %s", len(notices), stream_name)
 
                     await log_event(
