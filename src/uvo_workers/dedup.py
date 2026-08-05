@@ -16,9 +16,53 @@ from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.loaders.mongo import recompute_entity_stats
 from uvo_pipeline.pubsub import subscribe
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
+from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
 
 logger = logging.getLogger(__name__)
+
+# Dedup performs a quadratic scan over a 30-day window. The ingestor publishes
+# notices:written once per batch, so a short debounce means a full re-scan every
+# few seconds during backfill. This is a floor on how often the scan may start,
+# independent of how many write notifications arrive.
+MIN_DEDUP_INTERVAL_SECONDS = 300.0
+
+
+def should_run(last_run_monotonic: float | None, now_monotonic: float) -> bool:
+    """True when enough time has passed since the last dedup pass."""
+    if last_run_monotonic is None:
+        return True
+    return (now_monotonic - last_run_monotonic) >= MIN_DEDUP_INTERVAL_SECONDS
+
+
+def next_debounced_action(
+    *,
+    debounce_remaining: float,
+    last_dedup_run: float | None,
+    now: float,
+) -> tuple[str, float | None]:
+    """Decide what the timer loop does this tick for a pending write signal.
+
+    Returns (action, sleep_for):
+      - "sleep_debounce": still inside the debounce window; sleep sleep_for
+        and re-check. `pending` must NOT be cleared.
+      - "sleep_floor": debounce satisfied but the MIN_DEDUP_INTERVAL_SECONDS
+        floor isn't yet; sleep sleep_for and re-check. `pending` must NOT be
+        cleared here either — clearing it would drop the deferred run
+        entirely (nothing re-sets `pending` until the next notices:written
+        message), so the final batch of a burst would silently wait for the
+        much longer interval fallback instead of firing as soon as the floor
+        opens.
+      - "run": the caller should clear `pending` and run the dedup pass now.
+    """
+    if debounce_remaining > 0:
+        return "sleep_debounce", debounce_remaining
+    if not should_run(last_dedup_run, now):
+        # should_run(None, ...) is always True, so a False result here
+        # guarantees last_dedup_run is a float.
+        floor_remaining = MIN_DEDUP_INTERVAL_SECONDS - (now - last_dedup_run)  # type: ignore[operator]
+        return "sleep_floor", max(floor_remaining, 0.1)
+    return "run", None
 
 
 class DedupWorkerSettings(BaseSettings):
@@ -70,7 +114,7 @@ async def run_dedup_worker() -> None:
                 event="redis_connect_failed",
                 component="dedup-worker",
                 instance_id=instance_id,
-                message=str(exc),
+                message=redact_exception(exc),
             )
         except Exception:
             pass
@@ -110,6 +154,10 @@ async def run_dedup_worker() -> None:
     # Initialise to monotonic-now so the interval-elapsed branch doesn't trigger
     # immediately on startup (would otherwise see elapsed == time.monotonic()).
     last_write_time: list[float] = [time.monotonic()]
+    # Floor on how often a dedup pass may actually start, independent of the
+    # debounce above. last_dedup_run stays None until the first run so the
+    # very first pass is never blocked.
+    last_dedup_run: list[float | None] = [None]
 
     async def _run_dedup() -> None:
         # Reuse the worker's single long-lived Motor client (log_mongo_client)
@@ -124,6 +172,11 @@ async def run_dedup_worker() -> None:
             )
             metrics["dedup_runs"] += 1
             metrics["last_run_at"] = time.time()
+            # Clear a prior cycle's error now that a pass completed cleanly —
+            # last_error must reflect the last cycle, not "any cycle ever
+            # this process lifetime", or a transient failure marks /readyz
+            # unready until restart.
+            metrics["last_error"] = None
             logger.info("dedup: found %d match groups", match_groups)
             await log_event(
                 db,
@@ -147,8 +200,8 @@ async def run_dedup_worker() -> None:
             except Exception as exc:
                 logger.error("dedup: entity-stats recompute failed: %s", exc)
         except Exception as exc:
-            msg = f"{type(exc).__name__}: {exc}"
-            logger.error("dedup: run failed: %s", msg)
+            logger.error("dedup: run failed: %s", exc, exc_info=True)
+            msg = redact_exception(exc)
             metrics["last_error"] = msg
             try:
                 await log_event(
@@ -177,14 +230,32 @@ async def run_dedup_worker() -> None:
                 debounce_remaining = settings.dedup_debounce_seconds - (
                     time.monotonic() - last_write_time[0]
                 )
-                if debounce_remaining > 0:
-                    await asyncio.sleep(debounce_remaining)
+                now = time.monotonic()
+                action, sleep_for = next_debounced_action(
+                    debounce_remaining=debounce_remaining,
+                    last_dedup_run=last_dedup_run[0],
+                    now=now,
+                )
+                if action == "sleep_debounce":
+                    await asyncio.sleep(sleep_for)
+                    continue
+                if action == "sleep_floor":
+                    # `pending` is deliberately left set — see
+                    # next_debounced_action's docstring for why clearing it
+                    # here would drop the deferred run.
+                    logger.debug(
+                        "dedup: within minimum interval, deferring trigger for %.1fs",
+                        sleep_for,
+                    )
+                    await asyncio.sleep(sleep_for)
                     continue
                 async with trigger_lock:
                     pending.clear()
+                last_dedup_run[0] = now
                 await _run_dedup()
             elif elapsed_since_poll >= settings.dedup_interval_seconds:
                 last_write_time[0] = time.monotonic()
+                last_dedup_run[0] = time.monotonic()
                 await _run_dedup()
             else:
                 await asyncio.sleep(1)

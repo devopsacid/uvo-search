@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import signal
 import uuid
 from functools import lru_cache
@@ -13,11 +14,17 @@ from pydantic_settings import BaseSettings
 from uvo_core.domain.models import CanonicalNotice
 from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.ingestion_log import log_event
-from uvo_pipeline.loaders.mongo import upsert_batch
-from uvo_pipeline.loaders.neo4j import merge_notice_batch
+from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
+from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
 from uvo_pipeline.pubsub import publish
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
-from uvo_pipeline.streams import ack, decode_entry, ensure_consumer_group, read_group
+from uvo_pipeline.streams import (
+    ack,
+    autoclaim_stale,
+    decode_entry,
+    ensure_consumer_group,
+    read_group,
+)
 from uvo_pipeline.utils.date_validation import validate_notice_dates
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
@@ -82,6 +89,12 @@ async def run_ingestor() -> None:
     pipeline_settings = get_pipeline_settings()
     redis_settings = get_redis_settings()
     instance_id = uuid.uuid4().hex
+    # Consumer name must be stable across restarts so this pod's own pending
+    # entries are redelivered to it via XAUTOCLAIM. Kubernetes sets HOSTNAME
+    # to the pod name (stable for a StatefulSet, stable-enough for a
+    # Deployment pod across in-place restarts). instance_id stays random for
+    # log correlation of a single process lifetime.
+    consumer_name = os.environ.get("HOSTNAME") or f"ingestor-{instance_id[:8]}"
 
     mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
     db = mongo_client[pipeline_settings.mongodb_database]
@@ -154,13 +167,32 @@ async def run_ingestor() -> None:
         auth=(pipeline_settings.neo4j_user, pipeline_settings.neo4j_password),
     )
 
+    # The ingestor is the only writer in a worker-only deployment; the legacy
+    # pipeline Job that used to provision these is excluded from the kustomize
+    # base. Both helpers are idempotent, so running them on every start is safe.
+    try:
+        await ensure_indexes(db)
+        async with neo4j_driver.session() as bootstrap_session:
+            await ensure_constraints(bootstrap_session)
+        logger.info("ingestor: indexes and constraints ensured")
+    except Exception as exc:
+        logger.error("ingestor: failed to ensure indexes/constraints: %s", exc, exc_info=True)
+        await log_event(
+            db,
+            level="error",
+            event="index_bootstrap_failed",
+            component="ingestor",
+            instance_id=instance_id,
+            message=redact_exception(exc),
+        )
+
     try:
         while not stop_event.is_set():
             try:
                 results = await read_group(
                     redis_client,
                     "ingestor",
-                    instance_id,
+                    consumer_name,
                     _STREAMS,
                     count=settings.ingestor_batch_size,
                     block_ms=5000,
@@ -172,7 +204,19 @@ async def run_ingestor() -> None:
                 continue
 
             if not results:
-                continue
+                reclaimed = []
+                for stream in _STREAMS:
+                    entries = await autoclaim_stale(
+                        redis_client, stream, "ingestor", consumer_name
+                    )
+                    if entries:
+                        reclaimed.append((stream, entries))
+                        logger.info(
+                            "ingestor: reclaimed %d stale entries from %s", len(entries), stream
+                        )
+                if not reclaimed:
+                    continue
+                results = reclaimed
 
             for stream_name, entries in results:
                 notices: list[CanonicalNotice] = []
@@ -195,6 +239,41 @@ async def run_ingestor() -> None:
                             instance_id=instance_id,
                             message=f"decode failed: {redact_exception(exc)}",
                         )
+                        # Ack immediately rather than leaving it pending: the
+                        # failure is already durably logged above, and a
+                        # payload that fails to decode/validate cannot
+                        # possibly succeed on retry. Left unacked, autoclaim_stale
+                        # redelivers it every idle cycle forever — a poison
+                        # entry would otherwise never leave the PEL.
+                        try:
+                            await ack(redis_client, stream_name, "ingestor", [entry_id])
+                        except Exception as ack_exc:
+                            logger.error(
+                                "ingestor: failed to ack poison entry from %s: %s",
+                                stream_name,
+                                ack_exc,
+                            )
+                        # Best-effort: preserve the raw payload for inspection.
+                        # Never blocks acking above — a dead-letter write
+                        # failure must not resurrect a poison entry.
+                        try:
+                            await redis_client.xadd(
+                                "notices:dead",
+                                {
+                                    "stream": stream_name,
+                                    "entry_id": entry_id,
+                                    "error": str(exc),
+                                    "payload": fields.get(b"payload", b""),
+                                },
+                                maxlen=10_000,
+                                approximate=True,
+                            )
+                        except Exception as dead_letter_exc:
+                            logger.debug(
+                                "ingestor: failed to dead-letter poison entry from %s: %s",
+                                stream_name,
+                                dead_letter_exc,
+                            )
 
                 if not notices:
                     continue
@@ -218,6 +297,11 @@ async def run_ingestor() -> None:
 
                     metrics["batches_processed"] += 1
                     metrics["notices_written"] += len(notices)
+                    # Clear a prior cycle's error now that a batch has written
+                    # cleanly — last_error must reflect the last cycle, not
+                    # "any cycle ever this process lifetime", or a single
+                    # transient failure marks /readyz unready until restart.
+                    metrics["last_error"] = None
                     logger.info("ingestor: wrote %d notices from %s", len(notices), stream_name)
 
                     await log_event(

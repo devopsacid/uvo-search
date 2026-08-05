@@ -250,6 +250,94 @@ async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(mock_mongo_d
     assert len(unmatched) == 2
 
 
+def _ico_cpv_notice(
+    *,
+    source: str,
+    source_id: str,
+    ico: str,
+    cpv_code: str,
+    publication_date: str,
+    run_id: str,
+    canonical_id: str | None = None,
+) -> dict:
+    return {
+        "source": source,
+        "source_id": source_id,
+        "title": "Nákup kancelárskych potrieb",
+        "title_slug": None,
+        "procurer": {"ico": ico, "name": "Obec Y", "name_slug": "obec-y"},
+        "cpv_code": cpv_code,
+        "publication_date": publication_date,
+        "pipeline_run_id": run_id,
+        "canonical_id": canonical_id,
+    }
+
+
+@pytest.mark.asyncio
+async def test_cross_source_dedup_pass1_late_third_source_joins_existing_group(mock_mongo_db):
+    """A third source arriving after a group has already settled must join the
+    existing canonical group, not be silently discarded as a single-source group.
+
+    Regression test for the orphaning bug: pass 1 used to filter candidates on
+    canonical_id: None, which excluded the already-matched vestnik+crz notices
+    from the candidate pool once they settled, leaving a later-arriving ted
+    notice as the sole member of its (ico, cpv) group — discarded by the
+    sources.1 multi-source check and never merged.
+    """
+    from uvo_pipeline.orchestrator import _run_cross_source_dedup
+
+    run_id = "test-run-pass1-late"
+    ico, cpv = "99887766", "45200000"
+
+    await mock_mongo_db.notices.insert_many([
+        _ico_cpv_notice(
+            source="vestnik", source_id="V-500", ico=ico, cpv_code=cpv,
+            publication_date="2026-03-01", run_id=run_id,
+        ),
+        _ico_cpv_notice(
+            source="crz", source_id="C-500", ico=ico, cpv_code=cpv,
+            publication_date="2026-03-01", run_id=run_id,
+        ),
+    ])
+
+    first_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
+    assert first_count == 1
+
+    settled = await mock_mongo_db.notices.find(
+        {"pipeline_run_id": run_id, "canonical_id": {"$ne": None}}
+    ).to_list(length=None)
+    assert len(settled) == 2
+    settled_canonical_id = settled[0]["canonical_id"]
+    assert settled[1]["canonical_id"] == settled_canonical_id
+
+    # TED's version of the same procurement arrives after vestnik+crz have
+    # already settled — this is the multi-day publication lag scenario.
+    await mock_mongo_db.notices.insert_one(
+        _ico_cpv_notice(
+            source="ted", source_id="T-500", ico=ico, cpv_code=cpv,
+            publication_date="2026-03-03", run_id=run_id,
+        )
+    )
+
+    second_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
+    assert second_count == 1, "the group with the new ted member must still be persisted/counted"
+
+    all_three = await mock_mongo_db.notices.find(
+        {"pipeline_run_id": run_id}
+    ).to_list(length=None)
+    assert len(all_three) == 3
+    canonical_ids = {n["canonical_id"] for n in all_three}
+    assert canonical_ids == {settled_canonical_id}, (
+        "ted must join the existing canonical group, not be orphaned or start a new one"
+    )
+
+    # A third run with no new arrivals must not re-count the now-fully-settled
+    # group — this is the re-count problem the removed canonical_id filter
+    # was originally meant to solve.
+    third_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
+    assert third_count == 0
+
+
 def _award_notice(
     *,
     source: str,

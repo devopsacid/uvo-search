@@ -54,6 +54,11 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         name="text_search",
         default_language="none",
     )
+    # Indexes backing cross-source dedup. Without these, dedup collection-scans
+    # `notices` on every trigger.
+    await _ensure_index(db.notices, [("ingested_at", -1)], name="ingested_at_desc")
+    await _ensure_index(db.notices, [("pipeline_run_id", 1)], name="pipeline_run_id")
+    await _ensure_index(db.notices, [("title_slug", 1)], name="title_slug")
 
     # procurers / suppliers:
     # - ico_unique uses partialFilterExpression rather than sparse. MongoDB

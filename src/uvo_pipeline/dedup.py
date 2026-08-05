@@ -20,6 +20,10 @@ ICO_VALUE_WINDOW_DAYS = 14
 ICO_VALUE_RATIO_MAX = 1.5
 MAX_NOTICES_PER_SUPPLIER_ICO = 20
 
+# Sentinel for "no canonical_id assigned yet" in build_ico_cpv_groups' $push —
+# see the comment at that $push for why this can't just be the raw field.
+_UNASSIGNED = "__unassigned__"
+
 
 def _values_compatible(values_a: list[float], values_b: list[float]) -> bool:
     """Value-proximity guard for pass 3.
@@ -170,15 +174,45 @@ async def build_ico_cpv_groups(db: AsyncIOMotorDatabase, base_filter: dict) -> l
     """
     pass1_match = {
         **base_filter,
+        # Deliberately NOT filtered on canonical_id here (unlike pass 2/3):
+        # excluding already-settled notices from the candidate pool means a
+        # late-arriving third source for an already-matched (ico, cpv) pair
+        # forms its own single-source group and is silently discarded by the
+        # sources.1 check below, orphaning it from the existing canonical
+        # group forever. Settled notices stay in the pool; the re-count
+        # problem this filter was meant to solve is instead handled below by
+        # only persisting/counting groups with at least one unassigned member.
         "procurer.ico": {"$ne": None, "$exists": True},
         "cpv_code": {"$ne": None, "$exists": True},
     }
 
     pipeline_pass1 = [
         {"$match": pass1_match},
+        {
+            "$project": {
+                "source": 1,
+                "procurer.ico": 1,
+                "cpv_code": 1,
+                "publication_date": 1,
+                "canonical_id": 1,
+            }
+        },
         {"$group": {
             "_id": {"procurer_ico": "$procurer.ico", "cpv_code": "$cpv_code"},
-            "notices": {"$push": {"id": "$_id", "source": "$source", "pub_date": "$publication_date"}},
+            "notices": {
+                "$push": {
+                    "id": "$_id",
+                    "source": "$source",
+                    "pub_date": "$publication_date",
+                    # Sentinel rather than the raw (frequently null) field:
+                    # mongomock-motor's aggregation engine silently drops a
+                    # $push sub-document whenever one of its fields evaluates
+                    # to null/false, which canonical_id does for every
+                    # not-yet-matched notice — i.e. most of the time. $ifNull
+                    # avoids ever pushing a null/false value.
+                    "canonical_id": {"$ifNull": ["$canonical_id", _UNASSIGNED]},
+                }
+            },
             "sources": {"$addToSet": "$source"},
         }},
         {"$match": {"sources.1": {"$exists": True}}},
@@ -189,7 +223,18 @@ async def build_ico_cpv_groups(db: AsyncIOMotorDatabase, base_filter: dict) -> l
     groups: list[dict] = []
     for group in mongo_groups:
         notices_in_group = group["notices"]
+
+        # Nothing new to assign: every member is already canonicalized. This
+        # is the re-count guard — without it, a settled group would be
+        # re-persisted (harmlessly) and re-counted as a match on every run.
+        if all(n.get("canonical_id") != _UNASSIGNED for n in notices_in_group):
+            continue
+
         notices_in_group.sort(key=lambda x: x.get("pub_date") or "")
+        # Earliest-published member's own id is the canonical_id. Stable
+        # across runs: a later-arriving source is by definition not earlier
+        # than the existing earliest member, so a previously-settled group's
+        # canonical_id never changes when a new source joins it.
         canonical_id = str(notices_in_group[0]["id"])
         notice_ids = [str(n["id"]) for n in notices_in_group]
 
