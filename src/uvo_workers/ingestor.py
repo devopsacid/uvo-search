@@ -19,6 +19,7 @@ from uvo_pipeline.pubsub import publish
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
 from uvo_pipeline.streams import ack, decode_entry, ensure_consumer_group, read_group
 from uvo_pipeline.utils.date_validation import validate_notice_dates
+from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
 
 logger = logging.getLogger(__name__)
@@ -165,8 +166,8 @@ async def run_ingestor() -> None:
                     block_ms=5000,
                 )
             except Exception as exc:
-                logger.error("read_group failed: %s", exc)
-                metrics["last_error"] = str(exc)
+                logger.error("read_group failed: %s", exc, exc_info=True)
+                metrics["last_error"] = redact_exception(exc)
                 await asyncio.sleep(1)
                 continue
 
@@ -231,8 +232,13 @@ async def run_ingestor() -> None:
                     )
 
                 except Exception as exc:
-                    msg = f"{type(exc).__name__}: {exc}"
-                    logger.error("ingestor: write failed for %s, not acking: %s", stream_name, msg)
+                    logger.error(
+                        "ingestor: write failed for %s, not acking: %s",
+                        stream_name,
+                        exc,
+                        exc_info=True,
+                    )
+                    msg = redact_exception(exc)
                     metrics["last_error"] = msg
                     await log_event(
                         db,

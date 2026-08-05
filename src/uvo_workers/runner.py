@@ -15,6 +15,7 @@ from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.locks import lock
 from uvo_pipeline.redis_client import RedisSettings, close_redis, get_redis
+from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
 
 logger = logging.getLogger(__name__)
@@ -152,9 +153,9 @@ async def run_extractor_loop(
                         metrics["cycles_completed"] += 1
                         logger.info("%s: cycle complete, %d items XADDed", source, count)
                     except Exception as exc:
-                        error = f"{type(exc).__name__}: {exc}"
+                        logger.error("%s: extract error: %s", source, exc, exc_info=True)
+                        error = redact_exception(exc)
                         metrics["last_error"] = error
-                        logger.error("%s: extract error: %s", source, error)
                     await _log_cycle_result(
                         db,
                         source=source,
