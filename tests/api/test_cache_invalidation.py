@@ -28,7 +28,9 @@ def test_clear_analytics_caches_runs():
 async def test_debounces_burst_to_single_clear(monkeypatch, fake_redis):
     """A burst of events within the debounce window clears the caches once."""
     calls = {"n": 0}
-    monkeypatch.setattr(cache_invalidation, "clear_analytics_caches", lambda: calls.__setitem__("n", calls["n"] + 1))
+    monkeypatch.setattr(
+        cache_invalidation, "clear_analytics_caches", lambda: calls.__setitem__("n", calls["n"] + 1)
+    )
 
     async def fake_subscribe(redis, channel):
         for _ in range(10):
@@ -40,6 +42,31 @@ async def test_debounces_burst_to_single_clear(monkeypatch, fake_redis):
 
     assert calls["n"] == 1
     fake_redis.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_first_event_clears_on_a_freshly_booted_host(monkeypatch, fake_redis):
+    """The first event must clear even when time.monotonic() is near zero.
+
+    time.monotonic() counts from boot. Seeding last_clear to 0.0 made the first
+    event on a host up for less than DEBOUNCE_SECONDS look like it arrived
+    inside the debounce window, silently skipping the first invalidation. CI
+    runners boot fresh, which is why this surfaced there intermittently.
+    """
+    calls = {"n": 0}
+    monkeypatch.setattr(
+        cache_invalidation, "clear_analytics_caches", lambda: calls.__setitem__("n", calls["n"] + 1)
+    )
+    monkeypatch.setattr(cache_invalidation.time, "monotonic", lambda: 0.5)
+
+    async def fake_subscribe(redis, channel):
+        yield {"source": "crz", "count": 1}
+
+    monkeypatch.setattr(cache_invalidation, "subscribe", fake_subscribe)
+
+    await cache_invalidation.run_cache_invalidator()
+
+    assert calls["n"] == 1
 
 
 @pytest.mark.asyncio
