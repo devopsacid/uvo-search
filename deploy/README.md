@@ -21,6 +21,8 @@ deploy/
 - **Hetzner Cloud CSI driver** providing the `hcloud-volumes` StorageClass (used by mongo/neo4j/redis PVCs — see `deploy/k8s/overlays/hetzner/kustomization.yaml` patches)
 - **sealed-secrets** controller (or **external-secrets-operator**) — the Secret shipped here is a placeholder only, never real credentials
 - ArgoCD installed with access to your git remote
+- **A CNI that enforces NetworkPolicy** (Cilium, Calico, Weave, etc.). `deploy/k8s/base/networkpolicy.yaml` ships a default-deny-ingress policy with explicit allow rules; on a CNI that ignores NetworkPolicy (e.g. stock kubenet/flannel without a policy engine) these are inert and the pod network stays flat. Verify enforcement (`kubectl get pods -A | grep -Ei 'cilium|calico|weave'` or your provider's docs) before relying on them for isolation.
+- NetworkPolicies assume the ingress controller runs in a namespace named `ingress-nginx` and that the CNI enforces NetworkPolicy. Verify both before relying on network isolation.
 
 ## Excluded from this deployment
 

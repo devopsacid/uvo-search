@@ -17,6 +17,7 @@ resources:
   - workers.yaml
   - ingress.yaml
   - pdb.yaml
+  - networkpolicy.yaml
 
 labels:
   - pairs:
