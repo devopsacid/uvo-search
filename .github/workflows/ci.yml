@@ -108,7 +108,15 @@ jobs:
 
       - name: Create .env file for docker compose
         run: |
-          : > .env
+          # Throwaway credentials for this ephemeral runner only. An empty .env
+          # no longer works: docker-compose.yml uses ${VAR:?} for every
+          # credential so a misconfigured deploy fails loudly instead of
+          # silently starting with a known-weak password.
+          {
+            echo "MONGO_PASSWORD=$(openssl rand -hex 16)"
+            echo "NEO4J_PASSWORD=$(openssl rand -hex 16)"
+            echo "REDIS_PASSWORD=$(openssl rand -hex 16)"
+          } > .env
 
       - name: Build and start services
         run: docker compose up -d --build --wait --wait-timeout 120
