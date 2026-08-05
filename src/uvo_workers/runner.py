@@ -94,7 +94,7 @@ async def run_extractor_loop(
                 component=f"extractor:{source}",
                 source=source,
                 instance_id=instance_id,
-                message=str(exc),
+                message=redact_exception(exc),
             )
         except Exception:
             pass

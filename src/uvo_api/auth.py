@@ -87,7 +87,11 @@ async def require_ops_token(authorization: str = Header(default="")) -> None:
         )
 
     scheme, _, token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not secrets.compare_digest(token, expected):
+    # compare_digest raises TypeError on non-ASCII str, which would surface as a
+    # 500; comparing encoded bytes keeps a hostile header a clean 401.
+    if scheme.lower() != "bearer" or not secrets.compare_digest(
+        token.encode("utf-8"), expected.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing credentials",

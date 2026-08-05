@@ -110,7 +110,7 @@ async def run_ingestor() -> None:
                 event="redis_connect_failed",
                 component="ingestor",
                 instance_id=instance_id,
-                message=f"Redis connection failed: {exc}",
+                message=f"Redis connection failed: {redact_exception(exc)}",
             )
         except Exception:
             pass
@@ -193,7 +193,7 @@ async def run_ingestor() -> None:
                             component="ingestor",
                             source=stream_name.removeprefix("notices:"),
                             instance_id=instance_id,
-                            message=f"decode failed: {exc}",
+                            message=f"decode failed: {redact_exception(exc)}",
                         )
 
                 if not notices:

@@ -32,6 +32,10 @@ services:
       API_NEO4J_URI: bolt://neo4j:7687
       API_NEO4J_USER: neo4j
       API_NEO4J_PASSWORD: ${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set}
+      # Same idiom for Redis: ApiSettings uses env_prefix "API_", so the
+      # unprefixed REDIS_PASSWORD is invisible to it. Without this the /v1 rate
+      # limiter gets NOAUTH and fails closed on every request.
+      API_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     depends_on:
       mongo:
         condition: service_healthy
@@ -123,6 +127,11 @@ services:
     restart: unless-stopped
     command:
       ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+    environment:
+      # The command above is interpolated by Compose on the host; this makes the
+      # same value visible *inside* the container, which the healthcheck shell
+      # needs. Without it the probe runs `redis-cli -a "" ping` and never passes.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     volumes:
       - redis_data:/data
     ports:

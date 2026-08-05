@@ -56,6 +56,21 @@ def test_ops_endpoint_rejects_wrong_token(client, path):
 
 
 @pytest.mark.parametrize("path", OPS_PATHS)
+def test_non_ascii_token_is_rejected_not_a_500(client, path):
+    """secrets.compare_digest raises TypeError on non-ASCII str, which would
+    turn a hostile header into a 500. It must stay a clean 401.
+
+    Sent as raw bytes because that is what reaches the wire: httpx refuses to
+    ASCII-encode a str header, but Starlette decodes incoming bytes as latin-1,
+    so a non-ASCII token really can arrive at the dependency.
+    """
+    response = client.get(
+        path, headers={"Authorization": "Bearer á-token".encode("latin-1")}
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("path", OPS_PATHS)
 def test_ops_endpoint_rejects_wrong_scheme(client, path):
     response = client.get(path, headers={"Authorization": "Basic test-ops-token"})
     assert response.status_code == 401
