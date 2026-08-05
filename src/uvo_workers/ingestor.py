@@ -76,9 +76,7 @@ async def process_batch_logs(
                 source=source,
                 source_id=notice.source_id,
                 instance_id=instance_id,
-                message=(
-                    f"{issue['field']} year {issue['year']} {issue['reason']}; nulled"
-                ),
+                message=(f"{issue['field']} year {issue['year']} {issue['reason']}; nulled"),
                 details=issue,
             )
     return cleaned
@@ -208,9 +206,7 @@ async def run_ingestor() -> None:
             if not results:
                 reclaimed = []
                 for stream in _STREAMS:
-                    entries = await autoclaim_stale(
-                        redis_client, stream, "ingestor", consumer_name
-                    )
+                    entries = await autoclaim_stale(redis_client, stream, "ingestor", consumer_name)
                     if entries:
                         reclaimed.append((stream, entries))
                         logger.info(
@@ -295,7 +291,9 @@ async def run_ingestor() -> None:
 
                     source = stream_name.removeprefix("notices:")
                     await ack(redis_client, stream_name, "ingestor", entry_ids)
-                    await publish(redis_client, "notices:written", {"source": source, "count": len(notices)})
+                    await publish(
+                        redis_client, "notices:written", {"source": source, "count": len(notices)}
+                    )
 
                     metrics["batches_processed"] += 1
                     metrics["notices_written"] += len(notices)

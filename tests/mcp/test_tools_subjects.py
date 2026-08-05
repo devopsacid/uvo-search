@@ -67,8 +67,14 @@ async def test_ico_bypass_uses_find_not_aggregate():
     db = {"procurers": coll}
 
     out = await _run_entity_search(
-        db, "procurers", "procurer.ico",
-        name_query=None, ico="123", sort_by="name", limit=10, offset=0,
+        db,
+        "procurers",
+        "procurer.ico",
+        name_query=None,
+        ico="123",
+        sort_by="name",
+        limit=10,
+        offset=0,
     )
     assert out["total"] == 1
     assert out["items"][0]["ico"] == "123"
@@ -85,8 +91,14 @@ async def test_name_query_builds_search_pipeline():
     db = {"procurers": coll}
 
     out = await _run_entity_search(
-        db, "procurers", "procurer.ico",
-        name_query="fakul", ico=None, sort_by="contract_count", limit=5, offset=0,
+        db,
+        "procurers",
+        "procurer.ico",
+        name_query="fakul",
+        ico=None,
+        sort_by="contract_count",
+        limit=5,
+        offset=0,
     )
     assert out["total"] == 1
     (pipeline,) = coll.aggregate.call_args.args

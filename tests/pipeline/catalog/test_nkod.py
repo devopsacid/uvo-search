@@ -1,11 +1,12 @@
 """Tests for NKOD SPARQL discovery of Vestník datasets."""
 
+from datetime import date, datetime
+
 import httpx
 import pytest
 import respx
-from datetime import date, datetime
 
-from uvo_pipeline.catalog.nkod import discover_vestnik_datasets, VestnikDataset
+from uvo_pipeline.catalog.nkod import discover_vestnik_datasets
 
 SPARQL_URL = "https://data.slovakiaplus.sk/sparql"
 PUBLISHER_URI = "https://data.gov.sk/org/vestnik"
@@ -47,11 +48,14 @@ async def test_discover_yields_parsed_datasets():
             httpx.Response(200, json=second_page),
         ]
         async with httpx.AsyncClient() as client:
-            datasets = [d async for d in discover_vestnik_datasets(
-                client,
-                publisher_uri=PUBLISHER_URI,
-                sparql_url=SPARQL_URL,
-            )]
+            datasets = [
+                d
+                async for d in discover_vestnik_datasets(
+                    client,
+                    publisher_uri=PUBLISHER_URI,
+                    sparql_url=SPARQL_URL,
+                )
+            ]
 
     assert len(datasets) == 1
     ds = datasets[0]
@@ -89,11 +93,14 @@ async def test_discover_paginates_until_empty_page():
             httpx.Response(200, json=second_page),
         ]
         async with httpx.AsyncClient() as client:
-            datasets = [d async for d in discover_vestnik_datasets(
-                client,
-                publisher_uri=PUBLISHER_URI,
-                sparql_url=SPARQL_URL,
-            )]
+            datasets = [
+                d
+                async for d in discover_vestnik_datasets(
+                    client,
+                    publisher_uri=PUBLISHER_URI,
+                    sparql_url=SPARQL_URL,
+                )
+            ]
 
     assert len(datasets) == 2
     assert datasets[0].uri == "https://data.gov.sk/set/vestnik/V-75-2026"
@@ -121,19 +128,23 @@ async def test_discover_uses_since_filter():
             httpx.Response(200, json=second_page),
         ]
         async with httpx.AsyncClient() as client:
-            [d async for d in discover_vestnik_datasets(
-                client,
-                publisher_uri=PUBLISHER_URI,
-                sparql_url=SPARQL_URL,
-                since=date(2026, 1, 1),
-            )]
+            [
+                d
+                async for d in discover_vestnik_datasets(
+                    client,
+                    publisher_uri=PUBLISHER_URI,
+                    sparql_url=SPARQL_URL,
+                    since=date(2026, 1, 1),
+                )
+            ]
 
     # Inspect the POST body for the FILTER clause (URL-encoded form data)
     request = route.calls[0].request
     body = request.content.decode()
     import urllib.parse
+
     decoded = urllib.parse.unquote(body)
-    assert '2026-01-01T00:00:00' in decoded and 'FILTER' in decoded
+    assert "2026-01-01T00:00:00" in decoded and "FILTER" in decoded
 
 
 @pytest.mark.asyncio

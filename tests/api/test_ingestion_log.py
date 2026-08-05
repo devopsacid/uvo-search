@@ -1,6 +1,7 @@
 # tests/api/test_ingestion_log.py
 """Tests for /api/dashboard/ingestion-log endpoint."""
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,7 +9,6 @@ from mongomock_motor import AsyncMongoMockClient
 
 from uvo_api.app import create_app
 from uvo_api.config import get_settings
-from uvo_api.db import get_db
 from uvo_pipeline.ingestion_log import ensure_log_indexes
 
 OPS_TOKEN = "test-ops-token"
@@ -32,7 +32,7 @@ def client_and_db(monkeypatch):
 @pytest.mark.asyncio
 async def _seed(db):
     await ensure_log_indexes(db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     docs = [
         {
             "ts": now - timedelta(minutes=i),
@@ -81,15 +81,10 @@ async def test_filter_by_level(client_and_db):
 async def test_filter_by_source_and_event(client_and_db):
     client, db = client_and_db
     await _seed(db)
-    res = client.get(
-        "/api/dashboard/ingestion-log?source=vestnik&event=batch_written"
-    )
+    res = client.get("/api/dashboard/ingestion-log?source=vestnik&event=batch_written")
     assert res.status_code == 200
     body = res.json()
-    assert all(
-        it["source"] == "vestnik" and it["event"] == "batch_written"
-        for it in body["items"]
-    )
+    assert all(it["source"] == "vestnik" and it["event"] == "batch_written" for it in body["items"])
 
 
 @pytest.mark.asyncio
@@ -101,6 +96,4 @@ async def test_limit_and_offset(client_and_db):
     items1 = res1.json()["items"]
     items2 = res2.json()["items"]
     assert len(items1) == 2 and len(items2) == 2
-    assert {i["source_id"] for i in items1}.isdisjoint(
-        {i["source_id"] for i in items2}
-    )
+    assert {i["source_id"] for i in items1}.isdisjoint({i["source_id"] for i in items2})

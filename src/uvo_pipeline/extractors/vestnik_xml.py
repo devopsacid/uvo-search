@@ -1,8 +1,8 @@
 """Vestník XML extractor — parses UBL/eForms notices from Vestník ZIP packages."""
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from lxml import etree
 
@@ -63,7 +63,9 @@ def parse_xml_file(xml_path: Path) -> Iterator[dict]:
 
     # Extract values
     estimated_value = _xpath_text(root, "//cbc:EstimatedOverallContractAmount")
-    total_value = _xpath_text(root, "//cbc:TotalAmount[1]") or _xpath_text(root, "//cbc:PayableAmount[1]")
+    total_value = _xpath_text(root, "//cbc:TotalAmount[1]") or _xpath_text(
+        root, "//cbc:PayableAmount[1]"
+    )
     currency = root.xpath("//cbc:EstimatedOverallContractAmount/@currencyID", namespaces=NAMESPACES)
 
     # Extract CPV

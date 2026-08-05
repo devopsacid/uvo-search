@@ -20,7 +20,9 @@ def _notice(source_id: str = "test-1", title: str = "Test notice") -> CanonicalN
         procurer=CanonicalProcurer(ico="12345678", name="Test Procurer", name_slug="test-procurer"),
         awards=[
             CanonicalAward(
-                supplier=CanonicalSupplier(ico="87654321", name="Test Supplier", name_slug="test-supplier"),
+                supplier=CanonicalSupplier(
+                    ico="87654321", name="Test Supplier", name_slug="test-supplier"
+                ),
                 value=10000.0,
                 currency="EUR",
             )
@@ -118,14 +120,23 @@ async def test_upsert_batch_dedupes_shared_entities_within_batch(mock_mongo_db):
         notice_type="contract_award",
         title="First",
         procurer=CanonicalProcurer(
-            ico="99999999", name="Shared Procurer", name_slug="shared-procurer", sources=["vestnik"],
+            ico="99999999",
+            name="Shared Procurer",
+            name_slug="shared-procurer",
+            sources=["vestnik"],
         ),
-        awards=[CanonicalAward(
-            supplier=CanonicalSupplier(
-                ico="11112222", name="Shared Supplier", name_slug="shared-supplier", sources=["vestnik"],
-            ),
-            value=1000.0, currency="EUR",
-        )],
+        awards=[
+            CanonicalAward(
+                supplier=CanonicalSupplier(
+                    ico="11112222",
+                    name="Shared Supplier",
+                    name_slug="shared-supplier",
+                    sources=["vestnik"],
+                ),
+                value=1000.0,
+                currency="EUR",
+            )
+        ],
     )
     n2 = CanonicalNotice(
         source="crz",
@@ -133,14 +144,23 @@ async def test_upsert_batch_dedupes_shared_entities_within_batch(mock_mongo_db):
         notice_type="contract_award",
         title="Second",
         procurer=CanonicalProcurer(
-            ico="99999999", name="Shared Procurer", name_slug="shared-procurer", sources=["crz"],
+            ico="99999999",
+            name="Shared Procurer",
+            name_slug="shared-procurer",
+            sources=["crz"],
         ),
-        awards=[CanonicalAward(
-            supplier=CanonicalSupplier(
-                ico="11112222", name="Shared Supplier", name_slug="shared-supplier", sources=["crz"],
-            ),
-            value=2000.0, currency="EUR",
-        )],
+        awards=[
+            CanonicalAward(
+                supplier=CanonicalSupplier(
+                    ico="11112222",
+                    name="Shared Supplier",
+                    name_slug="shared-supplier",
+                    sources=["crz"],
+                ),
+                value=2000.0,
+                currency="EUR",
+            )
+        ],
     )
 
     await upsert_batch(mock_mongo_db, [n1, n2])

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
 
@@ -20,8 +20,8 @@ router = APIRouter(
 def _to_iso_z(value) -> str:
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     return str(value)
 
 
@@ -46,12 +46,7 @@ async def get_ingestion_log(
         query["component"] = component
 
     total = await db.ingestion_log.count_documents(query)
-    cursor = (
-        db.ingestion_log.find(query)
-        .sort("ts", -1)
-        .skip(offset)
-        .limit(limit)
-    )
+    cursor = db.ingestion_log.find(query).sort("ts", -1).skip(offset).limit(limit)
     items: list[IngestionLogItem] = []
     async for doc in cursor:
         items.append(

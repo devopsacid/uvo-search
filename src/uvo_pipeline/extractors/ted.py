@@ -10,8 +10,8 @@ API v3 changes from v2:
 """
 
 import logging
+from collections.abc import AsyncIterator
 from datetime import date
-from typing import AsyncIterator
 
 import httpx
 

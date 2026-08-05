@@ -168,7 +168,9 @@ async def run_dedup_worker() -> None:
         # per-call client was the highest-frequency connection churn here.
         db = log_db
         try:
-            logger.info("dedup: running cross-source dedup (window=%dd)", settings.dedup_window_days)
+            logger.info(
+                "dedup: running cross-source dedup (window=%dd)", settings.dedup_window_days
+            )
             match_groups = await run_cross_source_dedup(
                 db, run_id=None, window_days=settings.dedup_window_days
             )

@@ -1,9 +1,10 @@
 """Tests for the TED extractor."""
 
+from datetime import date
+
 import httpx
 import pytest
 import respx
-from datetime import date
 
 from uvo_pipeline.extractors.ted import search_sk_notices
 
@@ -27,9 +28,7 @@ TED_RESPONSE = {
 @pytest.mark.asyncio
 async def test_search_sk_notices_yields_items():
     with respx.mock(base_url="https://api.ted.europa.eu") as mock:
-        mock.post("/v3/notices/search").mock(
-            return_value=httpx.Response(200, json=TED_RESPONSE)
-        )
+        mock.post("/v3/notices/search").mock(return_value=httpx.Response(200, json=TED_RESPONSE))
         async with httpx.AsyncClient(base_url="https://api.ted.europa.eu") as client:
             results = [r async for r in search_sk_notices(client)]
 
@@ -56,7 +55,9 @@ async def test_search_raises_on_error():
 async def test_search_partial_page_then_error_raises():
     """First page succeeds and is yielded; second-page failure still raises."""
     page1 = {
-        "notices": [{"publication-number": "24", "publication-date": "20240101", "notice-title": "Notice 1"}],
+        "notices": [
+            {"publication-number": "24", "publication-date": "20240101", "notice-title": "Notice 1"}
+        ],
         "page": 1,
         "totalNoticeCount": 2,
     }
@@ -81,12 +82,16 @@ async def test_search_partial_page_then_error_raises():
 async def test_search_paginates():
     """With total > page_size, a second request should be made."""
     page1 = {
-        "notices": [{"publication-number": "24", "publication-date": "20240101", "notice-title": "Notice 1"}],
+        "notices": [
+            {"publication-number": "24", "publication-date": "20240101", "notice-title": "Notice 1"}
+        ],
         "page": 1,
         "totalNoticeCount": 2,
     }
     page2 = {
-        "notices": [{"publication-number": "24", "publication-date": "20240102", "notice-title": "Notice 2"}],
+        "notices": [
+            {"publication-number": "24", "publication-date": "20240102", "notice-title": "Notice 2"}
+        ],
         "page": 2,
         "totalNoticeCount": 2,
     }
@@ -112,6 +117,7 @@ async def test_search_date_filter_included_in_query():
 
     async def capture(request: httpx.Request, *args, **kwargs) -> httpx.Response:
         import json
+
         captured_bodies.append(json.loads(request.content))
         return httpx.Response(200, json={"notices": [], "page": 1, "total": 0})
 

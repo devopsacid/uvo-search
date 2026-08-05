@@ -2,6 +2,7 @@
 
 import pytest
 from pydantic import ValidationError
+
 from uvo_pipeline.models import CanonicalNotice
 
 

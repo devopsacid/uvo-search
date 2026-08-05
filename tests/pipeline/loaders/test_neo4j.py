@@ -1,12 +1,12 @@
 """Tests for Neo4j loader (unit level — mocked session)."""
 
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from uvo_pipeline.loaders.neo4j import merge_notice_node, merge_procurer_node, merge_supplier_node
 from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
-from datetime import date
 
 
 @pytest.fixture

@@ -1,5 +1,6 @@
 """Tests for ingestion_log helpers."""
-from datetime import datetime, timezone
+
+from datetime import datetime
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient

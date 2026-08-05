@@ -33,4 +33,6 @@ def test_user_is_last_privileged_step(name):
     lines = [ln.strip() for ln in content.splitlines()]
     user_idx = max(i for i, ln in enumerate(lines) if ln.startswith("USER "))
     installs = [i for i, ln in enumerate(lines) if "uv sync" in ln or "apt-get install" in ln]
-    assert all(i < user_idx for i in installs), f"{name} installs packages after dropping privileges"
+    assert all(i < user_idx for i in installs), (
+        f"{name} installs packages after dropping privileges"
+    )

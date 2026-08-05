@@ -81,15 +81,14 @@ async def fetch_contracts_since(
             if resp.status_code == 429:
                 wait = _parse_retry_after(resp.headers.get("Retry-After"))
                 if attempt >= _MAX_429_RETRIES:
-                    logger.error(
-                        "CRZ sync: HTTP 429 after %d retries — giving up", attempt
-                    )
-                    raise RuntimeError(
-                        f"CRZ sync: HTTP 429 after {attempt} retries (page={page})"
-                    )
+                    logger.error("CRZ sync: HTTP 429 after %d retries — giving up", attempt)
+                    raise RuntimeError(f"CRZ sync: HTTP 429 after {attempt} retries (page={page})")
                 logger.warning(
                     "CRZ sync: HTTP 429 (page %d, attempt %d/%d) — sleeping %ds",
-                    page, attempt + 1, _MAX_429_RETRIES, wait,
+                    page,
+                    attempt + 1,
+                    _MAX_429_RETRIES,
+                    wait,
                 )
                 await asyncio.sleep(wait)
                 continue
@@ -162,12 +161,16 @@ async def fetch_contract_by_id(
             if attempt >= _MAX_429_RETRIES:
                 logger.error(
                     "CRZ detail %s: HTTP 429 after %d retries — giving up",
-                    contract_id, attempt,
+                    contract_id,
+                    attempt,
                 )
                 return None
             logger.warning(
                 "CRZ detail %s: HTTP 429 (attempt %d/%d) — sleeping %ds",
-                contract_id, attempt + 1, _MAX_429_RETRIES, wait,
+                contract_id,
+                attempt + 1,
+                _MAX_429_RETRIES,
+                wait,
             )
             await asyncio.sleep(wait)
             continue
@@ -180,7 +183,9 @@ async def fetch_contract_by_id(
         except httpx.HTTPStatusError as exc:
             logger.error(
                 "CRZ detail %s returned HTTP %s: %s",
-                contract_id, exc.response.status_code, exc.response.text[:200],
+                contract_id,
+                exc.response.status_code,
+                exc.response.text[:200],
             )
             return None
 

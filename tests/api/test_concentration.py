@@ -9,7 +9,14 @@ from fastapi.testclient import TestClient
 from uvo_api.app import create_app
 
 SAMPLE_PROCURER = {
-    "items": [{"ico": "12345678", "name": "Ministry of Finance", "contract_count": 3, "total_value": 1800000.0}],
+    "items": [
+        {
+            "ico": "12345678",
+            "name": "Ministry of Finance",
+            "contract_count": 3,
+            "total_value": 1800000.0,
+        }
+    ],
     "total": 1,
 }
 

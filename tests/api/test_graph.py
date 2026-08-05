@@ -52,7 +52,9 @@ def test_ego_graph_happy_path(client):
 
 
 def test_ego_graph_not_found(client):
-    with patch("uvo_api.routers.graph.run_query", new=AsyncMock(return_value={"nodes": [], "edges": []})):
+    with patch(
+        "uvo_api.routers.graph.run_query", new=AsyncMock(return_value={"nodes": [], "edges": []})
+    ):
         response = client.get("/api/graph/ego/00000000")
     assert response.status_code == 404
 

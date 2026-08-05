@@ -22,7 +22,9 @@ __all__ = [
 ]
 
 
-async def vector_search_companies(db, model, query: str, limit: int = 10, role: str = "all") -> dict:
+async def vector_search_companies(
+    db, model, query: str, limit: int = 10, role: str = "all"
+) -> dict:
     """Semantic vector search over company names (suppliers and procurers).
 
     Callers guarantee ``db`` and ``model`` are available; the None-guard that

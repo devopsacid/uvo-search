@@ -61,7 +61,8 @@ class MongoNoticeRepository:
 
     async def upsert_batch(self, notices: list[dict]) -> dict:
         canonical = [
-            n if isinstance(n, CanonicalNotice) else CanonicalNotice.model_validate(n) for n in notices
+            n if isinstance(n, CanonicalNotice) else CanonicalNotice.model_validate(n)
+            for n in notices
         ]
         return await _upsert_batch(self._db, canonical)
 

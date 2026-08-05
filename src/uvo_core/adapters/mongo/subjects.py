@@ -22,9 +22,17 @@ def _sort_spec(sort_by: SortBy) -> dict:
 @async_ttl_cache(
     maxsize=256,
     ttl=_CACHE_TTL_ENTITY,
-    key_from=lambda db, collection, lookup_match_field, *, name_query, ico, sort_by, limit, offset: _make_key(
-        (collection, lookup_match_field),
-        {"name_query": name_query, "ico": ico, "sort_by": sort_by, "limit": limit, "offset": offset},
+    key_from=lambda db, collection, lookup_match_field, *, name_query, ico, sort_by, limit, offset: (
+        _make_key(
+            (collection, lookup_match_field),
+            {
+                "name_query": name_query,
+                "ico": ico,
+                "sort_by": sort_by,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
     ),
 )
 async def entity_search(

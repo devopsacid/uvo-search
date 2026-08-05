@@ -42,14 +42,16 @@ async def collect(
 
     # Per-source aggregates from notices collection
     pipeline = [
-        {"$group": {
-            "_id": "$source",
-            "total": {"$sum": 1},
-            "last_ingested": {"$max": "$ingested_at"},
-            "last_publication": {"$max": "$publication_date"},
-            "last_24h": {"$sum": {"$cond": [{"$gte": ["$ingested_at", day_ago_iso]}, 1, 0]}},
-            "last_7d": {"$sum": {"$cond": [{"$gte": ["$ingested_at", week_ago_iso]}, 1, 0]}},
-        }},
+        {
+            "$group": {
+                "_id": "$source",
+                "total": {"$sum": 1},
+                "last_ingested": {"$max": "$ingested_at"},
+                "last_publication": {"$max": "$publication_date"},
+                "last_24h": {"$sum": {"$cond": [{"$gte": ["$ingested_at", day_ago_iso]}, 1, 0]}},
+                "last_7d": {"$sum": {"$cond": [{"$gte": ["$ingested_at", week_ago_iso]}, 1, 0]}},
+            }
+        },
     ]
     rows = {r["_id"]: r async for r in db.notices.aggregate(pipeline)}
 
@@ -66,14 +68,14 @@ async def collect(
         logger.debug("disk_bytes aggregation unavailable: %s", exc)
 
     # Checkpoint per source
-    checkpoints = {
-        c["source"]: c async for c in db.pipeline_state.find({})
-    }
+    checkpoints = {c["source"]: c async for c in db.pipeline_state.find({})}
 
     sources = []
     for s in SOURCES:
         row = rows.get(s, {})
-        cp = checkpoints.get("pipeline", {})  # current orchestrator uses single "pipeline" checkpoint
+        cp = checkpoints.get(
+            "pipeline", {}
+        )  # current orchestrator uses single "pipeline" checkpoint
         last_ingested_at = row.get("last_ingested")
         last_ts = _parse_ts(last_ingested_at)
         days_since_last_ingest = (
@@ -82,18 +84,20 @@ async def collect(
         # No ingested_at at all (source never populated) counts as stale too —
         # that's what let ITMS sit silently exhausted for two months.
         stale = days_since_last_ingest is None or days_since_last_ingest > stale_threshold_days
-        sources.append({
-            "source": s,
-            "total": row.get("total", 0),
-            "last_24h": row.get("last_24h", 0),
-            "last_7d": row.get("last_7d", 0),
-            "last_ingested_at": last_ingested_at,
-            "last_publication_date": row.get("last_publication"),
-            "last_run_at": cp.get("last_run_at"),
-            "disk_bytes": size_rows.get(s, 0),
-            "days_since_last_ingest": days_since_last_ingest,
-            "stale": stale,
-        })
+        sources.append(
+            {
+                "source": s,
+                "total": row.get("total", 0),
+                "last_24h": row.get("last_24h", 0),
+                "last_7d": row.get("last_7d", 0),
+                "last_ingested_at": last_ingested_at,
+                "last_publication_date": row.get("last_publication"),
+                "last_run_at": cp.get("last_run_at"),
+                "disk_bytes": size_rows.get(s, 0),
+                "days_since_last_ingest": days_since_last_ingest,
+                "stale": stale,
+            }
+        )
 
     # Cross-source dedup stats
     total_matches = await db.cross_source_matches.count_documents({})
@@ -102,16 +106,16 @@ async def collect(
 
     # Ingestion registry stats (per-source)
     registry_pipeline = [
-        {"$group": {
-            "_id": "$source",
-            "registered": {"$sum": 1},
-            "total_skips": {"$sum": "$skipped_count"},
-            "last_seen": {"$max": "$last_seen_at"},
-        }},
+        {
+            "$group": {
+                "_id": "$source",
+                "registered": {"$sum": 1},
+                "total_skips": {"$sum": "$skipped_count"},
+                "last_seen": {"$max": "$last_seen_at"},
+            }
+        },
     ]
-    registry_rows = {
-        r["_id"]: r async for r in db.ingested_docs.aggregate(registry_pipeline)
-    }
+    registry_rows = {r["_id"]: r async for r in db.ingested_docs.aggregate(registry_pipeline)}
     registry_total = await db.ingested_docs.count_documents({})
     for s in sources:
         reg = registry_rows.get(s["source"], {})
@@ -185,7 +189,9 @@ def render_text(report: dict[str, Any]) -> str:
     )
     lr = report["latest_run"]
     lines.append(f"Latest run: {lr.get('run_id') or '—'}  ({_fmt_dt(lr.get('ingested_at'))})")
-    lines.append(f"Stale threshold: >{report.get('stale_threshold_days', DEFAULT_STALE_THRESHOLD_DAYS)} days")
+    lines.append(
+        f"Stale threshold: >{report.get('stale_threshold_days', DEFAULT_STALE_THRESHOLD_DAYS)} days"
+    )
     lines.append("")
     lines.append(
         f"{'source':<8} {'notices':>8} {'24h':>6} {'7d':>7} "

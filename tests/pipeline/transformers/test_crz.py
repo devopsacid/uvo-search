@@ -164,6 +164,7 @@ def test_transform_attachment_missing_file_name_skipped():
 # Fix 4 — corrupted signed_on year guard + published_at/effective_from fallback
 # ---------------------------------------------------------------------------
 
+
 def test_transform_corrupted_signed_on_year_falls_back_to_published_at():
     """A transposed-digit year (e.g. '3202' for '2023') must be rejected."""
     raw = {**RAW, "signed_on": "3202-03-02"}

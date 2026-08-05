@@ -1,9 +1,9 @@
 """SPARQL discovery for Vestník bulletins on data.slovensko.sk."""
 
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import AsyncIterator
 
 import httpx
 
@@ -53,9 +53,7 @@ async def discover_vestnik_datasets(
     page_size: int = 200,
 ) -> AsyncIterator[VestnikDataset]:
     since_filter = (
-        f'FILTER (?modified >= "{since.isoformat()}T00:00:00"^^xsd:dateTime)'
-        if since
-        else ""
+        f'FILTER (?modified >= "{since.isoformat()}T00:00:00"^^xsd:dateTime)' if since else ""
     )
     offset = 0
 

@@ -11,20 +11,22 @@ _CACHE_TTL_SEARCH = 300
 @async_ttl_cache(
     maxsize=256,
     ttl=_CACHE_TTL_SEARCH,
-    key_from=lambda db, *, text_query, cpv_codes, procurer_id, supplier_ico, date_from, date_to, value_min=None, value_max=None, limit, offset: _make_key(
-        (),
-        {
-            "text_query": text_query,
-            "cpv_codes": tuple(cpv_codes) if cpv_codes else None,
-            "procurer_id": procurer_id,
-            "supplier_ico": supplier_ico,
-            "date_from": date_from,
-            "date_to": date_to,
-            "value_min": value_min,
-            "value_max": value_max,
-            "limit": limit,
-            "offset": offset,
-        },
+    key_from=lambda db, *, text_query, cpv_codes, procurer_id, supplier_ico, date_from, date_to, value_min=None, value_max=None, limit, offset: (
+        _make_key(
+            (),
+            {
+                "text_query": text_query,
+                "cpv_codes": tuple(cpv_codes) if cpv_codes else None,
+                "procurer_id": procurer_id,
+                "supplier_ico": supplier_ico,
+                "date_from": date_from,
+                "date_to": date_to,
+                "value_min": value_min,
+                "value_max": value_max,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
     ),
 )
 async def search_procurements(
