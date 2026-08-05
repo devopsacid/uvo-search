@@ -1,0 +1,70 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: uvo-search
+
+# base/ intentionally omits the Secret (see its kustomization.yaml comment);
+# this overlay supplies secret.placeholder.yaml as a stand-in so the overlay
+# builds/renders cleanly end-to-end. Replace it with a real sealed-secret or
+# ExternalSecret before syncing to a live cluster -- see deploy/README.md.
+resources:
+  - ../../base
+  - secret.placeholder.yaml
+
+# Hetzner Cloud CSI driver's StorageClass. Swap via `patches` below if your
+# cluster names it differently (e.g. a WaitForFirstConsumer variant).
+patches:
+  - target:
+      kind: StatefulSet
+      name: mongo
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: hcloud-volumes
+      - op: add
+        path: /spec/volumeClaimTemplates/1/spec/storageClassName
+        value: hcloud-volumes
+  - target:
+      kind: StatefulSet
+      name: neo4j
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: hcloud-volumes
+      - op: add
+        path: /spec/volumeClaimTemplates/1/spec/storageClassName
+        value: hcloud-volumes
+  - target:
+      kind: StatefulSet
+      name: redis
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: hcloud-volumes
+  - target:
+      kind: Ingress
+      name: uvo-search
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: uvo.example.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: uvo.example.com
+
+# Point every workload image at your registry + tag. Replace REGISTRY_PLACEHOLDER
+# via `images:` (kustomize handles this cluster-wide, no per-file edits needed)
+# once you have a real registry -- see deploy/README.md.
+images:
+  - name: REGISTRY_PLACEHOLDER/uvo-search-mcp
+    newName: REGISTRY_PLACEHOLDER/uvo-search-mcp
+    newTag: latest
+  - name: REGISTRY_PLACEHOLDER/uvo-search-api
+    newName: REGISTRY_PLACEHOLDER/uvo-search-api
+    newTag: latest
+  - name: REGISTRY_PLACEHOLDER/uvo-search-gui-react
+    newName: REGISTRY_PLACEHOLDER/uvo-search-gui-react
+    newTag: latest
+  - name: REGISTRY_PLACEHOLDER/uvo-search-workers
+    newName: REGISTRY_PLACEHOLDER/uvo-search-workers
+    newTag: latest
