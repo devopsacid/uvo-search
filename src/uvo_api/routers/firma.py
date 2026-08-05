@@ -188,7 +188,7 @@ async def get_firma_partneri(
     role: str = Query("all"),
     sort: str = Query("value"),
     limit: int = Query(25, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> PartnerListResponse:
     db = get_db()
     result = await _firma_partners_agg(db, ico, role, sort, limit, offset)
@@ -251,7 +251,7 @@ async def list_firmy(
     q: str | None = Query(None),
     role: str = Query("all"),
     limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> FirmaListResponse:
     search_args: dict = {}
     if q:

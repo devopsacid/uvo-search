@@ -32,7 +32,7 @@ async def get_ingestion_log(
     event: str | None = Query(None),
     component: str | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> IngestionLogResponse:
     db = get_db()
     query: dict = {}
