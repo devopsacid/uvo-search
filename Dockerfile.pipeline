@@ -12,5 +12,12 @@ COPY src/uvo_core/ src/uvo_core/
 COPY src/uvo_mcp/ src/uvo_mcp/
 COPY src/uvo_pipeline/ src/uvo_pipeline/
 
+# Run as an unprivileged user. uid is fixed so the k8s securityContext can
+# assert runAsUser without depending on image internals.
+RUN mkdir -p /app/cache && chown -R 10001:10001 /app/cache
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app \
+    && chown -R 10001:10001 /app
+USER 10001
+
 ENTRYPOINT ["uv", "run", "python", "-m", "uvo_pipeline"]
 CMD ["--mode=recent"]

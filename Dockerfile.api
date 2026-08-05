@@ -17,6 +17,12 @@ COPY src/uvo_core/ src/uvo_core/
 COPY src/uvo_pipeline/ src/uvo_pipeline/
 COPY src/uvo_api/ src/uvo_api/
 
+# Run as an unprivileged user. uid is fixed so the k8s securityContext can
+# assert runAsUser without depending on image internals.
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app \
+    && chown -R 10001:10001 /app
+USER 10001
+
 EXPOSE 8001
 
 CMD ["uv", "run", "uvo-api"]
