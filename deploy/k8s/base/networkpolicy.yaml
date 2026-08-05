@@ -96,3 +96,40 @@ spec:
                   - extractor-crz
                   - extractor-ted
                   - extractor-itms
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+spec:
+  # All 6 worker Deployments carry app.kubernetes.io/component: worker
+  # (extractor-vestnik/crz/ted/itms, ingestor, dedup-worker) and are the only
+  # workloads with prometheus.io/scrape annotations today (see workers.yaml)
+  # -- api and mcp-server don't expose /metrics yet, so they're intentionally
+  # not covered here. Add them to this selector if/when they gain a
+  # prometheus.io/scrape annotation.
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: worker
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        # Namespace name is an assumption -- see the note in deploy/README.md
+        # next to the ingress-nginx one. Adjust to match your Prometheus /
+        # Alloy / Grafana Agent deployment's actual namespace.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8091
+        - protocol: TCP
+          port: 8092
+        - protocol: TCP
+          port: 8093
+        - protocol: TCP
+          port: 8094
+        - protocol: TCP
+          port: 8095
+        - protocol: TCP
+          port: 8096

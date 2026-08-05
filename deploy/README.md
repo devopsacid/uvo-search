@@ -23,6 +23,7 @@ deploy/
 - ArgoCD installed with access to your git remote
 - **A CNI that enforces NetworkPolicy** (Cilium, Calico, Weave, etc.). `deploy/k8s/base/networkpolicy.yaml` ships a default-deny-ingress policy with explicit allow rules; on a CNI that ignores NetworkPolicy (e.g. stock kubenet/flannel without a policy engine) these are inert and the pod network stays flat. Verify enforcement (`kubectl get pods -A | grep -Ei 'cilium|calico|weave'` or your provider's docs) before relying on them for isolation.
 - NetworkPolicies assume the ingress controller runs in a namespace named `ingress-nginx` and that the CNI enforces NetworkPolicy. Verify both before relying on network isolation.
+- NetworkPolicies also assume your Prometheus/Alloy/Grafana Agent scraper runs in a namespace named `monitoring` (`allow-monitoring-scrape` in `deploy/k8s/base/networkpolicy.yaml`, opening TCP 8091-8096 on the 6 worker pods where `/metrics` is served). If your monitoring stack lives elsewhere, update that policy's `namespaceSelector` to match — otherwise every scrape is silently refused on an enforcing CNI even though the kubelet's own readiness/liveness probes (host-originated) are unaffected.
 
 ## Excluded from this deployment
 
