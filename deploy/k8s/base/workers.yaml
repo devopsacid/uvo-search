@@ -1,0 +1,405 @@
+# 4 extractor workers + ingestor + dedup-worker. All consume/produce via
+# Redis Streams and write to Mongo (ingestor also writes to Neo4j). None
+# are called by other services directly, so no ClusterIP Service is
+# created -- probes hit the pod's containerPort directly.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: extractor-vestnik
+  namespace: uvo-search
+  labels:
+    app.kubernetes.io/name: extractor-vestnik
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: uvo-search
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: extractor-vestnik
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: extractor-vestnik
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: uvo-search
+    spec:
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z redis 6379; do sleep 2; done"]
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z mongo 27017; do sleep 2; done"]
+      containers:
+        - name: extractor-vestnik
+          image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
+          args: ["uvo_workers.vestnik"]
+          ports:
+            - name: health
+              containerPort: 8091
+          envFrom:
+            - configMapRef:
+                name: uvo-search-config
+            - secretRef:
+                name: uvo-search-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8091
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8091
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+            limits:
+              cpu: "500m"
+              memory: "384Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: extractor-crz
+  namespace: uvo-search
+  labels:
+    app.kubernetes.io/name: extractor-crz
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: uvo-search
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: extractor-crz
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: extractor-crz
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: uvo-search
+    spec:
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z redis 6379; do sleep 2; done"]
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z mongo 27017; do sleep 2; done"]
+      containers:
+        - name: extractor-crz
+          image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
+          args: ["uvo_workers.crz"]
+          ports:
+            - name: health
+              containerPort: 8092
+          envFrom:
+            - configMapRef:
+                name: uvo-search-config
+            - secretRef:
+                name: uvo-search-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8092
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8092
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+            limits:
+              cpu: "500m"
+              memory: "384Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: extractor-ted
+  namespace: uvo-search
+  labels:
+    app.kubernetes.io/name: extractor-ted
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: uvo-search
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: extractor-ted
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: extractor-ted
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: uvo-search
+    spec:
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z redis 6379; do sleep 2; done"]
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z mongo 27017; do sleep 2; done"]
+      containers:
+        - name: extractor-ted
+          image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
+          args: ["uvo_workers.ted"]
+          ports:
+            - name: health
+              containerPort: 8093
+          envFrom:
+            - configMapRef:
+                name: uvo-search-config
+            - secretRef:
+                name: uvo-search-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8093
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8093
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+            limits:
+              cpu: "500m"
+              memory: "384Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: extractor-itms
+  namespace: uvo-search
+  labels:
+    app.kubernetes.io/name: extractor-itms
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: uvo-search
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: extractor-itms
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: extractor-itms
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: uvo-search
+    spec:
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z redis 6379; do sleep 2; done"]
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z mongo 27017; do sleep 2; done"]
+      containers:
+        - name: extractor-itms
+          image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
+          args: ["uvo_workers.itms"]
+          ports:
+            - name: health
+              containerPort: 8094
+          envFrom:
+            - configMapRef:
+                name: uvo-search-config
+            - secretRef:
+                name: uvo-search-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8094
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8094
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+            limits:
+              cpu: "500m"
+              memory: "384Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestor
+  namespace: uvo-search
+  labels:
+    app.kubernetes.io/name: ingestor
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: uvo-search
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  # keep at 1 replica: consumer-group semantics on the Redis Stream are not
+  # verified to be safe for concurrent consumers in this codebase.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingestor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingestor
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: uvo-search
+    spec:
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z redis 6379; do sleep 2; done"]
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z mongo 27017; do sleep 2; done"]
+        - name: wait-for-neo4j
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z neo4j 7687; do sleep 2; done"]
+      containers:
+        - name: ingestor
+          image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
+          args: ["uvo_workers.ingestor"]
+          ports:
+            - name: health
+              containerPort: 8095
+          envFrom:
+            - configMapRef:
+                name: uvo-search-config
+            - secretRef:
+                name: uvo-search-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8095
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8095
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dedup-worker
+  namespace: uvo-search
+  labels:
+    app.kubernetes.io/name: dedup-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: uvo-search
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dedup-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dedup-worker
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: uvo-search
+    spec:
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z redis 6379; do sleep 2; done"]
+        - name: wait-for-mongo
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z mongo 27017; do sleep 2; done"]
+      containers:
+        - name: dedup-worker
+          image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
+          args: ["uvo_workers.dedup"]
+          ports:
+            - name: health
+              containerPort: 8096
+          envFrom:
+            - configMapRef:
+                name: uvo-search-config
+            - secretRef:
+                name: uvo-search-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8096
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+            limits:
+              cpu: "500m"
+              memory: "384Mi"

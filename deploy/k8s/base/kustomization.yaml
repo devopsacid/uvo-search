@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# NOTE: secret.template.yaml and pipeline-job.yaml are intentionally NOT
+# listed here. The secret is a template only (see its header comment) and
+# must be replaced by a sealed-secret/ExternalSecret per-overlay; the Job
+# is a manual one-off backfill, not part of the continuously-running stack.
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - mongo.yaml
+  - neo4j.yaml
+  - redis.yaml
+  - mcp-server.yaml
+  - api.yaml
+  - gui-react.yaml
+  - workers.yaml
+  - ingress.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: uvo-search
+    includeSelectors: true

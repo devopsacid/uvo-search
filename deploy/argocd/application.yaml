@@ -1,0 +1,43 @@
+# ArgoCD Application for the uvo-search stack on the Hetzner cluster.
+#
+# Sync-wave ordering is expressed with the argocd.argoproj.io/sync-wave
+# annotation directly on the relevant resources in deploy/k8s/base/*.yaml
+# (annotation is inert outside ArgoCD, so `kubectl kustomize`/`kubectl apply`
+# without ArgoCD still work unchanged). Wave plan:
+#   -1  Namespace, ConfigMap, Secret
+#    0  mongo, neo4j, redis (StatefulSets)
+#    1  mcp-server
+#    2  api, extractors, ingestor, dedup-worker
+#    3  gui-react, ingress
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: uvo-search
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # Replace with your actual git remote (gitlab/github). This chart has
+    # no external Helm dependency -- it's plain Kustomize.
+    repoURL: https://REPO_PLACEHOLDER/uvo-search.git
+    targetRevision: main
+    path: deploy/k8s/overlays/hetzner
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: uvo-search
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # namespace.yaml already manages this explicitly
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

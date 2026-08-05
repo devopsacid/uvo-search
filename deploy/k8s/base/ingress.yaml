@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: uvo-search
+  namespace: uvo-search
+  labels:
+    app.kubernetes.io/part-of: uvo-search
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - uvo.example.com
+      secretName: uvo-search-tls
+  rules:
+    - host: uvo.example.com
+      http:
+        paths:
+          # gui-react's own nginx already proxies /api/ -> api:8001 internally,
+          # so routing everything to gui-react is sufficient. api is exposed
+          # as its own path too for direct API consumers / health checks.
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 8001
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gui-react
+                port:
+                  number: 80
