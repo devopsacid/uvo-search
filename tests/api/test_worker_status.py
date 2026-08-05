@@ -6,18 +6,26 @@ from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
 from uvo_api.app import create_app
+from uvo_api.config import get_settings
 from uvo_api.routers.worker_status import COMPONENTS
+
+OPS_TOKEN = "test-ops-token"
 
 
 @pytest.fixture
 def client_and_db(monkeypatch):
     monkeypatch.setenv("API_MCP_SERVER_URL", "http://test")
+    # This endpoint is operator-only; every request needs the bearer token.
+    monkeypatch.setenv("API_OPS_TOKEN", OPS_TOKEN)
+    get_settings.cache_clear()
     db = AsyncMongoMockClient()["test"]
     monkeypatch.setattr("uvo_api.db.get_db", lambda: db)
     monkeypatch.setattr("uvo_api.routers.ingestion_log.get_db", lambda: db)
     monkeypatch.setattr("uvo_api.routers.worker_status.get_db", lambda: db)
     app = create_app()
-    return TestClient(app), db
+    client = TestClient(app, headers={"Authorization": f"Bearer {OPS_TOKEN}"})
+    yield client, db
+    get_settings.cache_clear()
 
 
 @pytest.mark.asyncio

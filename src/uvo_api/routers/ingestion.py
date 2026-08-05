@@ -4,8 +4,9 @@
 import logging
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from uvo_api.auth import require_ops_token
 from uvo_api.db import get_db
 from uvo_api.models import (
     DailyBucket,
@@ -19,7 +20,11 @@ from uvo_pipeline.health import SOURCES, collect
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+router = APIRouter(
+    prefix="/api/dashboard",
+    tags=["dashboard"],
+    dependencies=[Depends(require_ops_token)],
+)
 
 _STALE_THRESHOLD = 172800  # 48 h in seconds
 _WARN_THRESHOLD = 86400    # 24 h in seconds

@@ -25,6 +25,10 @@ class ApiSettings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     redis_password: str = ""
 
+    # Bearer token guarding operational endpoints (ingestion, ingestion-log,
+    # worker-status). Empty means those routes are disabled entirely.
+    ops_token: str = ""
+
     model_config = {"env_file": ".env", "env_prefix": "API_", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
 

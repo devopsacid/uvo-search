@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from uvo_api.auth import require_ops_token
 from uvo_api.db import get_db
 from uvo_api.models import IngestionLogItem, IngestionLogResponse
 
-router = APIRouter(prefix="/api/dashboard", tags=["ingestion-log"])
+router = APIRouter(
+    prefix="/api/dashboard",
+    tags=["ingestion-log"],
+    dependencies=[Depends(require_ops_token)],
+)
 
 
 def _to_iso_z(value) -> str:
