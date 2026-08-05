@@ -16,6 +16,7 @@ from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.loaders.mongo import recompute_entity_stats
 from uvo_pipeline.pubsub import subscribe
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
+from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
 
 logger = logging.getLogger(__name__)
@@ -113,7 +114,7 @@ async def run_dedup_worker() -> None:
                 event="redis_connect_failed",
                 component="dedup-worker",
                 instance_id=instance_id,
-                message=str(exc),
+                message=redact_exception(exc),
             )
         except Exception:
             pass
@@ -199,8 +200,8 @@ async def run_dedup_worker() -> None:
             except Exception as exc:
                 logger.error("dedup: entity-stats recompute failed: %s", exc)
         except Exception as exc:
-            msg = f"{type(exc).__name__}: {exc}"
-            logger.error("dedup: run failed: %s", msg)
+            logger.error("dedup: run failed: %s", exc, exc_info=True)
+            msg = redact_exception(exc)
             metrics["last_error"] = msg
             try:
                 await log_event(

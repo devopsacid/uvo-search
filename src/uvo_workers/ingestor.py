@@ -183,8 +183,7 @@ async def run_ingestor() -> None:
             event="index_bootstrap_failed",
             component="ingestor",
             instance_id=instance_id,
-            # TODO(phase1): use uvo_workers.errors.redact_exception once Phase 1 merges
-            message=f"{type(exc).__name__}",
+            message=redact_exception(exc),
         )
 
     try:
