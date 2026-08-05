@@ -10,8 +10,10 @@ from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
 from uvo_api.app import create_app
+from uvo_api.config import get_settings
 
 SOURCES = ["vestnik", "crz", "ted", "uvo", "itms"]
+OPS_TOKEN = "test-ops-token"
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +33,11 @@ async def mock_db():
 def client(monkeypatch):
     monkeypatch.setenv("API_MCP_SERVER_URL", "http://localhost:8000/mcp")
     monkeypatch.setenv("API_MONGODB_URI", "mongodb://localhost:27017")
-    return TestClient(create_app())
+    # This endpoint is operator-only; every request needs the bearer token.
+    monkeypatch.setenv("API_OPS_TOKEN", OPS_TOKEN)
+    get_settings.cache_clear()
+    yield TestClient(create_app(), headers={"Authorization": f"Bearer {OPS_TOKEN}"})
+    get_settings.cache_clear()
 
 
 # ---------------------------------------------------------------------------

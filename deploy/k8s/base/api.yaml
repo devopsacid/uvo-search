@@ -58,6 +58,15 @@ spec:
             # identical here for parity; already in the ConfigMap too.
             - name: API_MCP_SERVER_URL
               value: "http://mcp-server:8000/mcp"
+            # ApiSettings reads env_prefix "API_", so the unprefixed
+            # REDIS_PASSWORD delivered by envFrom is invisible to it. Map the
+            # same Secret key across rather than duplicating the value, or the
+            # /v1 rate limiter gets NOAUTH and fails closed on every request.
+            - name: API_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: uvo-search-secrets
+                  key: REDIS_PASSWORD
           readinessProbe:
             httpGet:
               path: /health

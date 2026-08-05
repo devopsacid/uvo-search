@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from uvo_api.auth import require_ops_token
 from uvo_api.db import get_db
 from uvo_api.models import IngestionLogItem, IngestionLogResponse
 
-router = APIRouter(prefix="/api/dashboard", tags=["ingestion-log"])
+router = APIRouter(
+    prefix="/api/dashboard",
+    tags=["ingestion-log"],
+    dependencies=[Depends(require_ops_token)],
+)
 
 
 def _to_iso_z(value) -> str:
@@ -27,7 +32,7 @@ async def get_ingestion_log(
     event: str | None = Query(None),
     component: str | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> IngestionLogResponse:
     db = get_db()
     query: dict = {}

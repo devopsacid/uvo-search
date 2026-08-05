@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.mcp
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file: .env
     depends_on:
       mongo:
@@ -31,7 +31,11 @@ services:
       # Mongo + Neo4j handles. Mongo comes from .env (API_MONGODB_URI); Neo4j below.
       API_NEO4J_URI: bolt://neo4j:7687
       API_NEO4J_USER: neo4j
-      API_NEO4J_PASSWORD: ${NEO4J_PASSWORD:-changeme}
+      API_NEO4J_PASSWORD: ${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set}
+      # Same idiom for Redis: ApiSettings uses env_prefix "API_", so the
+      # unprefixed REDIS_PASSWORD is invisible to it. Without this the /v1 rate
+      # limiter gets NOAUTH and fails closed on every request.
+      API_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     depends_on:
       mongo:
         condition: service_healthy
@@ -68,12 +72,12 @@ services:
     restart: unless-stopped
     environment:
       MONGODB_INITDB_ROOT_USERNAME: uvo
-      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
+      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD must be set}
     volumes:
       - mongo_data:/data/db
       - mongo_configdb:/data/configdb
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -83,15 +87,16 @@ services:
 
   mongo-express:
     image: mongo-express:latest
+    profiles: ["debug"]
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: uvo
-      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:-changeme}
-      ME_CONFIG_MONGODB_URL: mongodb://uvo:${MONGO_PASSWORD:-changeme}@mongo:27017/
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD must be set}
+      ME_CONFIG_MONGODB_URL: mongodb://uvo:${MONGO_PASSWORD:?MONGO_PASSWORD must be set}@mongo:27017/
       ME_CONFIG_BASICAUTH_USERNAME: admin
-      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_PASSWORD:-changeme}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD must be set}
     depends_on:
       mongo:
         condition: service_healthy
@@ -100,7 +105,7 @@ services:
     image: neo4j:5
     restart: unless-stopped
     environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-changeme}
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set}
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 1g
@@ -108,8 +113,8 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
       interval: 15s
@@ -120,13 +125,19 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+    environment:
+      # The command above is interpolated by Compose on the host; this makes the
+      # same value visible *inside* the container, which the healthcheck shell
+      # needs. Without it the probe runs `redis-cli -a "" ping` and never passes.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5

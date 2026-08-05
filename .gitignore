@@ -23,3 +23,10 @@ worktree/
 logs/
 mongo-backup-20260420-145644/mongo-dump.archive
 mongo-backup-20260420-145644/mongo-raw-volume.tgz
+
+# Never commit populated k8s secrets — only inert templates are tracked.
+deploy/k8s/overlays/*/secret*.yaml
+!deploy/k8s/base/secret.template.yaml
+# The overlay placeholder is deliberately tracked: it holds no real values and
+# kustomize needs it to render a complete manifest set.
+!deploy/k8s/overlays/*/secret.placeholder.yaml

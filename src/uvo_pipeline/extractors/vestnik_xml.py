@@ -16,6 +16,22 @@ NAMESPACES = {
 }
 
 
+def _make_parser() -> etree.XMLParser:
+    """Return a parser with entity resolution and DTD loading disabled.
+
+    lxml resolves external entities by default, which turns any XML document
+    from the upstream catalog into a local-file-disclosure primitive: the
+    resolved content lands in extracted fields, is written to MongoDB, and is
+    then served publicly by the API.
+    """
+    return etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        load_dtd=False,
+        huge_tree=False,
+    )
+
+
 def parse_xml_file(xml_path: Path) -> Iterator[dict]:
     """Parse one Vestník XML file. Yield one raw dict per notice.
 
@@ -24,7 +40,7 @@ def parse_xml_file(xml_path: Path) -> Iterator[dict]:
     Additional fields extracted when available.
     """
     try:
-        tree = etree.parse(str(xml_path))
+        tree = etree.parse(str(xml_path), _make_parser())
         root = tree.getroot()
     except etree.XMLSyntaxError as e:
         logger.warning("XML parse error in %s: %s", xml_path.name, e)

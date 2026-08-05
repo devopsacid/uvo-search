@@ -48,6 +48,8 @@ cd src/uvo-gui-react && npm install && npm test
 
 ## Docker (local deploy)
 
+> **Development only.** `docker-compose.yml` binds datastores to loopback and is not a production artifact. Production deploys from `deploy/k8s/` via ArgoCD — see `deploy/README.md`.
+
 Full stack (14 services: mcp-server, api, gui-react, mongo, mongo-express, neo4j, redis, extractor-vestnik, extractor-crz, extractor-ted, extractor-itms, ingestor, dedup-worker, pipeline) lives in `docker-compose.yml`. For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j/redis volume-init gotchas, service-name URIs, and nuclear-reset tiers. The `pipeline` service is now optional/legacy for ad-hoc backfills; the 6 new microservices (4 extractors + ingestor + dedup-worker) handle continuous ingestion via Redis Streams.
 
 **Docker runs in WSL, not Docker Desktop.** All `docker compose` commands must go through WSL:

@@ -1,6 +1,17 @@
 """Shared test fixtures for UVO Search tests."""
 
-from unittest.mock import MagicMock
+import os
+
+# Credential-bearing settings fields carry no defaults by design: a missing
+# value must abort startup rather than fall back to a guessable password.
+# The suite is fully mocked and never opens these connections, so supply inert
+# placeholders here. This must happen at import time, before any test module
+# constructs a Settings object — several are cached via lru_cache on first use.
+os.environ.setdefault("MONGODB_URI", "mongodb://test:test@localhost:27017")
+os.environ.setdefault("NEO4J_PASSWORD", "test-password")
+os.environ.setdefault("API_MONGODB_URI", "mongodb://test:test@localhost:27017")
+
+from unittest.mock import MagicMock  # noqa: E402
 
 import httpx
 import pytest

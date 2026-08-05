@@ -1,19 +1,29 @@
-"""API-key authentication for the public /v1 API.
+"""Authentication for the API.
 
-Keys live in the Mongo ``api_keys`` collection, stored as the sha256 hex digest
-of the raw key (``key_hash``) alongside ``plan``, ``owner_email``, ``active`` and
-``created_at``. Lookups are cached in-process for 60s to avoid a Mongo round-trip
-per request.
+Two independent schemes live here:
+
+* ``require_api_key`` — API-key auth for the public ``/v1`` API. Keys live in the
+  Mongo ``api_keys`` collection, stored as the sha256 hex digest of the raw key
+  (``key_hash``) alongside ``plan``, ``owner_email``, ``active`` and
+  ``created_at``. Lookups are cached in-process for 60s to avoid a Mongo
+  round-trip per request.
+* ``require_ops_token`` — a single bearer token guarding the operational
+  dashboard endpoints, which expose worker topology and instance identifiers.
 """
 
 import hashlib
+import logging
+import secrets
 from dataclasses import dataclass
 
 from cachetools import TTLCache
-from fastapi import Header, Request
+from fastapi import Header, HTTPException, Request, status
 
+from uvo_api.config import get_settings
 from uvo_api.db import get_db
 from uvo_api.v1_errors import ApiV1Error
+
+logger = logging.getLogger(__name__)
 
 # Cache both hits and misses; 60s TTL bounds the staleness window for newly
 # issued or revoked keys.
@@ -58,3 +68,32 @@ async def require_api_key(
     )
     request.state.api_key_ctx = ctx
     return ctx
+
+
+async def require_ops_token(authorization: str = Header(default="")) -> None:
+    """Reject requests without a valid operational bearer token.
+
+    Uses a constant-time comparison so the token cannot be recovered by
+    timing. When no token is configured the routes are refused outright
+    rather than left open — failing closed is the safe default for
+    endpoints that expose internal topology.
+    """
+    expected = get_settings().ops_token
+    if not expected:
+        logger.warning("Operational endpoint called but API_OPS_TOKEN is unset; refusing")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Operational endpoints are not configured",
+        )
+
+    scheme, _, token = authorization.partition(" ")
+    # compare_digest raises TypeError on non-ASCII str, which would surface as a
+    # 500; comparing encoded bytes keeps a hostile header a clean 401.
+    if scheme.lower() != "bearer" or not secrets.compare_digest(
+        token.encode("utf-8"), expected.encode("utf-8")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

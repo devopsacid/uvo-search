@@ -22,7 +22,7 @@ async def list_contracts(
     supplier_ico: str | None = Query(None),
     procurer_ico: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> ContractListResponse:
     # `ico` is legacy; prefer explicit supplier_ico / procurer_ico.
     eff_supplier = supplier_ico or ico

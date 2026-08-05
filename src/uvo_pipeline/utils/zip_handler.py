@@ -11,6 +11,18 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+def cache_path_for_url(url: str, cache_dir: Path) -> Path:
+    """Derive a cache filename from the URL hash, never from its path.
+
+    The URL comes from the NKOD catalog response, i.e. it is remote data.
+    Using its last path segment as a filename lets a malicious or compromised
+    catalog entry escape cache_dir via '..' and write anywhere the process
+    can reach.
+    """
+    url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+    return cache_dir / f"vestnik_{url_hash}.zip"
+
+
 async def download_zip(
     url: str,
     client: httpx.AsyncClient,
@@ -23,9 +35,7 @@ async def download_zip(
     Uses a content-hash filename to avoid re-downloading identical files.
     If the file already exists in cache, skip download unless force_redownload=True.
     """
-    url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
-    filename = url.split("/")[-1] or f"vestnik_{url_hash}.zip"
-    dest = cache_dir / filename
+    dest = cache_path_for_url(url, Path(cache_dir))
 
     if dest.exists() and not force_redownload:
         logger.debug("Using cached ZIP: %s", dest)

@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from uvo_api.auth import require_ops_token
 from uvo_api.db import get_db
 from uvo_api.models import WorkerStatus, WorkerStatusResponse
 
-router = APIRouter(prefix="/api/dashboard", tags=["worker-status"])
+router = APIRouter(
+    prefix="/api/dashboard",
+    tags=["worker-status"],
+    dependencies=[Depends(require_ops_token)],
+)
 
 COMPONENTS = [
     "extractor:vestnik",
