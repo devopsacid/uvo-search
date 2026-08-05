@@ -55,7 +55,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8091
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -63,7 +63,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8091
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -141,7 +141,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8092
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -149,7 +149,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8092
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -223,7 +223,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8093
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -231,7 +231,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8093
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -305,7 +305,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8094
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -313,7 +313,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8094
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -392,7 +392,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8095
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -400,7 +400,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8095
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -474,7 +474,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8096
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -482,7 +482,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8096
             initialDelaySeconds: 45
             periodSeconds: 30
