@@ -170,12 +170,17 @@ async def build_ico_cpv_groups(db: AsyncIOMotorDatabase, base_filter: dict) -> l
     """
     pass1_match = {
         **base_filter,
+        # Skip notices already assigned to a canonical group. Without this,
+        # Pass 1 reprocesses settled groups on every run and the reported
+        # match count is a re-count rather than new matches.
+        "canonical_id": None,
         "procurer.ico": {"$ne": None, "$exists": True},
         "cpv_code": {"$ne": None, "$exists": True},
     }
 
     pipeline_pass1 = [
         {"$match": pass1_match},
+        {"$project": {"source": 1, "procurer.ico": 1, "cpv_code": 1, "publication_date": 1}},
         {"$group": {
             "_id": {"procurer_ico": "$procurer.ico", "cpv_code": "$cpv_code"},
             "notices": {"$push": {"id": "$_id", "source": "$source", "pub_date": "$publication_date"}},

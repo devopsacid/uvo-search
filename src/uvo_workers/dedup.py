@@ -20,6 +20,19 @@ from uvo_workers.health import serve_health
 
 logger = logging.getLogger(__name__)
 
+# Dedup performs a quadratic scan over a 30-day window. The ingestor publishes
+# notices:written once per batch, so a short debounce means a full re-scan every
+# few seconds during backfill. This is a floor on how often the scan may start,
+# independent of how many write notifications arrive.
+MIN_DEDUP_INTERVAL_SECONDS = 300.0
+
+
+def should_run(last_run_monotonic: float | None, now_monotonic: float) -> bool:
+    """True when enough time has passed since the last dedup pass."""
+    if last_run_monotonic is None:
+        return True
+    return (now_monotonic - last_run_monotonic) >= MIN_DEDUP_INTERVAL_SECONDS
+
 
 class DedupWorkerSettings(BaseSettings):
     dedup_interval_seconds: int = 3600
@@ -110,6 +123,10 @@ async def run_dedup_worker() -> None:
     # Initialise to monotonic-now so the interval-elapsed branch doesn't trigger
     # immediately on startup (would otherwise see elapsed == time.monotonic()).
     last_write_time: list[float] = [time.monotonic()]
+    # Floor on how often a dedup pass may actually start, independent of the
+    # debounce above. last_dedup_run stays None until the first run so the
+    # very first pass is never blocked.
+    last_dedup_run: list[float | None] = [None]
 
     async def _run_dedup() -> None:
         # Reuse the worker's single long-lived Motor client (log_mongo_client)
@@ -182,9 +199,15 @@ async def run_dedup_worker() -> None:
                     continue
                 async with trigger_lock:
                     pending.clear()
+                now = time.monotonic()
+                if not should_run(last_dedup_run[0], now):
+                    logger.debug("dedup: within minimum interval, skipping trigger")
+                    continue
+                last_dedup_run[0] = now
                 await _run_dedup()
             elif elapsed_since_poll >= settings.dedup_interval_seconds:
                 last_write_time[0] = time.monotonic()
+                last_dedup_run[0] = time.monotonic()
                 await _run_dedup()
             else:
                 await asyncio.sleep(1)
