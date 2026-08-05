@@ -34,6 +34,36 @@ def should_run(last_run_monotonic: float | None, now_monotonic: float) -> bool:
     return (now_monotonic - last_run_monotonic) >= MIN_DEDUP_INTERVAL_SECONDS
 
 
+def next_debounced_action(
+    *,
+    debounce_remaining: float,
+    last_dedup_run: float | None,
+    now: float,
+) -> tuple[str, float | None]:
+    """Decide what the timer loop does this tick for a pending write signal.
+
+    Returns (action, sleep_for):
+      - "sleep_debounce": still inside the debounce window; sleep sleep_for
+        and re-check. `pending` must NOT be cleared.
+      - "sleep_floor": debounce satisfied but the MIN_DEDUP_INTERVAL_SECONDS
+        floor isn't yet; sleep sleep_for and re-check. `pending` must NOT be
+        cleared here either — clearing it would drop the deferred run
+        entirely (nothing re-sets `pending` until the next notices:written
+        message), so the final batch of a burst would silently wait for the
+        much longer interval fallback instead of firing as soon as the floor
+        opens.
+      - "run": the caller should clear `pending` and run the dedup pass now.
+    """
+    if debounce_remaining > 0:
+        return "sleep_debounce", debounce_remaining
+    if not should_run(last_dedup_run, now):
+        # should_run(None, ...) is always True, so a False result here
+        # guarantees last_dedup_run is a float.
+        floor_remaining = MIN_DEDUP_INTERVAL_SECONDS - (now - last_dedup_run)  # type: ignore[operator]
+        return "sleep_floor", max(floor_remaining, 0.1)
+    return "run", None
+
+
 class DedupWorkerSettings(BaseSettings):
     dedup_interval_seconds: int = 3600
     dedup_debounce_seconds: int = 5
@@ -141,6 +171,11 @@ async def run_dedup_worker() -> None:
             )
             metrics["dedup_runs"] += 1
             metrics["last_run_at"] = time.time()
+            # Clear a prior cycle's error now that a pass completed cleanly —
+            # last_error must reflect the last cycle, not "any cycle ever
+            # this process lifetime", or a transient failure marks /readyz
+            # unready until restart.
+            metrics["last_error"] = None
             logger.info("dedup: found %d match groups", match_groups)
             await log_event(
                 db,
@@ -194,15 +229,27 @@ async def run_dedup_worker() -> None:
                 debounce_remaining = settings.dedup_debounce_seconds - (
                     time.monotonic() - last_write_time[0]
                 )
-                if debounce_remaining > 0:
-                    await asyncio.sleep(debounce_remaining)
+                now = time.monotonic()
+                action, sleep_for = next_debounced_action(
+                    debounce_remaining=debounce_remaining,
+                    last_dedup_run=last_dedup_run[0],
+                    now=now,
+                )
+                if action == "sleep_debounce":
+                    await asyncio.sleep(sleep_for)
+                    continue
+                if action == "sleep_floor":
+                    # `pending` is deliberately left set — see
+                    # next_debounced_action's docstring for why clearing it
+                    # here would drop the deferred run.
+                    logger.debug(
+                        "dedup: within minimum interval, deferring trigger for %.1fs",
+                        sleep_for,
+                    )
+                    await asyncio.sleep(sleep_for)
                     continue
                 async with trigger_lock:
                     pending.clear()
-                now = time.monotonic()
-                if not should_run(last_dedup_run[0], now):
-                    logger.debug("dedup: within minimum interval, skipping trigger")
-                    continue
                 last_dedup_run[0] = now
                 await _run_dedup()
             elif elapsed_since_poll >= settings.dedup_interval_seconds:
