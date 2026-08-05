@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from uvo_api.cache_invalidation import run_cache_invalidator
 from uvo_api.config import get_settings
+from uvo_api.errors import register_error_handlers
 from uvo_api.routers import (
     contracts,
     dashboard,
@@ -67,6 +68,8 @@ def create_app() -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+    register_error_handlers(app)
 
     @app.get("/health")
     async def health() -> dict:

@@ -3,6 +3,7 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
+from uvo_api.errors import raise_for_tool_error
 from uvo_api.models import CytoEdge, CytoEdgeData, CytoNode, CytoNodeData, GraphResponse
 from uvo_api.services import run_query
 
@@ -11,8 +12,7 @@ router = APIRouter(prefix="/api/graph", tags=["graph"])
 
 def _nodes_edges_from_mcp(raw: dict) -> GraphResponse:
     """Convert the {nodes, edges} dict returned by MCP graph tools to Cytoscape format."""
-    if "error" in raw:
-        raise HTTPException(status_code=503, detail=raw["error"])
+    raw = raise_for_tool_error(raw, "graph_network")
 
     raw_nodes: list[dict] = raw.get("nodes", [])
     raw_edges: list[dict] = raw.get("edges", [])
