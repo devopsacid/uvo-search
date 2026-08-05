@@ -18,7 +18,13 @@ from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
 from uvo_pipeline.pubsub import publish
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
-from uvo_pipeline.streams import ack, autoclaim_stale, decode_entry, ensure_consumer_group, read_group
+from uvo_pipeline.streams import (
+    ack,
+    autoclaim_stale,
+    decode_entry,
+    ensure_consumer_group,
+    read_group,
+)
 from uvo_pipeline.utils.date_validation import validate_notice_dates
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
