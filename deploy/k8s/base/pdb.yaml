@@ -1,0 +1,36 @@
+# Keeps a voluntary disruption (node drain, cluster upgrade) from removing the
+# only replica of a service. Uses maxUnavailable rather than minAvailable so a
+# single-replica Deployment is not permanently undrainable.
+#
+# Label key confirmed against the actual Deployments (`kubectl kustomize
+# deploy/k8s/overlays/hetzner | grep -A3 matchLabels`): they use
+# app.kubernetes.io/name, not the plan's assumed `app`.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uvo-api
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uvo-gui-react
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gui-react
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: uvo-mcp-server
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server

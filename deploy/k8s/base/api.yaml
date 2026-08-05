@@ -37,6 +37,7 @@ spec:
         app.kubernetes.io/name: api
         app.kubernetes.io/part-of: uvo-search
     spec:
+      terminationGracePeriodSeconds: 30
       # mirrors compose depends_on: mcp-server (healthy)
       initContainers:
         - name: wait-for-mcp-server

@@ -26,6 +26,9 @@ spec:
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
     spec:
+      # read_group blocks 5s and a batch write can take longer; the default 30s
+      # risks SIGKILL mid-batch, which strands entries in the PEL.
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -111,6 +114,7 @@ spec:
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -192,6 +196,7 @@ spec:
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -273,6 +278,7 @@ spec:
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -356,6 +362,7 @@ spec:
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -440,6 +447,7 @@ spec:
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
