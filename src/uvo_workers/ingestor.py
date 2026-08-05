@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import signal
 import uuid
 from functools import lru_cache
@@ -17,7 +18,7 @@ from uvo_pipeline.loaders.mongo import upsert_batch
 from uvo_pipeline.loaders.neo4j import merge_notice_batch
 from uvo_pipeline.pubsub import publish
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
-from uvo_pipeline.streams import ack, decode_entry, ensure_consumer_group, read_group
+from uvo_pipeline.streams import ack, autoclaim_stale, decode_entry, ensure_consumer_group, read_group
 from uvo_pipeline.utils.date_validation import validate_notice_dates
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
@@ -82,6 +83,12 @@ async def run_ingestor() -> None:
     pipeline_settings = get_pipeline_settings()
     redis_settings = get_redis_settings()
     instance_id = uuid.uuid4().hex
+    # Consumer name must be stable across restarts so this pod's own pending
+    # entries are redelivered to it via XAUTOCLAIM. Kubernetes sets HOSTNAME
+    # to the pod name (stable for a StatefulSet, stable-enough for a
+    # Deployment pod across in-place restarts). instance_id stays random for
+    # log correlation of a single process lifetime.
+    consumer_name = os.environ.get("HOSTNAME") or f"ingestor-{instance_id[:8]}"
 
     mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
     db = mongo_client[pipeline_settings.mongodb_database]
@@ -160,7 +167,7 @@ async def run_ingestor() -> None:
                 results = await read_group(
                     redis_client,
                     "ingestor",
-                    instance_id,
+                    consumer_name,
                     _STREAMS,
                     count=settings.ingestor_batch_size,
                     block_ms=5000,
@@ -172,7 +179,19 @@ async def run_ingestor() -> None:
                 continue
 
             if not results:
-                continue
+                reclaimed = []
+                for stream in _STREAMS:
+                    entries = await autoclaim_stale(
+                        redis_client, stream, "ingestor", consumer_name
+                    )
+                    if entries:
+                        reclaimed.append((stream, entries))
+                        logger.info(
+                            "ingestor: reclaimed %d stale entries from %s", len(entries), stream
+                        )
+                if not reclaimed:
+                    continue
+                results = reclaimed
 
             for stream_name, entries in results:
                 notices: list[CanonicalNotice] = []

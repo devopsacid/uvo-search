@@ -1,9 +1,12 @@
 """Redis Streams helpers — XADD / XREADGROUP / XACK."""
 
 import json
+import logging
 
 import redis.asyncio as aioredis
 from redis.exceptions import ResponseError
+
+logger = logging.getLogger(__name__)
 
 
 async def xadd_notice(
@@ -75,3 +78,37 @@ def decode_entry(fields: dict[bytes, bytes]) -> dict:
         "hash": fields[b"hash"].decode(),
         "run": fields[b"run"].decode(),
     }
+
+
+async def autoclaim_stale(
+    redis: aioredis.Redis,
+    stream: str,
+    group: str,
+    consumer: str,
+    *,
+    min_idle_ms: int = 60_000,
+    count: int = 100,
+) -> list[tuple[bytes, dict]]:
+    """Reclaim entries pending longer than min_idle_ms from dead consumers.
+
+    Consumer names are per-pod. When a pod dies mid-batch its delivered but
+    unacked entries stay in the PEL under a name that never returns, so
+    without this they are stranded permanently and the PEL grows without
+    bound. Returns entries in the same shape read_group yields.
+
+    Failures are swallowed and reported as "nothing reclaimed": a reclaim
+    problem must never stop the main ingest loop from making progress.
+    """
+    try:
+        _cursor, entries, _deleted = await redis.xautoclaim(
+            name=stream,
+            groupname=group,
+            consumername=consumer,
+            min_idle_time=min_idle_ms,
+            start_id="0-0",
+            count=count,
+        )
+    except Exception as exc:
+        logger.warning("xautoclaim failed on %s: %s", stream, exc)
+        return []
+    return list(entries or [])
