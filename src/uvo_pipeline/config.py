@@ -13,12 +13,13 @@ class PipelineSettings(BaseSettings):
     ted_base_url: str = "https://api.ted.europa.eu"
     ckan_base_url: str = "https://data.slovensko.sk"  # NOTE: CKAN API no longer available here
 
-    # Databases (required for pipeline)
-    mongodb_uri: str = "mongodb://uvo:changeme@mongo:27017"
+    # Databases (required for pipeline) — no defaults: a missing value must
+    # fail at startup rather than silently using a known-weak credential.
+    mongodb_uri: str
     mongodb_database: str = "uvo_search"
     neo4j_uri: str = "bolt://neo4j:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "changeme"
+    neo4j_password: str
 
     # Pipeline behaviour
     pipeline_mode: Literal["recent", "historical"] = "recent"

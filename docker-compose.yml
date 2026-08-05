@@ -31,7 +31,7 @@ services:
       # Mongo + Neo4j handles. Mongo comes from .env (API_MONGODB_URI); Neo4j below.
       API_NEO4J_URI: bolt://neo4j:7687
       API_NEO4J_USER: neo4j
-      API_NEO4J_PASSWORD: ${NEO4J_PASSWORD:-changeme}
+      API_NEO4J_PASSWORD: ${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set}
     depends_on:
       mongo:
         condition: service_healthy
@@ -68,7 +68,7 @@ services:
     restart: unless-stopped
     environment:
       MONGODB_INITDB_ROOT_USERNAME: uvo
-      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
+      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD must be set}
     volumes:
       - mongo_data:/data/db
       - mongo_configdb:/data/configdb
@@ -89,10 +89,10 @@ services:
       - "127.0.0.1:8081:8081"
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: uvo
-      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:-changeme}
-      ME_CONFIG_MONGODB_URL: mongodb://uvo:${MONGO_PASSWORD:-changeme}@mongo:27017/
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD must be set}
+      ME_CONFIG_MONGODB_URL: mongodb://uvo:${MONGO_PASSWORD:?MONGO_PASSWORD must be set}@mongo:27017/
       ME_CONFIG_BASICAUTH_USERNAME: admin
-      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_PASSWORD:-changeme}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD must be set}
     depends_on:
       mongo:
         condition: service_healthy
@@ -101,7 +101,7 @@ services:
     image: neo4j:5
     restart: unless-stopped
     environment:
-      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-changeme}
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD must be set}
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 1g

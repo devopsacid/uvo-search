@@ -11,7 +11,9 @@ class ApiSettings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5174", "http://localhost:8080"]
 
     # Mongo connection (read from API_MONGODB_URI / API_MONGODB_DATABASE due to env_prefix below).
-    mongodb_uri: str = "mongodb://uvo:changeme@mongo:27017"
+    # No default: a missing URI must fail at startup rather than silently using
+    # a known-weak credential.
+    mongodb_uri: str
     mongodb_database: str = "uvo_search"
 
     # Neo4j — used in-process by the graph endpoints (optional; graph degrades to 503 when unset).
