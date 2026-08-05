@@ -14,8 +14,8 @@ from pydantic_settings import BaseSettings
 from uvo_core.domain.models import CanonicalNotice
 from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.ingestion_log import log_event
-from uvo_pipeline.loaders.mongo import upsert_batch
-from uvo_pipeline.loaders.neo4j import merge_notice_batch
+from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
+from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
 from uvo_pipeline.pubsub import publish
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
 from uvo_pipeline.streams import ack, autoclaim_stale, decode_entry, ensure_consumer_group, read_group
@@ -160,6 +160,26 @@ async def run_ingestor() -> None:
         pipeline_settings.neo4j_uri,
         auth=(pipeline_settings.neo4j_user, pipeline_settings.neo4j_password),
     )
+
+    # The ingestor is the only writer in a worker-only deployment; the legacy
+    # pipeline Job that used to provision these is excluded from the kustomize
+    # base. Both helpers are idempotent, so running them on every start is safe.
+    try:
+        await ensure_indexes(db)
+        async with neo4j_driver.session() as bootstrap_session:
+            await ensure_constraints(bootstrap_session)
+        logger.info("ingestor: indexes and constraints ensured")
+    except Exception as exc:
+        logger.error("ingestor: failed to ensure indexes/constraints: %s", exc, exc_info=True)
+        await log_event(
+            db,
+            level="error",
+            event="index_bootstrap_failed",
+            component="ingestor",
+            instance_id=instance_id,
+            # TODO(phase1): use uvo_workers.errors.redact_exception once Phase 1 merges
+            message=f"{type(exc).__name__}",
+        )
 
     try:
         while not stop_event.is_set():
