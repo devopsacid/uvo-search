@@ -25,7 +25,14 @@ spec:
         app.kubernetes.io/name: extractor-vestnik
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8091"
     spec:
+      # read_group blocks 5s and a batch write can take longer; the default 30s
+      # risks SIGKILL mid-batch, which strands entries in the PEL.
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -37,6 +44,11 @@ spec:
         - name: extractor-vestnik
           image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
           args: ["uvo_workers.vestnik"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: health
               containerPort: 8091
@@ -47,7 +59,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8091
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -55,7 +67,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8091
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -68,6 +80,20 @@ spec:
             limits:
               cpu: "500m"
               memory: "384Mi"
+          volumeMounts:
+            - name: tmp
+              # readOnlyRootFilesystem leaves nowhere for uv's cache dir
+              # (UV_CACHE_DIR=/tmp/uv-cache, set in Dockerfile.workers).
+              mountPath: /tmp
+            - name: app-cache
+              # vestnik_nkod extractor writes downloaded ZIPs to cache_dir
+              # (default /app/cache, see uvo_pipeline/config.py).
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: app-cache
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -91,7 +117,12 @@ spec:
         app.kubernetes.io/name: extractor-crz
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8092"
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -103,6 +134,11 @@ spec:
         - name: extractor-crz
           image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
           args: ["uvo_workers.crz"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: health
               containerPort: 8092
@@ -113,7 +149,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8092
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -121,7 +157,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8092
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -134,6 +170,16 @@ spec:
             limits:
               cpu: "500m"
               memory: "384Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-cache
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: app-cache
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -157,7 +203,12 @@ spec:
         app.kubernetes.io/name: extractor-ted
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8093"
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -169,6 +220,11 @@ spec:
         - name: extractor-ted
           image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
           args: ["uvo_workers.ted"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: health
               containerPort: 8093
@@ -179,7 +235,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8093
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -187,7 +243,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8093
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -200,6 +256,16 @@ spec:
             limits:
               cpu: "500m"
               memory: "384Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-cache
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: app-cache
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -223,7 +289,12 @@ spec:
         app.kubernetes.io/name: extractor-itms
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8094"
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -235,6 +306,11 @@ spec:
         - name: extractor-itms
           image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
           args: ["uvo_workers.itms"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: health
               containerPort: 8094
@@ -245,7 +321,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8094
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -253,7 +329,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8094
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -266,6 +342,16 @@ spec:
             limits:
               cpu: "500m"
               memory: "384Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-cache
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: app-cache
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -291,7 +377,12 @@ spec:
         app.kubernetes.io/name: ingestor
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8095"
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -306,6 +397,11 @@ spec:
         - name: ingestor
           image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
           args: ["uvo_workers.ingestor"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: health
               containerPort: 8095
@@ -316,7 +412,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8095
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -324,7 +420,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8095
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -337,6 +433,16 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-cache
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: app-cache
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -360,7 +466,12 @@ spec:
         app.kubernetes.io/name: dedup-worker
         app.kubernetes.io/component: worker
         app.kubernetes.io/part-of: uvo-search
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8096"
     spec:
+      terminationGracePeriodSeconds: 60
       initContainers:
         - name: wait-for-redis
           image: busybox:1.36
@@ -372,6 +483,11 @@ spec:
         - name: dedup-worker
           image: REGISTRY_PLACEHOLDER/uvo-search-workers:latest
           args: ["uvo_workers.dedup"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: health
               containerPort: 8096
@@ -382,7 +498,7 @@ spec:
                 name: uvo-search-secrets
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: 8096
             initialDelaySeconds: 30
             periodSeconds: 30
@@ -390,7 +506,7 @@ spec:
             failureThreshold: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: 8096
             initialDelaySeconds: 45
             periodSeconds: 30
@@ -403,3 +519,13 @@ spec:
             limits:
               cpu: "500m"
               memory: "384Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-cache
+              mountPath: /app/cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: app-cache
+          emptyDir: {}

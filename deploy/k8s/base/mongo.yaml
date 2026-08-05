@@ -44,7 +44,10 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: mongo
-          image: mongodb/mongodb-atlas-local:latest
+          # Pinned to 8.0 by digest (docker buildx imagetools inspect
+          # mongodb/mongodb-atlas-local:8.0). Never use :latest -- it makes
+          # rollback and drift detection meaningless.
+          image: mongodb/mongodb-atlas-local:8.0@sha256:eff1e6306994d124c5461eb154001058b3c1268b3bb4fe6b9eaa5185231cb379
           ports:
             - name: mongo
               containerPort: 27017

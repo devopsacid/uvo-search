@@ -1,0 +1,25 @@
+# Applied to every Deployment via kustomize patches.target. StatefulSets are
+# excluded: the mongo/neo4j/redis upstream images manage their own uid and
+# write to their data volumes, so forcing runAsUser breaks them.
+#
+# Container-level securityContext (allowPrivilegeEscalation, readOnlyRootFilesystem,
+# capabilities.drop) is NOT set here: container names differ per Deployment
+# (api, gui-react, mcp-server, extractor-vestnik, extractor-crz, extractor-ted,
+# extractor-itms, ingestor, dedup-worker), and a strategic-merge patch's
+# containers list is matched by name, so one generic PATCH_CONTAINER entry
+# cannot reach all of them. That block is added inline to each container in
+# api.yaml, mcp-server.yaml, gui-react.yaml, and workers.yaml instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: PATCH_TARGET
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault

@@ -16,8 +16,15 @@ resources:
   - gui-react.yaml
   - workers.yaml
   - ingress.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
 
 labels:
   - pairs:
       app.kubernetes.io/part-of: uvo-search
     includeSelectors: true
+
+patches:
+  - path: security-context-patch.yaml
+    target:
+      kind: Deployment

@@ -1,9 +1,11 @@
-"""Tiny asyncio-based HTTP server for /health, /healthz and /readyz."""
+"""Tiny asyncio-based HTTP server for /health, /healthz, /readyz and /metrics."""
 
 import asyncio
 import json
 import logging
 from collections.abc import Callable
+
+from uvo_workers.metrics import WorkerMetricsCollector, render_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,7 @@ async def serve_health(
     snapshot: Callable[[], dict],
     *,
     is_ready: Callable[[dict], bool] | None = None,
+    registry: WorkerMetricsCollector | None = None,
 ) -> None:
     ready_check = is_ready or default_is_ready
 
@@ -41,6 +44,15 @@ async def serve_health(
             parts = request_line.decode("latin-1").split()
             path = parts[1] if len(parts) > 1 else "/"
             path = path.split("?", 1)[0]
+
+            if path == "/metrics" and registry is not None:
+                body = render_metrics(registry, snapshot())
+                writer.write(b"HTTP/1.1 200 OK\r\n")
+                writer.write(b"Content-Type: text/plain; version=0.0.4\r\n")
+                writer.write(f"Content-Length: {len(body)}\r\n\r\n".encode())
+                writer.write(body)
+                await writer.drain()
+                return
 
             metrics = snapshot()
             if path in _READY_PATHS and not ready_check(metrics):

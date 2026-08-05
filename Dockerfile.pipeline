@@ -12,5 +12,20 @@ COPY src/uvo_core/ src/uvo_core/
 COPY src/uvo_mcp/ src/uvo_mcp/
 COPY src/uvo_pipeline/ src/uvo_pipeline/
 
+# Run as an unprivileged user. uid is fixed so the k8s securityContext can
+# assert runAsUser without depending on image internals.
+RUN mkdir -p /app/cache && chown -R 10001:10001 /app/cache
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app \
+    && chown -R 10001:10001 /app
+USER 10001
+
+# readOnlyRootFilesystem (k8s securityContext) leaves no writable path for
+# uv's default cache/sync bookkeeping. Point the cache at the /tmp emptyDir
+# mount and skip uv's runtime re-sync check -- deps are already frozen-synced
+# above, so re-checking on every container start is unnecessary and would
+# otherwise try (and fail) to write into the read-only venv.
+ENV UV_CACHE_DIR=/tmp/uv-cache
+ENV UV_NO_SYNC=1
+
 ENTRYPOINT ["uv", "run", "python", "-m", "uvo_pipeline"]
 CMD ["--mode=recent"]

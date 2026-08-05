@@ -55,16 +55,21 @@ patches:
 # Point every workload image at your registry + tag. Replace REGISTRY_PLACEHOLDER
 # via `images:` (kustomize handles this cluster-wide, no per-file edits needed)
 # once you have a real registry -- see deploy/README.md.
+#
+# Tag is the short commit SHA emitted by .github/workflows/docker-publish.yml
+# (docker/metadata-action's type=sha,format=short). CI updates these four
+# lines on release; ArgoCD then sees a real desired-state change. Never use
+# `latest` -- it makes rollback and drift detection meaningless.
 images:
   - name: REGISTRY_PLACEHOLDER/uvo-search-mcp
     newName: REGISTRY_PLACEHOLDER/uvo-search-mcp
-    newTag: latest
+    newTag: sha-0000000
   - name: REGISTRY_PLACEHOLDER/uvo-search-api
     newName: REGISTRY_PLACEHOLDER/uvo-search-api
-    newTag: latest
+    newTag: sha-0000000
   - name: REGISTRY_PLACEHOLDER/uvo-search-gui-react
     newName: REGISTRY_PLACEHOLDER/uvo-search-gui-react
-    newTag: latest
+    newTag: sha-0000000
   - name: REGISTRY_PLACEHOLDER/uvo-search-workers
     newName: REGISTRY_PLACEHOLDER/uvo-search-workers
-    newTag: latest
+    newTag: sha-0000000

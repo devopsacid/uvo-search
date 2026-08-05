@@ -28,6 +28,7 @@ from uvo_pipeline.streams import (
 from uvo_pipeline.utils.date_validation import validate_notice_dates
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
+from uvo_workers.metrics import build_registry
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +154,9 @@ async def run_ingestor() -> None:
         except (NotImplementedError, RuntimeError):
             pass
 
+    metrics_registry = build_registry("ingestor")
     health_task = asyncio.create_task(
-        serve_health(settings.health_port, lambda: dict(metrics)),
+        serve_health(settings.health_port, lambda: dict(metrics), registry=metrics_registry),
         name="health-ingestor",
     )
 

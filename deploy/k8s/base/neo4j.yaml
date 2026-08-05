@@ -45,7 +45,9 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: neo4j
-          image: neo4j:5
+          # Pinned to a concrete minor (5.26), not the floating major `5`,
+          # by digest (docker buildx imagetools inspect neo4j:5.26).
+          image: neo4j:5.26@sha256:d9dd3dc7d1c78fa959191ff02dbdcbefadceaf83eee23428fb92a58cac8ad3fe
           ports:
             - name: http
               containerPort: 7474
