@@ -279,6 +279,14 @@ services:
     restart: unless-stopped
 
   pipeline:
+    # Legacy one-shot backfill CLI, not a long-lived service: it runs, then
+    # exits. `docker compose up --wait` treats any exited container as a
+    # failure, so leaving it in the default set makes every `up --wait` fail
+    # even when all 12 real services are healthy. Continuous ingestion is the
+    # job of the 4 extractors + ingestor + dedup-worker.
+    # Run explicitly for an ad-hoc backfill:
+    #   docker compose --profile legacy run --rm pipeline
+    profiles: ["legacy"]
     build:
       context: .
       dockerfile: Dockerfile.pipeline
