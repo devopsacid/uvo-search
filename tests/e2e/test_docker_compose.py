@@ -49,7 +49,15 @@ class TestGUIHealth:
     def test_root_page_loads(self, compose_stack):
         resp = httpx.get(GUI_URL, timeout=10, follow_redirects=True)
         assert resp.status_code == 200
-        assert "UVO Search" in resp.text
+        # Assert on the served shell, not on copy. The previous assertion looked
+        # for "UVO Search" — an English title the Slovak UI dropped long ago
+        # (index.html now says "UVO Vyhladavanie"). It survived the rename only
+        # because this job was skipped while Lint was red. The mount point and
+        # the bundle tag are what actually prove nginx served the built SPA
+        # rather than a stray page.
+        assert '<div id="root">' in resp.text
+        assert 'lang="sk"' in resp.text
+        assert "/assets/index-" in resp.text
 
     def test_gui_serves_html(self, compose_stack):
         resp = httpx.get(GUI_URL, timeout=10, follow_redirects=True)
