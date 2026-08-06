@@ -68,8 +68,28 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: false
+          load: true
+          tags: uvo-ci:${{ matrix.dockerfile }}
           cache-from: type=gha,scope=${{ matrix.dockerfile }}
           cache-to: type=gha,mode=max,scope=${{ matrix.dockerfile }}
+
+      # A build that succeeds proves nothing about whether the app can start.
+      # An image whose first-party packages never landed in the venv builds
+      # perfectly and then dies with ModuleNotFoundError at runtime, which is
+      # exactly what shipped once already. Import them here.
+      - name: Verify first-party packages are importable
+        run: |
+          case "${{ matrix.dockerfile }}" in
+            Dockerfile.mcp)      MODS="uvo_mcp uvo_core" ;;
+            Dockerfile.api)      MODS="uvo_api uvo_core uvo_pipeline" ;;
+            Dockerfile.workers)  MODS="uvo_workers uvo_core uvo_pipeline" ;;
+            Dockerfile.pipeline) MODS="uvo_pipeline uvo_core uvo_mcp" ;;
+          esac
+          for m in $MODS; do
+            docker run --rm --entrypoint /app/.venv/bin/python \
+              uvo-ci:${{ matrix.dockerfile }} -c "import $m"
+            echo "  ok: $m"
+          done
 
   manifests:
     name: Validate k8s manifests
@@ -108,7 +128,21 @@ jobs:
 
       - name: Create .env file for docker compose
         run: |
-          : > .env
+          # Throwaway credentials for this ephemeral runner only. An empty .env
+          # no longer works: docker-compose.yml uses ${VAR:?} for every
+          # credential so a misconfigured deploy fails loudly instead of
+          # silently starting with a known-weak password.
+          MONGO_PASSWORD=$(openssl rand -hex 16)
+          {
+            echo "MONGO_PASSWORD=${MONGO_PASSWORD}"
+            echo "NEO4J_PASSWORD=$(openssl rand -hex 16)"
+            echo "REDIS_PASSWORD=$(openssl rand -hex 16)"
+            # PipelineSettings/ApiSettings require these outright — Phase 1
+            # removed their weak defaults, so an omission is a startup crash,
+            # not a fallback. Hosts are compose service names, never localhost.
+            echo "MONGODB_URI=mongodb://uvo:${MONGO_PASSWORD}@mongo:27017"
+            echo "API_MONGODB_URI=mongodb://uvo:${MONGO_PASSWORD}@mongo:27017"
+          } > .env
 
       - name: Build and start services
         run: docker compose up -d --build --wait --wait-timeout 120

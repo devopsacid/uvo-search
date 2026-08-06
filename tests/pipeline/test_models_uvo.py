@@ -1,6 +1,8 @@
 """Tests for the uvo source Literal in CanonicalNotice."""
+
 import pytest
 from pydantic import ValidationError
+
 from uvo_pipeline.models import CanonicalNotice
 
 

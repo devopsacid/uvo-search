@@ -1,10 +1,12 @@
 """Tests for orchestrator dedup function."""
-import pytest
+
 from datetime import date
 
-from uvo_pipeline.orchestrator import _run_cross_source_dedup
+import pytest
+
 from uvo_pipeline.loaders.mongo import upsert_notice
 from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer
+from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
 
 @pytest.mark.asyncio
@@ -74,8 +76,8 @@ async def test_cross_source_dedup_ignores_same_source(mock_mongo_db):
 @pytest.mark.asyncio
 async def test_dry_run_completes_without_uvo_error():
     """dry_run=True should return a report without touching any DB or HTTP."""
-    from uvo_pipeline.orchestrator import run
     from uvo_pipeline.config import PipelineSettings
+    from uvo_pipeline.orchestrator import run
 
     settings = PipelineSettings(
         uvo_base_url="https://www.uvo.gov.sk",

@@ -1,16 +1,15 @@
 """Tests for Vestník NKOD bulletin extractor."""
 
-import httpx
 import json
+from datetime import date, datetime
+
+import httpx
 import pytest
 import respx
-from datetime import date, datetime
-from pathlib import Path
 
 from uvo_pipeline.catalog.nkod import VestnikDataset
 from uvo_pipeline.extractors.vestnik_nkod import fetch_bulletin
 from uvo_pipeline.utils.rate_limiter import RateLimiter
-
 
 NOTICE_A = {
     "id": 1397309,
@@ -49,13 +48,9 @@ async def test_fetch_yields_enriched_items():
     rate_limiter = RateLimiter(rate=10000)
 
     with respx.mock(assert_all_called=False) as mock:
-        mock.get(DATASET.download_url).mock(
-            return_value=httpx.Response(200, json=ENVELOPE)
-        )
+        mock.get(DATASET.download_url).mock(return_value=httpx.Response(200, json=ENVELOPE))
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            items = [item async for item in fetch_bulletin(
-                client, rate_limiter, DATASET
-            )]
+            items = [item async for item in fetch_bulletin(client, rate_limiter, DATASET)]
 
     assert len(items) == 2
     assert items[0]["id"] == 1397309
@@ -75,13 +70,12 @@ async def test_fetch_with_cache_dir(tmp_path):
     rate_limiter = RateLimiter(rate=10000)
 
     with respx.mock(assert_all_called=False) as mock:
-        mock.get(DATASET.download_url).mock(
-            return_value=httpx.Response(200, json=ENVELOPE)
-        )
+        mock.get(DATASET.download_url).mock(return_value=httpx.Response(200, json=ENVELOPE))
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            items = [item async for item in fetch_bulletin(
-                client, rate_limiter, DATASET, cache_dir=tmp_path
-            )]
+            items = [
+                item
+                async for item in fetch_bulletin(client, rate_limiter, DATASET, cache_dir=tmp_path)
+            ]
 
     # Just verify the generator works with cache_dir parameter
     assert len(items) == 2
@@ -105,13 +99,9 @@ async def test_fetch_skips_bad_item_data(tmp_path):
     }
 
     with respx.mock(assert_all_called=False) as mock:
-        mock.get(DATASET.download_url).mock(
-            return_value=httpx.Response(200, json=bad_envelope)
-        )
+        mock.get(DATASET.download_url).mock(return_value=httpx.Response(200, json=bad_envelope))
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            items = [item async for item in fetch_bulletin(
-                client, rate_limiter, DATASET
-            )]
+            items = [item async for item in fetch_bulletin(client, rate_limiter, DATASET)]
 
     # Only the two valid items should be yielded
     assert len(items) == 2

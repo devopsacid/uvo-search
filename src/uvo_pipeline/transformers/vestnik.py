@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 
 # Map eForms notice type codes to our canonical types
 NOTICE_TYPE_MAP = {
-    "CN": "contract_notice",        # Contract Notice
-    "CAN": "contract_award",        # Contract Award Notice
-    "PIN": "prior_information",     # Prior Information Notice
-    "CORR": "other",                # Corrigendum
+    "CN": "contract_notice",  # Contract Notice
+    "CAN": "contract_award",  # Contract Award Notice
+    "PIN": "prior_information",  # Prior Information Notice
+    "CORR": "other",  # Corrigendum
     "CM": "contract_modification",  # Contract Modification
     None: "other",
 }
@@ -23,8 +23,10 @@ NOTICE_TYPE_MAP = {
 def transform_notice(raw: dict) -> CanonicalNotice:
     """Map Vestník XML raw dict → CanonicalNotice."""
     notice_type = NOTICE_TYPE_MAP.get(raw.get("form_type"), "other")
-    status = "awarded" if notice_type == "contract_award" else (
-        "announced" if notice_type == "contract_notice" else "unknown"
+    status = (
+        "awarded"
+        if notice_type == "contract_award"
+        else ("announced" if notice_type == "contract_notice" else "unknown")
     )
 
     procurer = None

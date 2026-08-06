@@ -167,7 +167,9 @@ async def get_procurer_concentration(
         if not s_ico:
             continue
         v = contract_value(c)
-        supplier_totals[s_ico]["name"] = a.get("supplier_name") or a.get("name") or supplier_totals[s_ico]["name"]
+        supplier_totals[s_ico]["name"] = (
+            a.get("supplier_name") or a.get("name") or supplier_totals[s_ico]["name"]
+        )
         supplier_totals[s_ico]["value"] += v
         total_spend += v
 

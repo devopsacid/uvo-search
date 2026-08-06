@@ -2,7 +2,6 @@
 
 import httpx
 import pytest
-from datetime import date
 
 from uvo_pipeline.catalog.ckan import discover_vestnik_packages, extract_zip_urls
 

@@ -33,7 +33,12 @@ class ApiSettings(BaseSettings):
     # Off in production; enable explicitly for local development.
     docs_enabled: bool = False
 
-    model_config = {"env_file": ".env", "env_prefix": "API_", "secrets_dir": "/run/secrets", "extra": "ignore"}
+    model_config = {
+        "env_file": ".env",
+        "env_prefix": "API_",
+        "secrets_dir": "/run/secrets",
+        "extra": "ignore",
+    }
 
 
 @lru_cache

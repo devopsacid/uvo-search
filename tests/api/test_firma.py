@@ -119,9 +119,9 @@ def test_supplier_only_ico_returns_200(client):
     """A supplier-only ICO returns roles=['supplier'], primary_role='supplier'."""
 
     call_tool_effects = [
-        SUPPLIER_RESULT,       # find_supplier
-        EMPTY_RESULT,          # find_procurer → not found
-        SUPPLIER_CONTRACTS,    # top-5 as supplier
+        SUPPLIER_RESULT,  # find_supplier
+        EMPTY_RESULT,  # find_procurer → not found
+        SUPPLIER_CONTRACTS,  # top-5 as supplier
     ]
 
     with (
@@ -158,11 +158,25 @@ def test_dual_role_ico_returns_200(client):
 
     # For this test, DUAL_ROLE_ICO is a procurer; we invent it also being a supplier
     dual_supplier = {
-        "items": [{"ico": DUAL_ROLE_ICO, "name": "Ministry of Finance", "contract_count": 5, "total_value": 1_000_000.0}],
+        "items": [
+            {
+                "ico": DUAL_ROLE_ICO,
+                "name": "Ministry of Finance",
+                "contract_count": 5,
+                "total_value": 1_000_000.0,
+            }
+        ],
         "total": 1,
     }
     dual_procurer = {
-        "items": [{"ico": DUAL_ROLE_ICO, "name": "Ministry of Finance", "contract_count": 20, "total_value": 10_000_000.0}],
+        "items": [
+            {
+                "ico": DUAL_ROLE_ICO,
+                "name": "Ministry of Finance",
+                "contract_count": 20,
+                "total_value": 10_000_000.0,
+            }
+        ],
         "total": 1,
     }
 
@@ -174,10 +188,10 @@ def test_dual_role_ico_returns_200(client):
     }
 
     call_tool_effects = [
-        dual_supplier,          # find_supplier
-        dual_procurer,          # find_procurer
-        SUPPLIER_CONTRACTS,     # top-5 as supplier
-        PROCURER_CONTRACTS,     # top-5 as procurer
+        dual_supplier,  # find_supplier
+        dual_procurer,  # find_procurer
+        SUPPLIER_CONTRACTS,  # top-5 as supplier
+        PROCURER_CONTRACTS,  # top-5 as procurer
     ]
 
     with (
@@ -209,8 +223,8 @@ def test_unknown_ico_returns_404(client):
     """An ICO unknown to both find_supplier and find_procurer returns 404."""
 
     call_tool_effects = [
-        EMPTY_RESULT,   # find_supplier
-        EMPTY_RESULT,   # find_procurer
+        EMPTY_RESULT,  # find_supplier
+        EMPTY_RESULT,  # find_procurer
     ]
 
     with (

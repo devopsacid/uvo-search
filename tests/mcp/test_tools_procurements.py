@@ -1,8 +1,14 @@
 """Tests for procurement MCP tools."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
-from uvo_mcp.tools.procurements import _search_mongo_procurements, get_procurement_detail, search_completed_procurements
+from uvo_mcp.tools.procurements import (
+    _search_mongo_procurements,
+    get_procurement_detail,
+    search_completed_procurements,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -37,9 +43,6 @@ class TestSearchCompletedProcurements:
 
         assert "error" in result
         assert result["status_code"] == 503
-
-
-from unittest.mock import AsyncMock, MagicMock
 
 
 async def test_pipeline_has_search_match_and_facet():

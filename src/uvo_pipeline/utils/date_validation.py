@@ -8,7 +8,7 @@ issue so callers can log it to `ingestion_log`.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from uvo_core.domain.models import CanonicalNotice
@@ -18,7 +18,7 @@ MAX_YEAR_DELTA = 5  # allow 5 years into the future for tender deadlines
 
 
 def max_year() -> int:
-    return datetime.now(timezone.utc).year + MAX_YEAR_DELTA
+    return datetime.now(UTC).year + MAX_YEAR_DELTA
 
 
 def _check(value: date | None, field: str, issues: list[dict[str, Any]]) -> date | None:
@@ -52,9 +52,7 @@ def validate_notice_dates(
     new_awards = []
     for i, award in enumerate(notice.awards):
         adata = award.model_dump()
-        adata["signing_date"] = _check(
-            award.signing_date, f"awards[{i}].signing_date", issues
-        )
+        adata["signing_date"] = _check(award.signing_date, f"awards[{i}].signing_date", issues)
         new_awards.append(adata)
     data["awards"] = new_awards
 

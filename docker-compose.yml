@@ -35,7 +35,7 @@ services:
       # Same idiom for Redis: ApiSettings uses env_prefix "API_", so the
       # unprefixed REDIS_PASSWORD is invisible to it. Without this the /v1 rate
       # limiter gets NOAUTH and fails closed on every request.
-      API_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      API_REDIS_PASSWORD: ${REDIS_PASSWORD:-uvo_redis_dev}
     depends_on:
       mongo:
         condition: service_healthy
@@ -128,13 +128,19 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # `uvo_redis_dev` is a convenience default so `docker compose up` works
+    # without a populated .env. Safe only because this file is development-only and binds
+    # Redis to 127.0.0.1 — it is never reachable off-host. Production runs from
+    # deploy/k8s/, where REDIS_PASSWORD comes from a Secret with no default and
+    # a missing value fails the deploy. Do not copy this pattern to Mongo or
+    # Neo4j, whose credentials remain required (${VAR:?}).
     command:
-      ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"]
+      ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-uvo_redis_dev}"]
     environment:
       # The command above is interpolated by Compose on the host; this makes the
       # same value visible *inside* the container, which the healthcheck shell
       # needs. Without it the probe runs `redis-cli -a "" ping` and never passes.
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-uvo_redis_dev}
     volumes:
       - redis_data:/data
     ports:
@@ -273,6 +279,14 @@ services:
     restart: unless-stopped
 
   pipeline:
+    # Legacy one-shot backfill CLI, not a long-lived service: it runs, then
+    # exits. `docker compose up --wait` treats any exited container as a
+    # failure, so leaving it in the default set makes every `up --wait` fail
+    # even when all 12 real services are healthy. Continuous ingestion is the
+    # job of the 4 extractors + ingestor + dedup-worker.
+    # Run explicitly for an ad-hoc backfill:
+    #   docker compose --profile legacy run --rm pipeline
+    profiles: ["legacy"]
     build:
       context: .
       dockerfile: Dockerfile.pipeline

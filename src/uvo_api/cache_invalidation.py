@@ -42,7 +42,10 @@ async def run_cache_invalidator() -> None:
         password=settings.redis_password or None,
         decode_responses=True,
     )
-    last_clear = 0.0
+    # -inf, not 0.0: time.monotonic() counts from boot, so on a host up for
+    # less than DEBOUNCE_SECONDS a 0.0 seed makes the first event look like it
+    # arrived inside the debounce window and the first invalidation is skipped.
+    last_clear = float("-inf")
     try:
         async for _msg in subscribe(redis, CHANNEL):
             now = time.monotonic()

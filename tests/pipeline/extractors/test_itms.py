@@ -233,9 +233,7 @@ async def test_fetch_stops_when_max_items_reached():
             return_value=httpx.Response(200, json=SUBJECT_100076)
         )
         async with httpx.AsyncClient(base_url=BASE) as client:
-            results = [
-                r async for r in fetch_procurements(client, rate_limiter, max_items=1)
-            ]
+            results = [r async for r in fetch_procurements(client, rate_limiter, max_items=1)]
 
     assert len(results) == 1
     assert results[0]["id"] == STUB_1["id"]

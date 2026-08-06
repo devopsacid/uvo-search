@@ -1,7 +1,7 @@
 """MongoDB loader — upsert canonical notices, procurers, and suppliers."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
@@ -40,8 +40,7 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     """Create all required indexes and unique constraints."""
     # notices: unique on (source, source_id)
     await _ensure_index(
-        db.notices,
-        [("source", 1), ("source_id", 1)], unique=True, name="source_source_id_unique"
+        db.notices, [("source", 1), ("source_id", 1)], unique=True, name="source_source_id_unique"
     )
     await _ensure_index(db.notices, [("publication_date", -1)], name="publication_date_desc")
     await _ensure_index(db.notices, [("procurer.ico", 1)], name="procurer_ico")
@@ -83,9 +82,7 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         await _ensure_index(coll, [("name", "text")], name="text_search")
 
     # pipeline_state: unique on source
-    await _ensure_index(
-        db.pipeline_state, [("source", 1)], unique=True, name="source_unique"
-    )
+    await _ensure_index(db.pipeline_state, [("source", 1)], unique=True, name="source_unique")
 
     # ckan_packages: unique on package_id
     await _ensure_index(
@@ -96,17 +93,19 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     # ingested_docs: fast lookup + audit trail
     await _ensure_index(
         db.ingested_docs,
-        [("source", 1), ("source_id", 1)], unique=True, name="source_source_id_unique"
+        [("source", 1), ("source_id", 1)],
+        unique=True,
+        name="source_source_id_unique",
     )
     await _ensure_index(db.ingested_docs, [("pipeline_run_id", 1)], name="pipeline_run_id")
     await _ensure_index(
-        db.ingested_docs,
-        [("source", 1), ("ingested_at", -1)], name="source_ingested_at_desc"
+        db.ingested_docs, [("source", 1), ("ingested_at", -1)], name="source_ingested_at_desc"
     )
     await _ensure_index(db.ingested_docs, [("ingested_at", -1)], name="ingested_at_desc")
 
     # ingestion_log: TTL + query indexes
     from uvo_pipeline.ingestion_log import ensure_log_indexes
+
     await ensure_log_indexes(db)
 
     logger.info("MongoDB indexes ensured")
@@ -153,18 +152,28 @@ def _entity_update(ico: str | None, name_slug: str, doc: dict[str, Any]) -> tupl
 
 async def upsert_procurer(db: AsyncIOMotorDatabase, procurer: CanonicalProcurer) -> str:
     """Upsert a procurer by ico (preferred) or name_slug fallback."""
-    filter_, update = _entity_update(procurer.ico, procurer.name_slug, procurer.model_dump(mode="json"))
+    filter_, update = _entity_update(
+        procurer.ico, procurer.name_slug, procurer.model_dump(mode="json")
+    )
     result = await db.procurers.find_one_and_update(
-        filter_, update, upsert=True, return_document=True,
+        filter_,
+        update,
+        upsert=True,
+        return_document=True,
     )
     return str(result["_id"])
 
 
 async def upsert_supplier(db: AsyncIOMotorDatabase, supplier: CanonicalSupplier) -> str:
     """Upsert a supplier by ico (preferred) or name_slug fallback."""
-    filter_, update = _entity_update(supplier.ico, supplier.name_slug, supplier.model_dump(mode="json"))
+    filter_, update = _entity_update(
+        supplier.ico, supplier.name_slug, supplier.model_dump(mode="json")
+    )
     result = await db.suppliers.find_one_and_update(
-        filter_, update, upsert=True, return_document=True,
+        filter_,
+        update,
+        upsert=True,
+        return_document=True,
     )
     return str(result["_id"])
 
@@ -202,12 +211,9 @@ async def upsert_batch(
         # Bulk-fetch existing registry entries for this batch
         keys = [{"source": n.source, "source_id": n.source_id} for n in batch]
         existing_docs = await db.ingested_docs.find({"$or": keys}).to_list(length=None)
-        registry = {
-            (doc["source"], doc["source_id"]): doc
-            for doc in existing_docs
-        }
+        registry = {(doc["source"], doc["source_id"]): doc for doc in existing_docs}
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         # Build one UpdateOne per notice that needs a notices-collection write
         # (new or changed; "unchanged" only touches the registry) plus one
@@ -228,56 +234,70 @@ async def upsert_batch(
             if reg_entry is None:
                 # New notice — upsert into notices, insert registry entry
                 doc = notice.model_dump(mode="json")
-                notice_ops.append(UpdateOne(
-                    {"source": notice.source, "source_id": notice.source_id},
-                    {
-                        "$set": {k: v for k, v in doc.items() if k != "ingested_at"},
-                        "$setOnInsert": {"ingested_at": doc["ingested_at"]},
-                    },
-                    upsert=True,
-                ))
+                notice_ops.append(
+                    UpdateOne(
+                        {"source": notice.source, "source_id": notice.source_id},
+                        {
+                            "$set": {k: v for k, v in doc.items() if k != "ingested_at"},
+                            "$setOnInsert": {"ingested_at": doc["ingested_at"]},
+                        },
+                        upsert=True,
+                    )
+                )
                 notice_op_notices.append(notice)
-                registry_ops.append(InsertOne({
-                    "source": notice.source,
-                    "source_id": notice.source_id,
-                    "content_hash": notice.content_hash,
-                    "ingested_at": now,
-                    "last_seen_at": now,
-                    "pipeline_run_id": notice.pipeline_run_id,
-                    "skipped_count": 0,
-                }))
+                registry_ops.append(
+                    InsertOne(
+                        {
+                            "source": notice.source,
+                            "source_id": notice.source_id,
+                            "content_hash": notice.content_hash,
+                            "ingested_at": now,
+                            "last_seen_at": now,
+                            "pipeline_run_id": notice.pipeline_run_id,
+                            "skipped_count": 0,
+                        }
+                    )
+                )
 
             elif reg_entry["content_hash"] == notice.content_hash:
                 # Unchanged — skip upsert, update registry metadata
-                registry_ops.append(UpdateOne(
-                    {"source": notice.source, "source_id": notice.source_id},
-                    {
-                        "$set": {"last_seen_at": now},
-                        "$inc": {"skipped_count": 1},
-                    },
-                ))
+                registry_ops.append(
+                    UpdateOne(
+                        {"source": notice.source, "source_id": notice.source_id},
+                        {
+                            "$set": {"last_seen_at": now},
+                            "$inc": {"skipped_count": 1},
+                        },
+                    )
+                )
                 skipped += 1
 
             else:
                 # Changed — upsert notice, update registry hash
                 doc = notice.model_dump(mode="json")
-                notice_ops.append(UpdateOne(
-                    {"source": notice.source, "source_id": notice.source_id},
-                    {
-                        "$set": {k: v for k, v in doc.items() if k != "ingested_at"},
-                        "$setOnInsert": {"ingested_at": doc["ingested_at"]},
-                    },
-                    upsert=True,
-                ))
+                notice_ops.append(
+                    UpdateOne(
+                        {"source": notice.source, "source_id": notice.source_id},
+                        {
+                            "$set": {k: v for k, v in doc.items() if k != "ingested_at"},
+                            "$setOnInsert": {"ingested_at": doc["ingested_at"]},
+                        },
+                        upsert=True,
+                    )
+                )
                 notice_op_notices.append(notice)
-                registry_ops.append(UpdateOne(
-                    {"source": notice.source, "source_id": notice.source_id},
-                    {"$set": {
-                        "content_hash": notice.content_hash,
-                        "last_seen_at": now,
-                        "pipeline_run_id": notice.pipeline_run_id,
-                    }},
-                ))
+                registry_ops.append(
+                    UpdateOne(
+                        {"source": notice.source, "source_id": notice.source_id},
+                        {
+                            "$set": {
+                                "content_hash": notice.content_hash,
+                                "last_seen_at": now,
+                                "pipeline_run_id": notice.pipeline_run_id,
+                            }
+                        },
+                    )
+                )
 
         failed_notice_idx: set[int] = set()
         if notice_ops:
@@ -292,7 +312,10 @@ async def upsert_batch(
                     failed_notice_idx.add(idx)
                     n = notice_op_notices[idx]
                     logger.error(
-                        "Failed to upsert notice %s/%s: %s", n.source, n.source_id, werr.get("errmsg")
+                        "Failed to upsert notice %s/%s: %s",
+                        n.source,
+                        n.source_id,
+                        werr.get("errmsg"),
                     )
                     errors += 1
 
@@ -320,12 +343,16 @@ async def upsert_batch(
         for notice in batch:
             if notice.procurer:
                 filter_, update = _entity_update(
-                    notice.procurer.ico, notice.procurer.name_slug, notice.procurer.model_dump(mode="json")
+                    notice.procurer.ico,
+                    notice.procurer.name_slug,
+                    notice.procurer.model_dump(mode="json"),
                 )
                 procurer_ops.append(UpdateOne(filter_, update, upsert=True))
             for award in notice.awards:
                 filter_, update = _entity_update(
-                    award.supplier.ico, award.supplier.name_slug, award.supplier.model_dump(mode="json")
+                    award.supplier.ico,
+                    award.supplier.name_slug,
+                    award.supplier.model_dump(mode="json"),
                 )
                 supplier_ops.append(UpdateOne(filter_, update, upsert=True))
 
@@ -333,16 +360,27 @@ async def upsert_batch(
             try:
                 await db.procurers.bulk_write(procurer_ops, ordered=False)
             except BulkWriteError as exc:
-                logger.warning("Failed to upsert %d procurer(s): %s", len(exc.details.get("writeErrors", [])), exc)
+                logger.warning(
+                    "Failed to upsert %d procurer(s): %s",
+                    len(exc.details.get("writeErrors", [])),
+                    exc,
+                )
         if supplier_ops:
             try:
                 await db.suppliers.bulk_write(supplier_ops, ordered=False)
             except BulkWriteError as exc:
-                logger.warning("Failed to upsert %d supplier(s): %s", len(exc.details.get("writeErrors", [])), exc)
+                logger.warning(
+                    "Failed to upsert %d supplier(s): %s",
+                    len(exc.details.get("writeErrors", [])),
+                    exc,
+                )
 
     logger.info(
         "Batch upsert: %d inserted, %d updated, %d skipped, %d errors",
-        inserted, updated, skipped, errors,
+        inserted,
+        updated,
+        skipped,
+        errors,
     )
     return {"inserted": inserted, "updated": updated, "skipped": skipped, "errors": errors}
 
@@ -360,7 +398,13 @@ def _entity_stats_pipeline(kind: str) -> list[dict]:
     if kind == "procurers":
         return [
             {"$match": {"procurer.ico": {"$nin": [None, ""]}}},
-            {"$group": {"_id": "$procurer.ico", "contract_count": {"$sum": 1}, "total_value": value}},
+            {
+                "$group": {
+                    "_id": "$procurer.ico",
+                    "contract_count": {"$sum": 1},
+                    "total_value": value,
+                }
+            },
         ]
     return [
         {"$match": {"awards.supplier.ico": {"$nin": [None, ""]}}},
@@ -397,13 +441,17 @@ async def recompute_entity_stats(
             matched += 1
             if dry_run:
                 continue
-            ops.append(UpdateOne(
-                {"ico": row["_id"]},
-                {"$set": {
-                    "contract_count": int(row.get("contract_count") or 0),
-                    "total_value": float(row.get("total_value") or 0.0),
-                }},
-            ))
+            ops.append(
+                UpdateOne(
+                    {"ico": row["_id"]},
+                    {
+                        "$set": {
+                            "contract_count": int(row.get("contract_count") or 0),
+                            "total_value": float(row.get("total_value") or 0.0),
+                        }
+                    },
+                )
+            )
             if len(ops) >= batch_size:
                 res = await db[kind].bulk_write(ops, ordered=False)
                 updated += res.modified_count
@@ -413,6 +461,11 @@ async def recompute_entity_stats(
             updated += res.modified_count
         result[f"{kind}_matched"] = matched
         result[f"{kind}_updated"] = updated
-        logger.info("recompute_entity_stats: %s matched=%d updated=%d (dry_run=%s)",
-                    kind, matched, updated, dry_run)
+        logger.info(
+            "recompute_entity_stats: %s matched=%d updated=%d (dry_run=%s)",
+            kind,
+            matched,
+            updated,
+            dry_run,
+        )
     return result

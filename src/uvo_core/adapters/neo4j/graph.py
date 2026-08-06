@@ -89,11 +89,13 @@ async def procurement_network(driver, cpv_code: str, year: int) -> dict:
     # Build node list from edges
     procurers = {
         e["procurer_ico"]: {"id": e["procurer_ico"], "name": e["procurer_name"], "type": "procurer"}
-        for e in edges if e["procurer_ico"]
+        for e in edges
+        if e["procurer_ico"]
     }
     suppliers = {
         e["supplier_ico"]: {"id": e["supplier_ico"], "name": e["supplier_name"], "type": "supplier"}
-        for e in edges if e["supplier_ico"]
+        for e in edges
+        if e["supplier_ico"]
     }
 
     return {
@@ -142,12 +144,16 @@ def _build_cpv_graph(rows: list[dict]) -> dict:
         if not p_ico or not s_ico:
             continue
         nodes[p_ico] = {
-            "id": p_ico, "label": r.get("procurer_name", "-"),
-            "type": "procurer", "value": 0,
+            "id": p_ico,
+            "label": r.get("procurer_name", "-"),
+            "type": "procurer",
+            "value": 0,
         }
         nodes[s_ico] = {
-            "id": s_ico, "label": r.get("supplier_name", "-"),
-            "type": "supplier", "value": 0,
+            "id": s_ico,
+            "label": r.get("supplier_name", "-"),
+            "type": "supplier",
+            "value": 0,
         }
         edges.append(
             {

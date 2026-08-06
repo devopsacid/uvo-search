@@ -67,7 +67,13 @@ async def _fetch_subject(
 ) -> dict | None:
     """Resolve a subject by id, caching results across the run."""
     return await _fetch_by_id(
-        client, rate_limiter, _SUBJECT_PATH, subject_id, cache_backend, "itms:subject", cache_ttl_seconds
+        client,
+        rate_limiter,
+        _SUBJECT_PATH,
+        subject_id,
+        cache_backend,
+        "itms:subject",
+        cache_ttl_seconds,
     )
 
 
@@ -137,8 +143,13 @@ async def fetch_procurements(
                 sup_id = hlavny.get("id")
                 if sup_id is not None:
                     supplier = await _fetch_by_id(
-                        client, rate_limiter, _SUPPLIER_PATH, int(sup_id),
-                        cache_backend, "itms:supplier", cache_ttl_seconds,
+                        client,
+                        rate_limiter,
+                        _SUPPLIER_PATH,
+                        int(sup_id),
+                        cache_backend,
+                        "itms:supplier",
+                        cache_ttl_seconds,
                     )
                     if supplier:
                         contract["_supplier"] = supplier
@@ -151,8 +162,13 @@ async def fetch_procurements(
                         eid = entry.get("id")
                         if eid is not None:
                             s = await _fetch_by_id(
-                                client, rate_limiter, _SUPPLIER_PATH, int(eid),
-                                cache_backend, "itms:supplier", cache_ttl_seconds,
+                                client,
+                                rate_limiter,
+                                _SUPPLIER_PATH,
+                                int(eid),
+                                cache_backend,
+                                "itms:supplier",
+                                cache_ttl_seconds,
                             )
                             enriched.append(s if s else entry)
                         else:
@@ -161,7 +177,9 @@ async def fetch_procurements(
 
             sid = _extract_subject_id(item)
             if sid is not None:
-                subject = await _fetch_subject(client, rate_limiter, sid, cache_backend, cache_ttl_seconds)
+                subject = await _fetch_subject(
+                    client, rate_limiter, sid, cache_backend, cache_ttl_seconds
+                )
                 if subject:
                     item["_subject"] = subject
 

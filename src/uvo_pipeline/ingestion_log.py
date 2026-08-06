@@ -7,7 +7,7 @@ via a TTL index on `ts`.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -25,11 +25,12 @@ LogEvent = Literal[
     "redis_connect_failed",
     "notice_invalid_date",
     "validation_summary",
+    "index_bootstrap_failed",
 ]
 
 
 class IngestionLogEntry(BaseModel):
-    ts: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ts: datetime = Field(default_factory=lambda: datetime.now(UTC))
     level: LogLevel
     event: LogEvent
     component: str  # e.g. "ingestor", "extractor:vestnik", "dedup-worker"
@@ -44,12 +45,8 @@ class IngestionLogEntry(BaseModel):
 async def ensure_log_indexes(db: AsyncIOMotorDatabase) -> None:
     """Indexes for query patterns (recent entries, per-source, per-level) + 30-day TTL."""
     await db.ingestion_log.create_index([("ts", -1)], name="ts_desc")
-    await db.ingestion_log.create_index(
-        [("source", 1), ("ts", -1)], name="source_ts_desc"
-    )
-    await db.ingestion_log.create_index(
-        [("level", 1), ("ts", -1)], name="level_ts_desc"
-    )
+    await db.ingestion_log.create_index([("source", 1), ("ts", -1)], name="source_ts_desc")
+    await db.ingestion_log.create_index([("level", 1), ("ts", -1)], name="level_ts_desc")
     await db.ingestion_log.create_index(
         [("ts", 1)],
         name="ts_ttl",

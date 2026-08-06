@@ -1,5 +1,6 @@
 """Tests for /api/dashboard/worker-status endpoint."""
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,15 +54,17 @@ async def test_unknown_status_when_no_entries(client_and_db):
 @pytest.mark.asyncio
 async def test_error_status_for_cycle_failed(client_and_db):
     client, db = client_and_db
-    now = datetime.now(timezone.utc)
-    await db.ingestion_log.insert_one({
-        "ts": now - timedelta(minutes=5),
-        "level": "error",
-        "event": "cycle_failed",
-        "component": "extractor:vestnik",
-        "source": "vestnik",
-        "message": "connection refused",
-    })
+    now = datetime.now(UTC)
+    await db.ingestion_log.insert_one(
+        {
+            "ts": now - timedelta(minutes=5),
+            "level": "error",
+            "event": "cycle_failed",
+            "component": "extractor:vestnik",
+            "source": "vestnik",
+            "message": "connection refused",
+        }
+    )
     res = client.get("/api/dashboard/worker-status")
     assert res.status_code == 200
     workers = {w["component"]: w for w in res.json()["workers"]}
@@ -73,15 +76,17 @@ async def test_error_status_for_cycle_failed(client_and_db):
 async def test_stale_status_when_ts_exceeds_threshold(client_and_db):
     client, db = client_and_db
     # ingestor threshold is 600s; seed an entry 20 minutes old
-    old_ts = datetime.now(timezone.utc) - timedelta(seconds=1200)
-    await db.ingestion_log.insert_one({
-        "ts": old_ts,
-        "level": "info",
-        "event": "cycle_complete",
-        "component": "ingestor",
-        "source": None,
-        "message": "done",
-    })
+    old_ts = datetime.now(UTC) - timedelta(seconds=1200)
+    await db.ingestion_log.insert_one(
+        {
+            "ts": old_ts,
+            "level": "info",
+            "event": "cycle_complete",
+            "component": "ingestor",
+            "source": None,
+            "message": "done",
+        }
+    )
     res = client.get("/api/dashboard/worker-status")
     assert res.status_code == 200
     workers = {w["component"]: w for w in res.json()["workers"]}
@@ -91,18 +96,38 @@ async def test_stale_status_when_ts_exceeds_threshold(client_and_db):
 @pytest.mark.asyncio
 async def test_events_24h_counts_cycle_complete_and_batch_written(client_and_db):
     client, db = client_and_db
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     docs = [
-        {"ts": now - timedelta(hours=1), "level": "info", "event": "cycle_complete",
-         "component": "extractor:crz", "message": "ok"},
-        {"ts": now - timedelta(hours=2), "level": "info", "event": "batch_written",
-         "component": "extractor:crz", "message": "ok"},
+        {
+            "ts": now - timedelta(hours=1),
+            "level": "info",
+            "event": "cycle_complete",
+            "component": "extractor:crz",
+            "message": "ok",
+        },
+        {
+            "ts": now - timedelta(hours=2),
+            "level": "info",
+            "event": "batch_written",
+            "component": "extractor:crz",
+            "message": "ok",
+        },
         # older than 24h — must not be counted
-        {"ts": now - timedelta(hours=25), "level": "info", "event": "cycle_complete",
-         "component": "extractor:crz", "message": "ok"},
+        {
+            "ts": now - timedelta(hours=25),
+            "level": "info",
+            "event": "cycle_complete",
+            "component": "extractor:crz",
+            "message": "ok",
+        },
         # different event type — must not be counted
-        {"ts": now - timedelta(hours=1), "level": "info", "event": "worker_started",
-         "component": "extractor:crz", "message": "ok"},
+        {
+            "ts": now - timedelta(hours=1),
+            "level": "info",
+            "event": "worker_started",
+            "component": "extractor:crz",
+            "message": "ok",
+        },
     ]
     await db.ingestion_log.insert_many(docs)
     res = client.get("/api/dashboard/worker-status")
@@ -114,15 +139,17 @@ async def test_events_24h_counts_cycle_complete_and_batch_written(client_and_db)
 @pytest.mark.asyncio
 async def test_healthy_status_for_recent_cycle_complete(client_and_db):
     client, db = client_and_db
-    now = datetime.now(timezone.utc)
-    await db.ingestion_log.insert_one({
-        "ts": now - timedelta(minutes=10),
-        "level": "info",
-        "event": "cycle_complete",
-        "component": "extractor:vestnik",
-        "source": "vestnik",
-        "message": "ok",
-    })
+    now = datetime.now(UTC)
+    await db.ingestion_log.insert_one(
+        {
+            "ts": now - timedelta(minutes=10),
+            "level": "info",
+            "event": "cycle_complete",
+            "component": "extractor:vestnik",
+            "source": "vestnik",
+            "message": "ok",
+        }
+    )
     res = client.get("/api/dashboard/worker-status")
     assert res.status_code == 200
     workers = {w["component"]: w for w in res.json()["workers"]}
@@ -132,14 +159,16 @@ async def test_healthy_status_for_recent_cycle_complete(client_and_db):
 @pytest.mark.asyncio
 async def test_stopped_status_for_worker_stopped_event(client_and_db):
     client, db = client_and_db
-    now = datetime.now(timezone.utc)
-    await db.ingestion_log.insert_one({
-        "ts": now - timedelta(minutes=1),
-        "level": "info",
-        "event": "worker_stopped",
-        "component": "dedup-worker",
-        "message": "graceful shutdown",
-    })
+    now = datetime.now(UTC)
+    await db.ingestion_log.insert_one(
+        {
+            "ts": now - timedelta(minutes=1),
+            "level": "info",
+            "event": "worker_stopped",
+            "component": "dedup-worker",
+            "message": "graceful shutdown",
+        }
+    )
     res = client.get("/api/dashboard/worker-status")
     assert res.status_code == 200
     workers = {w["component"]: w for w in res.json()["workers"]}

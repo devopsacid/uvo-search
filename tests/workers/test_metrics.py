@@ -30,10 +30,10 @@ def test_repeated_scrapes_reflect_the_latest_snapshot():
     registry = build_registry("ingestor")
 
     first = render_metrics(registry, {"batches_processed": 5}).decode()
-    assert "uvo_worker_batches_processed_total{component=\"ingestor\"} 5.0" in first
+    assert 'uvo_worker_batches_processed_total{component="ingestor"} 5.0' in first
 
     second = render_metrics(registry, {"batches_processed": 5}).decode()
-    assert "uvo_worker_batches_processed_total{component=\"ingestor\"} 5.0" in second
+    assert 'uvo_worker_batches_processed_total{component="ingestor"} 5.0' in second
 
     third = render_metrics(registry, {"batches_processed": 41}).decode()
-    assert "uvo_worker_batches_processed_total{component=\"ingestor\"} 41.0" in third
+    assert 'uvo_worker_batches_processed_total{component="ingestor"} 41.0' in third

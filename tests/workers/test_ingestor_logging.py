@@ -3,6 +3,7 @@
 We don't spin up the full daemon — we test the hot-path helper that
 processes one batch (refactored out of run_ingestor in this task).
 """
+
 from datetime import date
 
 import pytest
@@ -54,9 +55,7 @@ async def test_process_batch_logs_clamps_bad_dates_and_logs(db):
     assert by_id["BAD2"].award_date is None
 
     # One log entry per bad field
-    entries = await db.ingestion_log.find(
-        {"event": "notice_invalid_date"}
-    ).to_list(length=10)
+    entries = await db.ingestion_log.find({"event": "notice_invalid_date"}).to_list(length=10)
     assert len(entries) == 2
     assert {e["source_id"] for e in entries} == {"BAD1", "BAD2"}
     for e in entries:

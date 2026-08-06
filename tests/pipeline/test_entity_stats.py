@@ -43,8 +43,12 @@ def _fake_db(procurer_rows, supplier_rows):
     notices.aggregate = MagicMock(side_effect=[aiter(procurer_rows), aiter(supplier_rows)])
 
     collections = {
-        "procurers": MagicMock(bulk_write=AsyncMock(return_value=MagicMock(modified_count=len(procurer_rows)))),
-        "suppliers": MagicMock(bulk_write=AsyncMock(return_value=MagicMock(modified_count=len(supplier_rows)))),
+        "procurers": MagicMock(
+            bulk_write=AsyncMock(return_value=MagicMock(modified_count=len(procurer_rows)))
+        ),
+        "suppliers": MagicMock(
+            bulk_write=AsyncMock(return_value=MagicMock(modified_count=len(supplier_rows)))
+        ),
     }
     db = MagicMock()
     db.notices = notices
@@ -68,7 +72,7 @@ async def test_recompute_writes_ico_keyed_updates_and_counts():
         "suppliers_matched": 2,
         "suppliers_updated": 2,
     }
-    (ops, ), kwargs = colls["procurers"].bulk_write.call_args
+    (ops,), kwargs = colls["procurers"].bulk_write.call_args
     assert isinstance(ops[0], UpdateOne)
     assert ops[0]._filter == {"ico": "111"}
     assert ops[0]._doc == {"$set": {"contract_count": 3, "total_value": 900.0}}

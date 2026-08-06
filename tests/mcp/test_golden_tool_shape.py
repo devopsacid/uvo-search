@@ -35,9 +35,7 @@ async def test_search_completed_procurements_golden_shape():
     agg.to_list = AsyncMock(
         return_value=[
             {
-                "items": [
-                    {"_id": "abc123", "title": "Dodávka IT", "final_value": 1000.0}
-                ],
+                "items": [{"_id": "abc123", "title": "Dodávka IT", "final_value": 1000.0}],
                 "total": [{"count": 1}],
             }
         ]
@@ -45,7 +43,9 @@ async def test_search_completed_procurements_golden_shape():
     db = MagicMock()
     db.notices.aggregate = MagicMock(return_value=agg)
 
-    result = await search_completed_procurements(_ctx_with_db(db), text_query="it", limit=20, offset=0)
+    result = await search_completed_procurements(
+        _ctx_with_db(db), text_query="it", limit=20, offset=0
+    )
 
     # Exact top-level contract the MCP clients rely on.
     assert list(result.keys()) == ["items", "total", "limit", "offset"]

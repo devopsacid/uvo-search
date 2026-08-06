@@ -64,9 +64,7 @@ def test_non_ascii_token_is_rejected_not_a_500(client, path):
     ASCII-encode a str header, but Starlette decodes incoming bytes as latin-1,
     so a non-ASCII token really can arrive at the dependency.
     """
-    response = client.get(
-        path, headers={"Authorization": "Bearer á-token".encode("latin-1")}
-    )
+    response = client.get(path, headers={"Authorization": "Bearer á-token".encode("latin-1")})
     assert response.status_code == 401
 
 

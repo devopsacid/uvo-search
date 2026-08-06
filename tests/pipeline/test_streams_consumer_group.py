@@ -18,9 +18,7 @@ async def test_group_created_from_stream_head():
     """id='0' replays entries already in the stream; id='$' would skip them."""
     redis = AsyncMock()
     await ensure_consumer_group(redis, "notices:crz", "ingestor")
-    redis.xgroup_create.assert_awaited_once_with(
-        "notices:crz", "ingestor", id="0", mkstream=True
-    )
+    redis.xgroup_create.assert_awaited_once_with("notices:crz", "ingestor", id="0", mkstream=True)
 
 
 @pytest.mark.asyncio

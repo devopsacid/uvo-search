@@ -12,6 +12,13 @@ COPY src/uvo_core/ src/uvo_core/
 COPY src/uvo_pipeline/ src/uvo_pipeline/
 COPY src/uvo_workers/ src/uvo_workers/
 
+# Install the project's own packages now that the sources exist. The sync above
+# ran before COPY src/, so it resolved third-party deps only -- the first-party
+# packages were never placed in the venv. `uv run` used to paper over this by
+# re-syncing at container start, but UV_NO_SYNC=1 (needed for a read-only
+# rootfs) disables that, so it must happen at build time.
+RUN uv sync --frozen --no-dev
+
 ENV PYTHONPATH=/app/src
 
 # Run as an unprivileged user. uid is fixed so the k8s securityContext can

@@ -39,6 +39,7 @@ def _map_notice_type(notice_type_value: str) -> tuple[str, str]:
         return "contract_notice", "announced"
     return "other", "unknown"
 
+
 # Preferred language order when TED returns a multilingual dict like {"slk": ..., "eng": ...}
 _LANG_PREFERENCE = ("slk", "eng", "ces", "deu", "fra")
 

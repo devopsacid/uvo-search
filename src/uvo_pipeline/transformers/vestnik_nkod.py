@@ -120,11 +120,15 @@ def _panel_id(panel: dict) -> str | None:
 def _collect_panels(components: list[dict], panel_key: str) -> list[dict]:
     """Return all direct children of the group with key=panel_key's parent that match *_panel."""
     # Walk the tree to find the group, then return its panel children.
-    for c in (components or []):
+    for c in components or []:
         if not isinstance(c, dict):
             continue
         if c.get("key") == panel_key:
-            return [p for p in c.get("components", []) if isinstance(p, dict) and p.get("key", "").endswith("_panel")]
+            return [
+                p
+                for p in c.get("components", [])
+                if isinstance(p, dict) and p.get("key", "").endswith("_panel")
+            ]
         found = _collect_panels(c.get("components", []), panel_key)
         if found is not None and found != []:
             return found
@@ -149,10 +153,16 @@ def _build_org_map(components: list[dict]) -> dict[str, dict]:
             "name": name,
             "ico": ico,
             "address": CanonicalAddress(
-                street=" ".join(filter(None, [
-                    flat.get("BT-510(a)-Organization-Company"),
-                    flat.get("BT-510(b)-Organization-Company"),
-                ])) or None,
+                street=" ".join(
+                    filter(
+                        None,
+                        [
+                            flat.get("BT-510(a)-Organization-Company"),
+                            flat.get("BT-510(b)-Organization-Company"),
+                        ],
+                    )
+                )
+                or None,
                 city=flat.get("BT-513-Organization-Company"),
                 postal_code=flat.get("BT-512-Organization-Company"),
                 country_code=flat.get("BT-514-Organization-Company", "SK"),
@@ -250,28 +260,28 @@ def _build_awards(components: list[dict]) -> list[CanonicalAward]:
                 continue
             value = ten.get("value") if ten.get("value") is not None else lot_value
             currency = ten.get("currency") or lot_currency
-            awards.append(CanonicalAward(
-                supplier=CanonicalSupplier(
-                    name=org["name"],
-                    name_slug=slugify(org["name"]),
-                    ico=org.get("ico"),
-                    address=org.get("address"),
-                    sources=["vestnik", "uvo"],
-                ),
-                value=value,
-                currency=currency,
-            ))
+            awards.append(
+                CanonicalAward(
+                    supplier=CanonicalSupplier(
+                        name=org["name"],
+                        name_slug=slugify(org["name"]),
+                        ico=org.get("ico"),
+                        address=org.get("address"),
+                        sources=["vestnik", "uvo"],
+                    ),
+                    value=value,
+                    currency=currency,
+                )
+            )
     return awards
 
 
 def transform_notice(raw: dict) -> CanonicalNotice:
     components = raw.get("components", [])
-    metadata = next(
-        (c for c in components if c.get("key") == "metadataWrapper"), {}
-    ).get("components", [])
-    tabs = next(
-        (c for c in components if c.get("key") == "tabs"), {}
-    ).get("components", [])
+    metadata = next((c for c in components if c.get("key") == "metadataWrapper"), {}).get(
+        "components", []
+    )
+    tabs = next((c for c in components if c.get("key") == "tabs"), {}).get("components", [])
 
     flat = {**_flatten_eforms(tabs), **_flatten_eforms(metadata)}
 

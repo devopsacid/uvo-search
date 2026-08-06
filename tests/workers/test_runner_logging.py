@@ -3,6 +3,7 @@
 We test the small `_log_cycle_result` helper extracted in this task —
 testing the full daemon loop is covered by integration tests.
 """
+
 import pytest
 from mongomock_motor import AsyncMongoMockClient
 

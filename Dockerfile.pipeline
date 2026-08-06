@@ -12,6 +12,13 @@ COPY src/uvo_core/ src/uvo_core/
 COPY src/uvo_mcp/ src/uvo_mcp/
 COPY src/uvo_pipeline/ src/uvo_pipeline/
 
+# Install the project's own packages now that the sources exist. The sync above
+# ran before COPY src/, so it resolved third-party deps only -- the first-party
+# packages were never placed in the venv. `uv run` used to paper over this by
+# re-syncing at container start, but UV_NO_SYNC=1 (needed for a read-only
+# rootfs) disables that, so it must happen at build time.
+RUN uv sync --frozen --no-dev
+
 # Run as an unprivileged user. uid is fixed so the k8s securityContext can
 # assert runAsUser without depending on image internals.
 RUN mkdir -p /app/cache && chown -R 10001:10001 /app/cache

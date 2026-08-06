@@ -102,9 +102,7 @@ def compose_stack():
     for name, url in HEALTH_CHECKS:
         if not _wait_for_health(url, STARTUP_TIMEOUT):
             _dump_logs()
-            subprocess.run(
-                ["docker", "compose", "-f", COMPOSE_FILE, "stop"], timeout=120
-            )
+            subprocess.run(["docker", "compose", "-f", COMPOSE_FILE, "stop"], timeout=120)
             pytest.fail(f"{name} did not become healthy within {STARTUP_TIMEOUT}s")
 
     yield

@@ -27,7 +27,7 @@ router = APIRouter(
 )
 
 _STALE_THRESHOLD = 172800  # 48 h in seconds
-_WARN_THRESHOLD = 86400    # 24 h in seconds
+_WARN_THRESHOLD = 86400  # 24 h in seconds
 _TIMESERIES_DAYS = 30
 
 
@@ -86,7 +86,9 @@ async def _timeseries(db, now: datetime) -> list[DailyBucket]:
     "2026-04-26T01:02:00.521753"). ISO-8601 lex-sorts chronologically, so
     string comparison against an ISO threshold works correctly.
     """
-    since_aware = datetime(now.year, now.month, now.day, tzinfo=UTC) - timedelta(days=_TIMESERIES_DAYS - 1)
+    since_aware = datetime(now.year, now.month, now.day, tzinfo=UTC) - timedelta(
+        days=_TIMESERIES_DAYS - 1
+    )
     since = since_aware.replace(tzinfo=None)
     since_iso = since.strftime("%Y-%m-%dT%H:%M:%S")
 

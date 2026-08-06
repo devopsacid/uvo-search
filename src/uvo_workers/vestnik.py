@@ -70,9 +70,13 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
             try:
                 vestnik_since = datetime.fromisoformat(str(vestnik_checkpoint)).date()
             except (ValueError, TypeError):
-                vestnik_since = (datetime.utcnow() - timedelta(days=pipeline_settings.recent_days)).date()
+                vestnik_since = (
+                    datetime.utcnow() - timedelta(days=pipeline_settings.recent_days)
+                ).date()
         else:
-            vestnik_since = (datetime.utcnow() - timedelta(days=pipeline_settings.recent_days)).date()
+            vestnik_since = (
+                datetime.utcnow() - timedelta(days=pipeline_settings.recent_days)
+            ).date()
 
         logger.info("vestnik: extracting since=%s", vestnik_since)
 
@@ -93,7 +97,9 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
                     sparql_url=pipeline_settings.nkod_sparql_url,
                     since=vestnik_since,
                 ):
-                    if ds.modified and (vestnik_max_modified is None or ds.modified > vestnik_max_modified):
+                    if ds.modified and (
+                        vestnik_max_modified is None or ds.modified > vestnik_max_modified
+                    ):
                         vestnik_max_modified = ds.modified
                     async for raw in fetch_bulletin(
                         dl_client,
@@ -107,7 +113,9 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
                             notice.content_hash = compute_notice_hash(notice)
                             buffer.append(notice)
                         except Exception as exc:
-                            logger.warning("vestnik transform error (id=%s): %s", raw.get("id"), exc)
+                            logger.warning(
+                                "vestnik transform error (id=%s): %s", raw.get("id"), exc
+                            )
 
                         if len(buffer) >= FLUSH_BATCH:
                             for n in buffer:

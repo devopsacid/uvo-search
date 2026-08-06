@@ -151,9 +151,9 @@ async def test_sources_always_five(client, mock_db):
 @pytest.mark.parametrize(
     "hours_ago, expected_status",
     [
-        (23, "healthy"),   # < 24 h
-        (30, "warning"),   # 24 h < x < 48 h
-        (50, "stale"),     # > 48 h
+        (23, "healthy"),  # < 24 h
+        (30, "warning"),  # 24 h < x < 48 h
+        (50, "stale"),  # > 48 h
     ],
 )
 @pytest.mark.asyncio

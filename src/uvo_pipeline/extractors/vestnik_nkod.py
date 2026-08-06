@@ -4,8 +4,8 @@ import hashlib
 import json
 import logging
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator
 
 import httpx
 

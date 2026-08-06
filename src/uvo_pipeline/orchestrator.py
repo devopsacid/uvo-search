@@ -55,16 +55,12 @@ async def _persist_source(
     report.notices_updated += mongo_result["updated"]
     report.notices_skipped += mongo_result["skipped"]
     if mongo_result["errors"]:
-        report.errors.append(
-            f"MongoDB ({source_name}): {mongo_result['errors']} upsert errors"
-        )
+        report.errors.append(f"MongoDB ({source_name}): {mongo_result['errors']} upsert errors")
 
     async with neo4j_driver.session() as neo4j_session:
         neo4j_result = await merge_notice_batch(neo4j_session, notices)
         if neo4j_result["errors"]:
-            report.errors.append(
-                f"Neo4j ({source_name}): {neo4j_result['errors']} merge errors"
-            )
+            report.errors.append(f"Neo4j ({source_name}): {neo4j_result['errors']} merge errors")
 
     logger.info(
         "%s: persisted %d notices (inserted=%d updated=%d skipped=%d)",
@@ -93,7 +89,9 @@ async def run(
     else:
         from_date = date(settings.historical_from_year, 1, 1)
 
-    logger.info("Pipeline run %s starting (mode=%s, from=%s, dry_run=%s)", run_id, mode, from_date, dry_run)
+    logger.info(
+        "Pipeline run %s starting (mode=%s, from=%s, dry_run=%s)", run_id, mode, from_date, dry_run
+    )
 
     if dry_run:
         logger.info("Dry run — skipping DB connections")
@@ -158,7 +156,9 @@ async def run(
                     sparql_url=settings.nkod_sparql_url,
                     since=vestnik_since,
                 ):
-                    if ds.modified and (vestnik_max_modified is None or ds.modified > vestnik_max_modified):
+                    if ds.modified and (
+                        vestnik_max_modified is None or ds.modified > vestnik_max_modified
+                    ):
                         vestnik_max_modified = ds.modified
                     async for raw in fetch_bulletin(
                         dl_client,
@@ -180,13 +180,18 @@ async def run(
         report.source_counts["vestnik"] = len(vestnik_notices)
         logger.info("Vestník: %d notices extracted", len(vestnik_notices))
         await _persist_source(
-            db, neo4j_driver, "vestnik", vestnik_notices,
-            settings=settings, report=report,
+            db,
+            neo4j_driver,
+            "vestnik",
+            vestnik_notices,
+            settings=settings,
+            report=report,
         )
         total_persisted += len(vestnik_notices)
         if vestnik_max_modified is not None:
             await save_checkpoint(
-                db, "pipeline",
+                db,
+                "pipeline",
                 {"vestnik_last_modified": vestnik_max_modified.isoformat()},
             )
 
@@ -219,15 +224,23 @@ async def run(
                     logger.warning("CRZ transform error: %s", exc)
                 if len(crz_buffer) >= settings.batch_size:
                     await _persist_source(
-                        db, neo4j_driver, "crz", crz_buffer,
-                        settings=settings, report=report,
+                        db,
+                        neo4j_driver,
+                        "crz",
+                        crz_buffer,
+                        settings=settings,
+                        report=report,
                     )
                     crz_buffer.clear()
 
         if crz_buffer:
             await _persist_source(
-                db, neo4j_driver, "crz", crz_buffer,
-                settings=settings, report=report,
+                db,
+                neo4j_driver,
+                "crz",
+                crz_buffer,
+                settings=settings,
+                report=report,
             )
             crz_buffer.clear()
 
@@ -256,8 +269,12 @@ async def run(
         report.source_counts["ted"] = len(ted_notices)
         logger.info("TED: %d notices extracted", len(ted_notices))
         await _persist_source(
-            db, neo4j_driver, "ted", ted_notices,
-            settings=settings, report=report,
+            db,
+            neo4j_driver,
+            "ted",
+            ted_notices,
+            settings=settings,
+            report=report,
         )
         total_persisted += len(ted_notices)
 
@@ -305,22 +322,34 @@ async def run(
                     logger.warning("ITMS transform error: %s", exc)
                 if len(itms_buffer) >= settings.batch_size:
                     await _persist_source(
-                        db, neo4j_driver, "itms", itms_buffer,
-                        settings=settings, report=report,
+                        db,
+                        neo4j_driver,
+                        "itms",
+                        itms_buffer,
+                        settings=settings,
+                        report=report,
                     )
                     itms_buffer.clear()
                     await save_checkpoint(
-                        db, "pipeline", {"itms_min_id": str(itms_max_seen + 1)},
+                        db,
+                        "pipeline",
+                        {"itms_min_id": str(itms_max_seen + 1)},
                     )
 
         if itms_buffer:
             await _persist_source(
-                db, neo4j_driver, "itms", itms_buffer,
-                settings=settings, report=report,
+                db,
+                neo4j_driver,
+                "itms",
+                itms_buffer,
+                settings=settings,
+                report=report,
             )
             itms_buffer.clear()
             await save_checkpoint(
-                db, "pipeline", {"itms_min_id": str(itms_max_seen + 1)},
+                db,
+                "pipeline",
+                {"itms_min_id": str(itms_max_seen + 1)},
             )
 
         report.source_counts["itms"] = itms_total
@@ -331,7 +360,8 @@ async def run(
         # ONLY here so a partially-completed prior run can't advance the
         # next run's `from_date` past data that was never actually fetched.
         await save_checkpoint(
-            db, "pipeline",
+            db,
+            "pipeline",
             {
                 "last_mode": mode,
                 "from_date": from_date.isoformat(),
@@ -349,7 +379,10 @@ async def run(
 
         logger.info(
             "Pipeline run %s complete: %d inserted, %d updated, %d skipped",
-            run_id, report.notices_inserted, report.notices_updated, report.notices_skipped,
+            run_id,
+            report.notices_inserted,
+            report.notices_updated,
+            report.notices_skipped,
         )
 
     except Exception as exc:

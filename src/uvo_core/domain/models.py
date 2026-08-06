@@ -20,6 +20,7 @@ class CanonicalAddress(BaseModel):
 
 class CanonicalOrganisation(BaseModel):
     """Shared base for procurers and suppliers."""
+
     ico: str | None = None
     name: str
     name_slug: str
@@ -114,6 +115,7 @@ class CanonicalNotice(BaseModel):
 
 class PipelineReport(BaseModel):
     """Summary returned by the orchestrator after a pipeline run."""
+
     run_id: str
     mode: str
     started_at: datetime

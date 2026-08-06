@@ -3,8 +3,6 @@
 import os
 from unittest.mock import patch
 
-import pytest
-
 
 class TestSettings:
     def test_settings_default_values(self):

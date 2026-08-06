@@ -86,12 +86,14 @@ async def build_ico_value_window_groups(
                 for a in n["awards"]
                 if (a.get("supplier") or {}).get("ico") == ico and a.get("value") is not None
             ]
-            by_ico[ico].append({
-                "notice_id": n["_id"],
-                "source": n["source"],
-                "pub_date": n.get("publication_date"),
-                "values": values,
-            })
+            by_ico[ico].append(
+                {
+                    "notice_id": n["_id"],
+                    "source": n["source"],
+                    "pub_date": n.get("publication_date"),
+                    "values": values,
+                }
+            )
 
     groups: list[dict] = []
     skipped_high_freq = 0
@@ -121,7 +123,7 @@ async def build_ico_value_window_groups(
             cluster = [anchor]
             cluster_sources = {anchor["source"]}
 
-            for other in entries[i + 1:]:
+            for other in entries[i + 1 :]:
                 if other["notice_id"] in processed:
                     continue
                 if other["source"] == anchor["source"]:
@@ -141,7 +143,9 @@ async def build_ico_value_window_groups(
                 # together via a shared anchor (observed on live data: a DNS
                 # framework supplier with two distinct mini-contracts both landing
                 # within value-ratio of a third, unrelated anchor notice).
-                if not all(_values_compatible(other["values"], member["values"]) for member in cluster):
+                if not all(
+                    _values_compatible(other["values"], member["values"]) for member in cluster
+                ):
                     continue
                 cluster.append(other)
                 cluster_sources.add(other["source"])
@@ -153,13 +157,15 @@ async def build_ico_value_window_groups(
             canonical_id = str(cluster[0]["notice_id"])
             notice_ids = [str(n["notice_id"]) for n in cluster]
 
-            groups.append({
-                "canonical_id": canonical_id,
-                "notice_ids": notice_ids,
-                "sources": sorted(cluster_sources),
-                "supplier_ico": ico,
-                "match_type": "supplier_ico_value_window",
-            })
+            groups.append(
+                {
+                    "canonical_id": canonical_id,
+                    "notice_ids": notice_ids,
+                    "sources": sorted(cluster_sources),
+                    "supplier_ico": ico,
+                    "match_type": "supplier_ico_value_window",
+                }
+            )
             for n in cluster:
                 processed.add(n["notice_id"])
 
@@ -197,24 +203,26 @@ async def build_ico_cpv_groups(db: AsyncIOMotorDatabase, base_filter: dict) -> l
                 "canonical_id": 1,
             }
         },
-        {"$group": {
-            "_id": {"procurer_ico": "$procurer.ico", "cpv_code": "$cpv_code"},
-            "notices": {
-                "$push": {
-                    "id": "$_id",
-                    "source": "$source",
-                    "pub_date": "$publication_date",
-                    # Sentinel rather than the raw (frequently null) field:
-                    # mongomock-motor's aggregation engine silently drops a
-                    # $push sub-document whenever one of its fields evaluates
-                    # to null/false, which canonical_id does for every
-                    # not-yet-matched notice — i.e. most of the time. $ifNull
-                    # avoids ever pushing a null/false value.
-                    "canonical_id": {"$ifNull": ["$canonical_id", _UNASSIGNED]},
-                }
-            },
-            "sources": {"$addToSet": "$source"},
-        }},
+        {
+            "$group": {
+                "_id": {"procurer_ico": "$procurer.ico", "cpv_code": "$cpv_code"},
+                "notices": {
+                    "$push": {
+                        "id": "$_id",
+                        "source": "$source",
+                        "pub_date": "$publication_date",
+                        # Sentinel rather than the raw (frequently null) field:
+                        # mongomock-motor's aggregation engine silently drops a
+                        # $push sub-document whenever one of its fields evaluates
+                        # to null/false, which canonical_id does for every
+                        # not-yet-matched notice — i.e. most of the time. $ifNull
+                        # avoids ever pushing a null/false value.
+                        "canonical_id": {"$ifNull": ["$canonical_id", _UNASSIGNED]},
+                    }
+                },
+                "sources": {"$addToSet": "$source"},
+            }
+        },
         {"$match": {"sources.1": {"$exists": True}}},
     ]
 
@@ -238,14 +246,16 @@ async def build_ico_cpv_groups(db: AsyncIOMotorDatabase, base_filter: dict) -> l
         canonical_id = str(notices_in_group[0]["id"])
         notice_ids = [str(n["id"]) for n in notices_in_group]
 
-        groups.append({
-            "canonical_id": canonical_id,
-            "notice_ids": notice_ids,
-            "sources": group["sources"],
-            "procurer_ico": group["_id"]["procurer_ico"],
-            "cpv_code": group["_id"]["cpv_code"],
-            "match_type": "ico_cpv",
-        })
+        groups.append(
+            {
+                "canonical_id": canonical_id,
+                "notice_ids": notice_ids,
+                "sources": group["sources"],
+                "procurer_ico": group["_id"]["procurer_ico"],
+                "cpv_code": group["_id"]["cpv_code"],
+                "match_type": "ico_cpv",
+            }
+        )
 
     return groups
 
@@ -302,7 +312,7 @@ async def build_title_slug_groups(db: AsyncIOMotorDatabase, base_filter: dict) -
             cluster = [anchor]
             cluster_sources = {anchor["source"]}
 
-            for other in slug_notices[i + 1:]:
+            for other in slug_notices[i + 1 :]:
                 if str(other["_id"]) in processed:
                     continue
                 if other["source"] == anchor["source"]:
@@ -325,13 +335,15 @@ async def build_title_slug_groups(db: AsyncIOMotorDatabase, base_filter: dict) -
             canonical_id = str(cluster[0]["_id"])
             notice_ids = [str(n["_id"]) for n in cluster]
 
-            groups.append({
-                "canonical_id": canonical_id,
-                "notice_ids": notice_ids,
-                "sources": list(cluster_sources),
-                "title_slug": slug,
-                "match_type": "title_slug_date",
-            })
+            groups.append(
+                {
+                    "canonical_id": canonical_id,
+                    "notice_ids": notice_ids,
+                    "sources": list(cluster_sources),
+                    "title_slug": slug,
+                    "match_type": "title_slug_date",
+                }
+            )
             for n in cluster:
                 processed.add(str(n["_id"]))
 

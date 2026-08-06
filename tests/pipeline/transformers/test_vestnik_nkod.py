@@ -19,17 +19,23 @@ def _component(key, value=None, sub=None):
 
 def _raw(**overrides):
     """Build a minimal raw notice dict matching eForms structure."""
-    metadata = _component("metadataWrapper", sub=[
-        _component("BT-04-notice", "9699fa41-aaaa-bbbb-cccc-dddddddddddd"),
-        _component("BT-03-notice", "result"),
-        _component("DL-Metadata-Partner", "Hlavné mesto SR Bratislava (ID: 39686)"),
-        _component("DL-Metadata-Order", "IT HW a podpora (ID: 422123)"),
-    ])
-    tabs = _component("tabs", sub=[
-        _component("BT-262-Lot", "72000000"),
-        _component("BT-720-Tender_value", "123456.78"),
-        _component("BT-720-Tender-Currency", "EUR"),
-    ])
+    metadata = _component(
+        "metadataWrapper",
+        sub=[
+            _component("BT-04-notice", "9699fa41-aaaa-bbbb-cccc-dddddddddddd"),
+            _component("BT-03-notice", "result"),
+            _component("DL-Metadata-Partner", "Hlavné mesto SR Bratislava (ID: 39686)"),
+            _component("DL-Metadata-Order", "IT HW a podpora (ID: 422123)"),
+        ],
+    )
+    tabs = _component(
+        "tabs",
+        sub=[
+            _component("BT-262-Lot", "72000000"),
+            _component("BT-720-Tender_value", "123456.78"),
+            _component("BT-720-Tender-Currency", "EUR"),
+        ],
+    )
     base = {
         "id": 1397309,
         "name": "Oznámenie o výsledku verejného obstarávania (D24)",
@@ -60,27 +66,36 @@ def test_transform_notice_type_result_to_contract_award():
 
 
 def test_transform_notice_type_planning_to_contract_notice():
-    metadata = _component("metadataWrapper", sub=[
-        _component("BT-03-notice", "planning"),
-    ])
+    metadata = _component(
+        "metadataWrapper",
+        sub=[
+            _component("BT-03-notice", "planning"),
+        ],
+    )
     raw = _raw(components=[metadata])
     r = transform_notice(raw)
     assert r.notice_type == "contract_notice"
 
 
 def test_transform_notice_type_change_to_contract_modification():
-    metadata = _component("metadataWrapper", sub=[
-        _component("BT-03-notice", "change"),
-    ])
+    metadata = _component(
+        "metadataWrapper",
+        sub=[
+            _component("BT-03-notice", "change"),
+        ],
+    )
     raw = _raw(components=[metadata])
     r = transform_notice(raw)
     assert r.notice_type == "contract_modification"
 
 
 def test_transform_notice_type_unknown_to_other():
-    metadata = _component("metadataWrapper", sub=[
-        _component("BT-03-notice", "something_unknown"),
-    ])
+    metadata = _component(
+        "metadataWrapper",
+        sub=[
+            _component("BT-03-notice", "something_unknown"),
+        ],
+    )
     raw = _raw(components=[metadata])
     r = transform_notice(raw)
     assert r.notice_type == "other"
@@ -92,18 +107,24 @@ def test_transform_status_contract_award_to_awarded():
 
 
 def test_transform_status_contract_notice_to_announced():
-    metadata = _component("metadataWrapper", sub=[
-        _component("BT-03-notice", "planning"),
-    ])
+    metadata = _component(
+        "metadataWrapper",
+        sub=[
+            _component("BT-03-notice", "planning"),
+        ],
+    )
     raw = _raw(components=[metadata])
     r = transform_notice(raw)
     assert r.status == "announced"
 
 
 def test_transform_status_contract_modification_to_unknown():
-    metadata = _component("metadataWrapper", sub=[
-        _component("BT-03-notice", "change"),
-    ])
+    metadata = _component(
+        "metadataWrapper",
+        sub=[
+            _component("BT-03-notice", "change"),
+        ],
+    )
     raw = _raw(components=[metadata])
     r = transform_notice(raw)
     assert r.status == "unknown"
@@ -122,10 +143,7 @@ def test_transform_title_fallback_to_name():
 
 
 def test_transform_title_fallback_to_untitled():
-    raw = _raw(
-        name=None,
-        components=[_component("metadataWrapper", sub=[])]
-    )
+    raw = _raw(name=None, components=[_component("metadataWrapper", sub=[])])
     r = transform_notice(raw)
     assert r.title == "Untitled notice"
 
@@ -190,10 +208,13 @@ def test_transform_final_value_currency():
 
 def test_transform_first_occurrence_of_duplicate_codes():
     """When BT-262-Lot appears twice, first occurrence wins."""
-    tabs = _component("tabs", sub=[
-        _component("BT-262-Lot", "72000000"),  # first
-        _component("BT-262-Lot", "88000000"),  # second — should be ignored
-    ])
+    tabs = _component(
+        "tabs",
+        sub=[
+            _component("BT-262-Lot", "72000000"),  # first
+            _component("BT-262-Lot", "88000000"),  # second — should be ignored
+        ],
+    )
     raw = _raw(components=[_component("metadataWrapper", sub=[]), tabs])
     r = transform_notice(raw)
     assert r.cpv_code == "72000000"
@@ -203,18 +224,20 @@ def test_transform_first_occurrence_of_duplicate_codes():
 # Award extraction helpers
 # ---------------------------------------------------------------------------
 
+
 def _org_panel(org_id, name, ico=None, country="SVK"):
     """Build a GR-Organisations_panel component."""
     label_text = f"Zoznam organizácii uvedených v oznámení (GR-Organisations) ({org_id})"
     children = [
-        _component("GR-Company", sub=[
-            _component("BT-500-Organization-Company", name),
-        ]),
+        _component(
+            "GR-Company",
+            sub=[
+                _component("BT-500-Organization-Company", name),
+            ],
+        ),
     ]
     if ico:
-        children[0]["components"].append(
-            _component("BT-501-Organization-Company-CIN", ico)
-        )
+        children[0]["components"].append(_component("BT-501-Organization-Company-CIN", ico))
     return {
         "key": "GR-Organisations_panel",
         "lang": {"sk": {"group|name|ND-Organization": label_text}},
@@ -251,19 +274,37 @@ def _lot_result_panel(res_id, ten_id, selected=True, lot_value=None, lot_currenc
     label_text = f"Zoznam výsledkov častí (GR-LotResult) ({res_id})"
     subs = []
     if selected:
-        subs.append(_component("GR-Winner", sub=[
-            _component("BT-142-LotResult", "selec-w"),
-        ]))
-    subs.append(_component("GR-LotResult-1", sub=[
-        _component("OPT-320-LotResult", f"['{ten_id}']"),
-    ]))
+        subs.append(
+            _component(
+                "GR-Winner",
+                sub=[
+                    _component("BT-142-LotResult", "selec-w"),
+                ],
+            )
+        )
+    subs.append(
+        _component(
+            "GR-LotResult-1",
+            sub=[
+                _component("OPT-320-LotResult", f"['{ten_id}']"),
+            ],
+        )
+    )
     if lot_value is not None:
-        subs.append(_component("GR-LotResult-TenderValue", sub=[
-            _component("BT-710-LotResult_currencyWrapper", sub=[
-                _component("BT-710-LotResult_value", str(lot_value)),
-                _component("BT-710-LotResult_currency", lot_currency),
-            ]),
-        ]))
+        subs.append(
+            _component(
+                "GR-LotResult-TenderValue",
+                sub=[
+                    _component(
+                        "BT-710-LotResult_currencyWrapper",
+                        sub=[
+                            _component("BT-710-LotResult_value", str(lot_value)),
+                            _component("BT-710-LotResult_currency", lot_currency),
+                        ],
+                    ),
+                ],
+            )
+        )
     return {
         "key": "GR-LotResult_panel",
         "lang": {"sk": {"group|name|ND-LotResult": label_text}},
@@ -273,12 +314,15 @@ def _lot_result_panel(res_id, ten_id, selected=True, lot_value=None, lot_currenc
 
 def _raw_with_awards(org_panels, tp_panels, lot_tender_panels, lot_result_panels):
     """Build a raw notice dict with full award tree embedded in components."""
-    metadata = _component("metadataWrapper", sub=[
-        _component("BT-04-notice", "test-uuid"),
-        _component("BT-03-notice", "result"),
-        _component("DL-Metadata-Partner", "Test Procurer (ID: 1)"),
-        _component("DL-Metadata-Order", "Test Order (ID: 2)"),
-    ])
+    metadata = _component(
+        "metadataWrapper",
+        sub=[
+            _component("BT-04-notice", "test-uuid"),
+            _component("BT-03-notice", "result"),
+            _component("DL-Metadata-Partner", "Test Procurer (ID: 1)"),
+            _component("DL-Metadata-Order", "Test Order (ID: 2)"),
+        ],
+    )
     award_components = [
         _component("GR-Organisations", sub=org_panels),
         _component("GR-TenderingParty", sub=tp_panels),
@@ -298,6 +342,7 @@ def _raw_with_awards(org_panels, tp_panels, lot_tender_panels, lot_result_panels
 # ---------------------------------------------------------------------------
 # Award tests
 # ---------------------------------------------------------------------------
+
 
 def test_award_basic_single_lot_single_winner():
     raw = _raw_with_awards(
@@ -371,7 +416,9 @@ def test_award_fallback_to_bt710_when_no_bt720():
         tp_panels=[_tp_panel("TPA-0001", "ORG-0001")],
         # No value in tender panel
         lot_tender_panels=[_lot_tender_panel("TEN-0001", "TPA-0001")],
-        lot_result_panels=[_lot_result_panel("RES-0001", "TEN-0001", lot_value="99\xa0999.99", lot_currency="EUR")],
+        lot_result_panels=[
+            _lot_result_panel("RES-0001", "TEN-0001", lot_value="99\xa0999.99", lot_currency="EUR")
+        ],
     )
     r = transform_notice(raw)
     assert len(r.awards) == 1
@@ -395,11 +442,15 @@ def test_award_lot_result_without_selec_w_yields_no_award():
 # matching the per-award lookup semantics)
 # ---------------------------------------------------------------------------
 
+
 def test_transform_final_value_ignores_unsuffixed_key():
     """A stray unsuffixed BT-720-Tender key (no _value suffix) must not be picked up."""
-    tabs = _component("tabs", sub=[
-        _component("BT-720-Tender", "999999.99"),  # wrong/legacy key — must be ignored
-    ])
+    tabs = _component(
+        "tabs",
+        sub=[
+            _component("BT-720-Tender", "999999.99"),  # wrong/legacy key — must be ignored
+        ],
+    )
     raw = _raw(components=[_component("metadataWrapper", sub=[]), tabs])
     r = transform_notice(raw)
     assert r.final_value is None
@@ -409,18 +460,24 @@ def test_transform_final_value_ignores_unsuffixed_key():
 # Procurer ICO from structured GR-Organisations panel (Fix 2)
 # ---------------------------------------------------------------------------
 
+
 def test_transform_procurer_ico_from_structured_panel():
     """When the buyer's org appears in GR-Organisations, its ICO must be used."""
-    metadata = _component("metadataWrapper", sub=[
-        _component("BT-03-notice", "result"),
-        _component("DL-Metadata-Partner", "Hlavné mesto SR Bratislava (ID: 39686)"),
-        _component("DL-Metadata-Order", "IT HW a podpora (ID: 422123)"),
-    ])
+    metadata = _component(
+        "metadataWrapper",
+        sub=[
+            _component("BT-03-notice", "result"),
+            _component("DL-Metadata-Partner", "Hlavné mesto SR Bratislava (ID: 39686)"),
+            _component("DL-Metadata-Order", "IT HW a podpora (ID: 422123)"),
+        ],
+    )
     org_panel = _org_panel("ORG-0001", "Hlavné mesto SR Bratislava", ico="00603481")
-    raw = _raw(components=[
-        metadata,
-        _component("GR-Organisations", sub=[org_panel]),
-    ])
+    raw = _raw(
+        components=[
+            metadata,
+            _component("GR-Organisations", sub=[org_panel]),
+        ]
+    )
     r = transform_notice(raw)
     assert r.procurer is not None
     assert r.procurer.ico == "00603481"
@@ -430,12 +487,17 @@ def test_transform_procurer_ico_from_structured_panel():
 def test_transform_procurer_falls_back_to_text_when_no_org_match():
     """When no org in GR-Organisations matches the buyer's name, keep text-parse fallback."""
     org_panel = _org_panel("ORG-0001", "Some Other Org", ico="12341234")
-    raw = _raw(components=[
-        _component("metadataWrapper", sub=[
-            _component("DL-Metadata-Partner", "Hlavné mesto SR Bratislava (ID: 39686)"),
-        ]),
-        _component("GR-Organisations", sub=[org_panel]),
-    ])
+    raw = _raw(
+        components=[
+            _component(
+                "metadataWrapper",
+                sub=[
+                    _component("DL-Metadata-Partner", "Hlavné mesto SR Bratislava (ID: 39686)"),
+                ],
+            ),
+            _component("GR-Organisations", sub=[org_panel]),
+        ]
+    )
     r = transform_notice(raw)
     assert r.procurer is not None
     assert r.procurer.name == "Hlavné mesto SR Bratislava"
@@ -445,6 +507,7 @@ def test_transform_procurer_falls_back_to_text_when_no_org_match():
 # ---------------------------------------------------------------------------
 # title_slug (Fix 1) — derived centrally on CanonicalNotice, not per-transformer
 # ---------------------------------------------------------------------------
+
 
 def test_transform_title_slug_derived():
     r = transform_notice(_raw())

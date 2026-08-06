@@ -33,8 +33,7 @@ uv run python -m uvo_api
 cd src/uvo-gui-react && npm run dev         # React public frontend (5174 dev, 8080 prod)
 
 # Tests
-uv run pytest tests/mcp/ -v                  # unit (mocked) — run these, not `tests/`
-uv run pytest tests/api/ tests/pipeline/ -v
+uv run pytest tests/ --ignore=tests/e2e -q  # the full unit suite (also covers tests/core, tests/gui)
 uv run pytest tests/e2e/ -v                 # requires docker compose up
 uv run pytest --cov=src -v
 
@@ -48,9 +47,18 @@ cd src/uvo-gui-react && npm install && npm test
 
 ## Docker (local deploy)
 
-> **Development only.** `docker-compose.yml` binds datastores to loopback and is not a production artifact. Production deploys from `deploy/k8s/` via ArgoCD — see `deploy/README.md`.
+> **Development only.** `docker-compose.yml` binds datastores to loopback and is not a production artifact. For production see **Production deployment** below.
 
-Full stack (14 services: mcp-server, api, gui-react, mongo, mongo-express, neo4j, redis, extractor-vestnik, extractor-crz, extractor-ted, extractor-itms, ingestor, dedup-worker, pipeline) lives in `docker-compose.yml`. For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j/redis volume-init gotchas, service-name URIs, and nuclear-reset tiers. The `pipeline` service is now optional/legacy for ad-hoc backfills; the 6 new microservices (4 extractors + ingestor + dedup-worker) handle continuous ingestion via Redis Streams.
+`docker compose up` starts **12** services. Two are behind opt-in profiles because both exit or are dev-only, and `up --wait` counts any exited container as a failure:
+
+```bash
+docker compose --profile legacy run --rm pipeline   # ad-hoc backfill (one-shot, exits)
+docker compose --profile debug up -d mongo-express  # dev-only admin UI
+```
+
+Credentials are required (`${VAR:?}`), so an empty `.env` aborts at interpolation — only `REDIS_PASSWORD` has a dev default.
+
+Full stack lives in `docker-compose.yml` (mcp-server, api, gui-react, mongo, neo4j, redis, 4 extractors, ingestor, dedup-worker; plus profiled mongo-express and pipeline). For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j/redis volume-init gotchas, service-name URIs, and nuclear-reset tiers. The `pipeline` service is now optional/legacy for ad-hoc backfills; the 6 new microservices (4 extractors + ingestor + dedup-worker) handle continuous ingestion via Redis Streams.
 
 **Docker runs in WSL, not Docker Desktop.** All `docker compose` commands must go through WSL:
 
@@ -128,6 +136,12 @@ uv run python scripts/enrich_itms_procurers.py --limit 100 # run on first 100
 
 **Cross-source deduplication** runs automatically at the end of each pipeline run (two passes: ICO+CPV match, then title-slug + date ±7 days). Re-trigger manually by running the pipeline — dedup is idempotent.
 
+## CI & Docker image gotchas
+
+- **`uv sync` must run *after* `COPY src/`.** All four Dockerfiles sync before copying sources, which resolves third-party deps only — the first-party packages never land in the venv. `uv run` used to paper over this by re-syncing at container start, but `UV_NO_SYNC=1` (needed for a read-only rootfs) disables that. Every image then builds perfectly and dies with `ModuleNotFoundError` on start. A second `uv sync --frozen --no-dev` after the COPY is what makes them work. **A build that succeeds proves nothing about whether the app starts** — CI import-checks each image for exactly this reason.
+- **The E2E job is gated on `needs: [test, lint]`.** While Lint was red it was silently skipped for months, and assertions rotted behind it (`"data"` vs `"items"`, an English GUI title the Slovak UI had dropped) while two runtime-fatal image bugs shipped. It is the only check that runs the real system — keep it green, and treat a skipped E2E as a failed one.
+- Prefer assertions on structure (mount points, envelope keys, bundle paths) over copy. Every stale assertion found this way was pinned to a display string.
+
 ## Data / search gotchas
 
 - Mongo uses a custom `sk_folding` analyzer (standard tokenizer + `lowercase` + `icuFolding`) for case- and diacritic-insensitive Slovak search. Name fields carry an `autocomplete` (edgeGram) subfield powering the live dropdown.
@@ -135,6 +149,44 @@ uv run python scripts/enrich_itms_procurers.py --limit 100 # run on first 100
 - Legacy-data migration after Mongo image swap: `scripts/migrate_to_atlas_local.sh` (one-shot).
 - Graph page (`/graph`) depends on Neo4j + `graph_ego_network` / `graph_cpv_network` MCP tools; if Neo4j is down the page will error, not silently degrade.
 
+## Production deployment — Kubernetes via ArgoCD
+
+> **Docker Swarm is gone.** It was demolished on 2026-08-04 along with its host volumes. `docker-stack-dev.yml` and `.github/workflows/deploy-dev.yml` (`workflow_dispatch`, last ran 2026-05-11) are dead artifacts — do not use them to deploy.
+
+Production runs on the **Hetzner k8s cluster managed from the [`stubarag-infra`](https://github.com/devopsacid/stubarag-infra) repo**, not from this one:
+
+| Thing | Where |
+| ----- | ----- |
+| Helm chart | `stubarag-infra:argocd/manifests/uvo-search/` |
+| ArgoCD Application | `stubarag-infra:argocd/hz/uvo-search-application.yaml` |
+| Namespace | `uvo-search-dev` |
+| Public host | `contract-register.agentkovac.sk` |
+| Images | `ghcr.io/devopsacid/uvo-search/uvo-{mcp,api,workers,gui,pipeline}`, tag `sha-<short>` |
+
+`argocd/hz/` is an **app-of-apps** — merging a manifest there auto-syncs to a live cluster shared with other production apps. Merging *is* deploying; treat it accordingly.
+
+Cluster conventions (they are **not** what `deploy/k8s/` in this repo assumes):
+
+- **Helm charts**, not kustomize
+- **Longhorn** storage, not `hcloud-volumes`
+- **Traefik `IngressRoute`** (CRD), not ingress-nginx or Gateway API `HTTPRoute` — HTTPRoute can't express middlewares, and the public route needs auth + security headers
+- **External Secrets Operator + Vault**, not sealed-secrets
+- cert-manager: **always issue against `letsencrypt-staging` first**
+
+> `deploy/k8s/` and `deploy/argocd/` in *this* repo are superseded. They were built against the wrong conventions and were never applied to any cluster. Harvest their hardening (securityContext, PDBs, NetworkPolicies, probes, resource limits) but don't deploy from them.
+
 ## Secrets & env
 
-`.env` keys that matter: `MONGO_PASSWORD`, `NEO4J_PASSWORD`, `EKOSYSTEM_API_TOKEN` (optional). Inside containers, URIs must reference service names (`mongo`, `neo4j`, `mcp-server`) — never `localhost`. See the `docker-troubleshoot` skill for the full list.
+**Never handle secret material directly — use the `secrets-manager` agent** for Vault paths, ESO wiring, `ghcr-pull`, GitHub Actions Secrets, and any credential generation or rotation. (`security-engineer` *reviews* secrets hygiene; `secrets-manager` *operates* on secrets.)
+
+Production secrets live in Vault at `kv/app/uvo-search/dev` (four keys: `mongodb_password`, `neo4j_password`, `redis_password`, `api_ops_token`) and reach the cluster as the `uvo-search-secrets` Secret via an ExternalSecret. Nested under `app/` deliberately — the existing ESO policy already covers `app/*`, so no policy widening is needed.
+
+- **An ExternalSecret fails as a whole if any one property is missing.** Omitting a key doesn't produce a partial Secret — it produces *no* Secret, and every pod that mounts it fails to start. Seed all declared keys; to disable a feature, drop the env var from the Deployment instead.
+- **`vault kv put` replaces wholesale.** Never seed a shared path expecting a merge.
+- Local `.env` keys: `MONGO_PASSWORD`, `NEO4J_PASSWORD`, `REDIS_PASSWORD` (optional locally — compose defaults to `uvo_redis_dev`), `EKOSYSTEM_API_TOKEN` (optional). Inside containers, URIs must use service names (`mongo`, `neo4j`, `mcp-server`) — never `localhost`.
+
+### The `API_` prefix trap
+
+`ApiSettings` sets `env_prefix="API_"`, so it **cannot see any unprefixed variable** — and most of its fields default to a falsy value rather than raising. The API then starts *healthy* and fails at query time, which reads as a data bug, not a config one. Three separate variables were missed this way in one migration.
+
+Every one of these must be set explicitly, in addition to the unprefixed versions other services use: `API_MONGODB_URI`, `API_NEO4J_URI`, `API_NEO4J_USER`, `API_NEO4J_PASSWORD`, `API_REDIS_PASSWORD`. When adding a field to `ApiSettings`, prefer no default over a falsy one so a missing value fails loudly at startup.

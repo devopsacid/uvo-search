@@ -1,7 +1,5 @@
 """Tests for Vestník transformer."""
 
-from datetime import date
-
 from uvo_pipeline.transformers.vestnik import transform_notice
 
 RAW_CAN = {

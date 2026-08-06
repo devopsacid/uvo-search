@@ -60,7 +60,9 @@ async def _never_returns() -> None:
     await asyncio.Event().wait()
 
 
-async def _publish_until(fake_redis, channel: str, message: str, signal: asyncio.Event, *, timeout: float = 10) -> None:
+async def _publish_until(
+    fake_redis, channel: str, message: str, signal: asyncio.Event, *, timeout: float = 10
+) -> None:
     """Pub/sub (fakeredis included) never buffers for a not-yet-subscribed
     listener, so a single publish right after starting the worker task races
     the worker's own subscribe call. Retry the publish until `signal` fires."""

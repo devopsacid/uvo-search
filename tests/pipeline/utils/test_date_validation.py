@@ -1,7 +1,6 @@
 """Tests for date_validation utility."""
-from datetime import date
 
-import pytest
+from datetime import date
 
 from uvo_pipeline.models import (
     CanonicalAward,
@@ -73,9 +72,7 @@ def test_signing_date_inside_award_validated():
     )
     cleaned, issues = validate_notice_dates(notice)
     assert cleaned.awards[0].signing_date is None
-    assert any(
-        i["field"] == "awards[0].signing_date" and i["year"] == 2502 for i in issues
-    )
+    assert any(i["field"] == "awards[0].signing_date" and i["year"] == 2502 for i in issues)
 
 
 def test_multiple_bad_dates_all_logged():

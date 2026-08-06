@@ -1,9 +1,10 @@
 """Tests for deduplication and ingestion registry."""
+
 from datetime import date
 
 import pytest
 
-from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer, CanonicalAddress
+from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer
 from uvo_pipeline.utils.hashing import compute_notice_hash
 
 
@@ -73,7 +74,9 @@ def test_canonical_notice_has_content_hash_field():
 
 def test_pipeline_report_has_notices_skipped():
     from datetime import datetime
+
     from uvo_pipeline.models import PipelineReport
+
     r = PipelineReport(run_id="x", mode="recent", started_at=datetime.utcnow())
     assert r.notices_skipped == 0
 
@@ -155,6 +158,7 @@ async def test_upsert_batch_updates_changed_notices(mock_mongo_db):
 def test_pipeline_report_accumulates_skipped():
     """PipelineReport.notices_skipped must be settable and default to 0."""
     from datetime import datetime
+
     from uvo_pipeline.models import PipelineReport
 
     r = PipelineReport(run_id="x", mode="recent", started_at=datetime.utcnow())
@@ -165,7 +169,6 @@ def test_pipeline_report_accumulates_skipped():
 @pytest.mark.asyncio
 async def test_cross_source_dedup_pass2_matches_by_title_slug(mock_mongo_db):
     """Pass 2 must match notices without ICO by title_slug + pub_date within 7 days."""
-    from datetime import datetime
     from uvo_pipeline.loaders.mongo import ensure_indexes
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
@@ -173,30 +176,32 @@ async def test_cross_source_dedup_pass2_matches_by_title_slug(mock_mongo_db):
 
     run_id = "test-run-1"
     # Two notices from different sources, no ICO, same title, dates 3 days apart
-    await mock_mongo_db.notices.insert_many([
-        {
-            "source": "uvo",
-            "source_id": "U-100",
-            "title": "Rekonštrukcia cesty",
-            "title_slug": "rekonstrukcia-cesty",
-            "procurer": {"ico": None, "name": "Obec Test", "name_slug": "obec-test"},
-            "cpv_code": None,
-            "publication_date": "2026-01-10",
-            "pipeline_run_id": run_id,
-            "canonical_id": None,
-        },
-        {
-            "source": "vestnik",
-            "source_id": "V-200",
-            "title": "Rekonštrukcia cesty",
-            "title_slug": "rekonstrukcia-cesty",
-            "procurer": {"ico": None, "name": "Obec Test", "name_slug": "obec-test"},
-            "cpv_code": None,
-            "publication_date": "2026-01-13",
-            "pipeline_run_id": run_id,
-            "canonical_id": None,
-        },
-    ])
+    await mock_mongo_db.notices.insert_many(
+        [
+            {
+                "source": "uvo",
+                "source_id": "U-100",
+                "title": "Rekonštrukcia cesty",
+                "title_slug": "rekonstrukcia-cesty",
+                "procurer": {"ico": None, "name": "Obec Test", "name_slug": "obec-test"},
+                "cpv_code": None,
+                "publication_date": "2026-01-10",
+                "pipeline_run_id": run_id,
+                "canonical_id": None,
+            },
+            {
+                "source": "vestnik",
+                "source_id": "V-200",
+                "title": "Rekonštrukcia cesty",
+                "title_slug": "rekonstrukcia-cesty",
+                "procurer": {"ico": None, "name": "Obec Test", "name_slug": "obec-test"},
+                "cpv_code": None,
+                "publication_date": "2026-01-13",
+                "pipeline_run_id": run_id,
+                "canonical_id": None,
+            },
+        ]
+    )
 
     match_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
     assert match_count >= 1
@@ -217,30 +222,32 @@ async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(mock_mongo_d
     await ensure_indexes(mock_mongo_db)
 
     run_id = "test-run-2"
-    await mock_mongo_db.notices.insert_many([
-        {
-            "source": "uvo",
-            "source_id": "U-300",
-            "title": "Stavebné práce",
-            "title_slug": "stavebne-prace",
-            "procurer": {"ico": None, "name": "Obec B", "name_slug": "obec-b"},
-            "cpv_code": None,
-            "publication_date": "2026-01-01",
-            "pipeline_run_id": run_id,
-            "canonical_id": None,
-        },
-        {
-            "source": "vestnik",
-            "source_id": "V-400",
-            "title": "Stavebné práce",
-            "title_slug": "stavebne-prace",
-            "procurer": {"ico": None, "name": "Obec B", "name_slug": "obec-b"},
-            "cpv_code": None,
-            "publication_date": "2026-01-20",
-            "pipeline_run_id": run_id,
-            "canonical_id": None,
-        },
-    ])
+    await mock_mongo_db.notices.insert_many(
+        [
+            {
+                "source": "uvo",
+                "source_id": "U-300",
+                "title": "Stavebné práce",
+                "title_slug": "stavebne-prace",
+                "procurer": {"ico": None, "name": "Obec B", "name_slug": "obec-b"},
+                "cpv_code": None,
+                "publication_date": "2026-01-01",
+                "pipeline_run_id": run_id,
+                "canonical_id": None,
+            },
+            {
+                "source": "vestnik",
+                "source_id": "V-400",
+                "title": "Stavebné práce",
+                "title_slug": "stavebne-prace",
+                "procurer": {"ico": None, "name": "Obec B", "name_slug": "obec-b"},
+                "cpv_code": None,
+                "publication_date": "2026-01-20",
+                "pipeline_run_id": run_id,
+                "canonical_id": None,
+            },
+        ]
+    )
 
     await _run_cross_source_dedup(mock_mongo_db, run_id)
 
@@ -289,16 +296,26 @@ async def test_cross_source_dedup_pass1_late_third_source_joins_existing_group(m
     run_id = "test-run-pass1-late"
     ico, cpv = "99887766", "45200000"
 
-    await mock_mongo_db.notices.insert_many([
-        _ico_cpv_notice(
-            source="vestnik", source_id="V-500", ico=ico, cpv_code=cpv,
-            publication_date="2026-03-01", run_id=run_id,
-        ),
-        _ico_cpv_notice(
-            source="crz", source_id="C-500", ico=ico, cpv_code=cpv,
-            publication_date="2026-03-01", run_id=run_id,
-        ),
-    ])
+    await mock_mongo_db.notices.insert_many(
+        [
+            _ico_cpv_notice(
+                source="vestnik",
+                source_id="V-500",
+                ico=ico,
+                cpv_code=cpv,
+                publication_date="2026-03-01",
+                run_id=run_id,
+            ),
+            _ico_cpv_notice(
+                source="crz",
+                source_id="C-500",
+                ico=ico,
+                cpv_code=cpv,
+                publication_date="2026-03-01",
+                run_id=run_id,
+            ),
+        ]
+    )
 
     first_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
     assert first_count == 1
@@ -314,17 +331,19 @@ async def test_cross_source_dedup_pass1_late_third_source_joins_existing_group(m
     # already settled — this is the multi-day publication lag scenario.
     await mock_mongo_db.notices.insert_one(
         _ico_cpv_notice(
-            source="ted", source_id="T-500", ico=ico, cpv_code=cpv,
-            publication_date="2026-03-03", run_id=run_id,
+            source="ted",
+            source_id="T-500",
+            ico=ico,
+            cpv_code=cpv,
+            publication_date="2026-03-03",
+            run_id=run_id,
         )
     )
 
     second_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
     assert second_count == 1, "the group with the new ted member must still be persisted/counted"
 
-    all_three = await mock_mongo_db.notices.find(
-        {"pipeline_run_id": run_id}
-    ).to_list(length=None)
+    all_three = await mock_mongo_db.notices.find({"pipeline_run_id": run_id}).to_list(length=None)
     assert len(all_three) == 3
     canonical_ids = {n["canonical_id"] for n in all_three}
     assert canonical_ids == {settled_canonical_id}, (
@@ -355,7 +374,12 @@ def _award_notice(
         "title_slug": None,
         "procurer": {"ico": None, "name": "Obec X", "name_slug": "obec-x"},
         "cpv_code": None,
-        "awards": [{"supplier": {"ico": ico, "name": "Dodavatel s.r.o.", "name_slug": "dodavatel"}, "value": value}],
+        "awards": [
+            {
+                "supplier": {"ico": ico, "name": "Dodavatel s.r.o.", "name_slug": "dodavatel"},
+                "value": value,
+            }
+        ],
         "publication_date": publication_date,
         "pipeline_run_id": run_id,
         "canonical_id": None,
@@ -369,12 +393,26 @@ async def test_cross_source_dedup_pass3_matches_by_ico_and_value(mock_mongo_db):
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
     run_id = "test-run-3"
-    await mock_mongo_db.notices.insert_many([
-        _award_notice(source="crz", source_id="C-1", ico="11223344", value=50_000.0,
-                      publication_date="2026-02-01", run_id=run_id),
-        _award_notice(source="vestnik", source_id="V-1", ico="11223344", value=52_000.0,
-                      publication_date="2026-02-10", run_id=run_id),
-    ])
+    await mock_mongo_db.notices.insert_many(
+        [
+            _award_notice(
+                source="crz",
+                source_id="C-1",
+                ico="11223344",
+                value=50_000.0,
+                publication_date="2026-02-01",
+                run_id=run_id,
+            ),
+            _award_notice(
+                source="vestnik",
+                source_id="V-1",
+                ico="11223344",
+                value=52_000.0,
+                publication_date="2026-02-10",
+                run_id=run_id,
+            ),
+        ]
+    )
 
     match_count = await _run_cross_source_dedup(mock_mongo_db, run_id)
     assert match_count >= 1
@@ -385,7 +423,9 @@ async def test_cross_source_dedup_pass3_matches_by_ico_and_value(mock_mongo_db):
     assert len(matched) == 2
     assert matched[0]["canonical_id"] == matched[1]["canonical_id"]
 
-    csm = await mock_mongo_db.cross_source_matches.find_one({"canonical_id": matched[0]["canonical_id"]})
+    csm = await mock_mongo_db.cross_source_matches.find_one(
+        {"canonical_id": matched[0]["canonical_id"]}
+    )
     assert csm["match_type"] == "supplier_ico_value_window"
     assert csm["supplier_ico"] == "11223344"
 
@@ -396,12 +436,26 @@ async def test_cross_source_dedup_pass3_no_match_when_dates_too_far(mock_mongo_d
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
     run_id = "test-run-4"
-    await mock_mongo_db.notices.insert_many([
-        _award_notice(source="crz", source_id="C-2", ico="55667788", value=50_000.0,
-                      publication_date="2026-02-01", run_id=run_id),
-        _award_notice(source="vestnik", source_id="V-2", ico="55667788", value=50_500.0,
-                      publication_date="2026-02-20", run_id=run_id),
-    ])
+    await mock_mongo_db.notices.insert_many(
+        [
+            _award_notice(
+                source="crz",
+                source_id="C-2",
+                ico="55667788",
+                value=50_000.0,
+                publication_date="2026-02-01",
+                run_id=run_id,
+            ),
+            _award_notice(
+                source="vestnik",
+                source_id="V-2",
+                ico="55667788",
+                value=50_500.0,
+                publication_date="2026-02-20",
+                run_id=run_id,
+            ),
+        ]
+    )
 
     await _run_cross_source_dedup(mock_mongo_db, run_id)
 
@@ -418,12 +472,26 @@ async def test_cross_source_dedup_pass3_rejects_value_mismatch(mock_mongo_db):
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
     run_id = "test-run-5"
-    await mock_mongo_db.notices.insert_many([
-        _award_notice(source="crz", source_id="C-3", ico="99887766", value=10_000.0,
-                      publication_date="2026-02-01", run_id=run_id),
-        _award_notice(source="vestnik", source_id="V-3", ico="99887766", value=100_000.0,
-                      publication_date="2026-02-05", run_id=run_id),
-    ])
+    await mock_mongo_db.notices.insert_many(
+        [
+            _award_notice(
+                source="crz",
+                source_id="C-3",
+                ico="99887766",
+                value=10_000.0,
+                publication_date="2026-02-01",
+                run_id=run_id,
+            ),
+            _award_notice(
+                source="vestnik",
+                source_id="V-3",
+                ico="99887766",
+                value=100_000.0,
+                publication_date="2026-02-05",
+                run_id=run_id,
+            ),
+        ]
+    )
 
     await _run_cross_source_dedup(mock_mongo_db, run_id)
 
@@ -447,14 +515,16 @@ async def test_cross_source_dedup_pass3_skips_high_frequency_supplier(mock_mongo
     notices = []
     sources = ["crz", "vestnik"]
     for i in range(MAX_NOTICES_PER_SUPPLIER_ICO + 1):
-        notices.append(_award_notice(
-            source=sources[i % 2],
-            source_id=f"HF-{i}",
-            ico=ico,
-            value=50_000.0,
-            publication_date="2026-02-01",
-            run_id=run_id,
-        ))
+        notices.append(
+            _award_notice(
+                source=sources[i % 2],
+                source_id=f"HF-{i}",
+                ico=ico,
+                value=50_000.0,
+                publication_date="2026-02-01",
+                run_id=run_id,
+            )
+        )
     await mock_mongo_db.notices.insert_many(notices)
 
     await _run_cross_source_dedup(mock_mongo_db, run_id)

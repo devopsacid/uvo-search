@@ -63,7 +63,9 @@ async def read_group(
     result = await redis.xreadgroup(group, consumer, streams=stream_args, **kwargs)
     if not result:
         return []
-    return [(name.decode() if isinstance(name, bytes) else name, entries) for name, entries in result]
+    return [
+        (name.decode() if isinstance(name, bytes) else name, entries) for name, entries in result
+    ]
 
 
 async def ack(redis: aioredis.Redis, stream: str, group: str, entry_ids: list[bytes]) -> int:

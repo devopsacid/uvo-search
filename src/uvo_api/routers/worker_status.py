@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends
 
@@ -39,8 +39,8 @@ _ERROR_EVENTS = {"cycle_failed", "write_failed", "redis_connect_failed"}
 
 def _to_iso_z(value: datetime) -> str:
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _derive_status(
@@ -52,9 +52,9 @@ def _derive_status(
     if last_ts is None:
         return "unknown", None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if last_ts.tzinfo is None:
-        last_ts = last_ts.replace(tzinfo=timezone.utc)
+        last_ts = last_ts.replace(tzinfo=UTC)
     age = (now - last_ts).total_seconds()
 
     if last_event in _ERROR_EVENTS or last_level in ("error", "critical"):
@@ -70,21 +70,23 @@ def _derive_status(
 @router.get("/worker-status", response_model=WorkerStatusResponse)
 async def get_worker_status() -> WorkerStatusResponse:
     db = get_db()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff_24h = now - timedelta(hours=24)
 
     pipeline = [
         {"$match": {"component": {"$in": COMPONENTS}}},
         {"$sort": {"ts": -1}},
-        {"$group": {
-            "_id": "$component",
-            "last_ts": {"$first": "$ts"},
-            "last_level": {"$first": "$level"},
-            "last_event": {"$first": "$event"},
-            "last_message": {"$first": "$message"},
-            "last_source": {"$first": "$source"},
-            "last_instance_id": {"$first": "$instance_id"},
-        }},
+        {
+            "$group": {
+                "_id": "$component",
+                "last_ts": {"$first": "$ts"},
+                "last_level": {"$first": "$level"},
+                "last_event": {"$first": "$event"},
+                "last_message": {"$first": "$message"},
+                "last_source": {"$first": "$source"},
+                "last_instance_id": {"$first": "$instance_id"},
+            }
+        },
     ]
     rows: dict[str, dict] = {}
     async for doc in db.ingestion_log.aggregate(pipeline):
@@ -107,23 +109,27 @@ async def get_worker_status() -> WorkerStatusResponse:
 
         status, age_seconds = _derive_status(last_event, last_level, last_ts, component)
 
-        events_24h = await db.ingestion_log.count_documents({
-            "component": component,
-            "ts": {"$gte": cutoff_24h},
-            "event": {"$in": ["cycle_complete", "batch_written"]},
-        })
+        events_24h = await db.ingestion_log.count_documents(
+            {
+                "component": component,
+                "ts": {"$gte": cutoff_24h},
+                "event": {"$in": ["cycle_complete", "batch_written"]},
+            }
+        )
 
-        workers.append(WorkerStatus(
-            component=component,
-            name=component,
-            status=status,
-            last_event=last_event,
-            last_level=last_level,
-            last_message=last_message,
-            last_ts=_to_iso_z(last_ts) if last_ts is not None else None,
-            age_seconds=age_seconds,
-            events_24h=events_24h,
-        ))
+        workers.append(
+            WorkerStatus(
+                component=component,
+                name=component,
+                status=status,
+                last_event=last_event,
+                last_level=last_level,
+                last_message=last_message,
+                last_ts=_to_iso_z(last_ts) if last_ts is not None else None,
+                age_seconds=age_seconds,
+                events_24h=events_24h,
+            )
+        )
 
     return WorkerStatusResponse(
         workers=workers,

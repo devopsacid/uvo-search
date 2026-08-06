@@ -14,12 +14,14 @@ def _iso(dt: datetime) -> str:
 @pytest.mark.asyncio
 async def test_recent_source_is_not_stale(mock_mongo_db):
     now = datetime.now(UTC)
-    await mock_mongo_db.notices.insert_one({
-        "source": "vestnik",
-        "source_id": "V-1",
-        "ingested_at": _iso(now - timedelta(hours=2)),
-        "publication_date": "2026-01-01",
-    })
+    await mock_mongo_db.notices.insert_one(
+        {
+            "source": "vestnik",
+            "source_id": "V-1",
+            "ingested_at": _iso(now - timedelta(hours=2)),
+            "publication_date": "2026-01-01",
+        }
+    )
 
     report = await collect(mock_mongo_db, stale_threshold_days=14)
     vestnik = next(s for s in report["sources"] if s["source"] == "vestnik")
@@ -32,12 +34,14 @@ async def test_recent_source_is_not_stale(mock_mongo_db):
 async def test_source_stale_after_threshold(mock_mongo_db):
     """Regression for the ITMS incident: a source quiet >14 days must be flagged stale."""
     now = datetime.now(UTC)
-    await mock_mongo_db.notices.insert_one({
-        "source": "itms",
-        "source_id": "I-1",
-        "ingested_at": _iso(now - timedelta(days=68)),
-        "publication_date": "2026-01-01",
-    })
+    await mock_mongo_db.notices.insert_one(
+        {
+            "source": "itms",
+            "source_id": "I-1",
+            "ingested_at": _iso(now - timedelta(days=68)),
+            "publication_date": "2026-01-01",
+        }
+    )
 
     report = await collect(mock_mongo_db, stale_threshold_days=14)
     itms = next(s for s in report["sources"] if s["source"] == "itms")
@@ -60,12 +64,14 @@ async def test_source_with_no_notices_is_stale(mock_mongo_db):
 @pytest.mark.asyncio
 async def test_stale_threshold_is_configurable(mock_mongo_db):
     now = datetime.now(UTC)
-    await mock_mongo_db.notices.insert_one({
-        "source": "crz",
-        "source_id": "C-1",
-        "ingested_at": _iso(now - timedelta(days=5)),
-        "publication_date": "2026-01-01",
-    })
+    await mock_mongo_db.notices.insert_one(
+        {
+            "source": "crz",
+            "source_id": "C-1",
+            "ingested_at": _iso(now - timedelta(days=5)),
+            "publication_date": "2026-01-01",
+        }
+    )
 
     lenient = await collect(mock_mongo_db, stale_threshold_days=14)
     strict = await collect(mock_mongo_db, stale_threshold_days=1)
@@ -80,12 +86,14 @@ async def test_stale_threshold_is_configurable(mock_mongo_db):
 @pytest.mark.asyncio
 async def test_render_text_includes_stale_marker(mock_mongo_db):
     now = datetime.now(UTC)
-    await mock_mongo_db.notices.insert_one({
-        "source": "itms",
-        "source_id": "I-1",
-        "ingested_at": _iso(now - timedelta(days=68)),
-        "publication_date": "2026-01-01",
-    })
+    await mock_mongo_db.notices.insert_one(
+        {
+            "source": "itms",
+            "source_id": "I-1",
+            "ingested_at": _iso(now - timedelta(days=68)),
+            "publication_date": "2026-01-01",
+        }
+    )
 
     report = await collect(mock_mongo_db, stale_threshold_days=14)
     text = render_text(report)
