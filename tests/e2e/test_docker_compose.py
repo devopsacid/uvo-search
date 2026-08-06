@@ -104,5 +104,8 @@ class TestMCPToolsViaMCP:
 
         result = asyncio.run(_call_search())
         assert result is not None
-        # With a fake token, we expect either real data or an error dict
-        assert "data" in result or "error" in result
+        # With a fake token, we expect either a real result envelope or an error
+        # dict. The list key is "items" — "data" was the pre-refactor name and
+        # this assertion silently outlived it, since the e2e job was skipped for
+        # a long stretch while Lint was red.
+        assert "items" in result or "error" in result

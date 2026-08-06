@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 _SOURCES = ["vestnik", "crz", "ted", "itms"]
 _STREAMS = [f"notices:{s}" for s in _SOURCES]
 
+# Neo4j constraint creation races uvo_mcp's identical bootstrap and can deadlock.
+_BOOTSTRAP_ATTEMPTS = 3
+_BOOTSTRAP_BACKOFF_SECONDS = 2.0
+
 
 class IngestorSettings(BaseSettings):
     ingestor_batch_size: int = 100
@@ -170,21 +174,38 @@ async def run_ingestor() -> None:
     # The ingestor is the only writer in a worker-only deployment; the legacy
     # pipeline Job that used to provision these is excluded from the kustomize
     # base. Both helpers are idempotent, so running them on every start is safe.
-    try:
-        await ensure_indexes(db)
-        async with neo4j_driver.session() as bootstrap_session:
-            await ensure_constraints(bootstrap_session)
-        logger.info("ingestor: indexes and constraints ensured")
-    except Exception as exc:
-        logger.error("ingestor: failed to ensure indexes/constraints: %s", exc, exc_info=True)
-        await log_event(
-            db,
-            level="error",
-            event="index_bootstrap_failed",
-            component="ingestor",
-            instance_id=instance_id,
-            message=redact_exception(exc),
-        )
+    # Retried: uvo_mcp provisions the same Neo4j constraints at its own startup,
+    # and two concurrent CREATE CONSTRAINT statements deadlock on the label lock
+    # (Neo.TransientError.Transaction.DeadlockDetected). Whichever loses simply
+    # needs to try again — the winner's constraints already satisfy it.
+    for attempt in range(1, _BOOTSTRAP_ATTEMPTS + 1):
+        try:
+            await ensure_indexes(db)
+            async with neo4j_driver.session() as bootstrap_session:
+                await ensure_constraints(bootstrap_session)
+            logger.info("ingestor: indexes and constraints ensured")
+            break
+        except Exception as exc:
+            if attempt < _BOOTSTRAP_ATTEMPTS:
+                delay = _BOOTSTRAP_BACKOFF_SECONDS * attempt
+                logger.warning(
+                    "ingestor: index/constraint bootstrap attempt %d/%d failed (%s); retrying in %.1fs",
+                    attempt,
+                    _BOOTSTRAP_ATTEMPTS,
+                    type(exc).__name__,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+            logger.error("ingestor: failed to ensure indexes/constraints: %s", exc, exc_info=True)
+            await log_event(
+                db,
+                level="error",
+                event="index_bootstrap_failed",
+                component="ingestor",
+                instance_id=instance_id,
+                message=redact_exception(exc),
+            )
 
     try:
         while not stop_event.is_set():

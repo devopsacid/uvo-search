@@ -25,6 +25,7 @@ LogEvent = Literal[
     "redis_connect_failed",
     "notice_invalid_date",
     "validation_summary",
+    "index_bootstrap_failed",
 ]
 
 
