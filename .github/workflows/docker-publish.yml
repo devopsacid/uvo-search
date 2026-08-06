@@ -1,20 +1,61 @@
 name: Publish Docker Images
 
+# Builds and pushes every application image on push to main so both live
+# deployment paths have something to pull:
+#   - Docker Swarm (deploy-dev.yml, workflow_dispatch): pulls
+#     ghcr.io/<repo>/uvo-{mcp,api,workers,gui}:dev-<sha7>, built by its own
+#     job on manual trigger. This workflow does NOT publish that tag scheme
+#     and never touches deploy-dev.yml — it only adds `latest` and immutable
+#     `sha-<short>` tags to the SAME image names, so the two workflows write
+#     different tags of the same repos without conflicting.
+#   - Kubernetes/ArgoCD (deploy/k8s): currently pins images by the
+#     `sha-<short>` tag this workflow produces (see
+#     deploy/k8s/overlays/hetzner/kustomization.yaml). NOTE: as of this
+#     writing that file's `images:` block expects flat names
+#     (`uvo-search-mcp`, `uvo-search-api`, `uvo-search-gui-react`,
+#     `uvo-search-workers`) rather than the `uvo-{mcp,api,workers,gui}`
+#     names published here — that mismatch needs a human decision (rename
+#     one side) before ArgoCD can actually pull. See the PR description.
 on:
   push:
     branches: [main]
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_MCP: ghcr.io/${{ github.repository }}/uvo-mcp
 
 jobs:
   publish:
-    name: Build and push
+    name: Build and push (${{ matrix.image }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: mcp
+            dockerfile: Dockerfile.mcp
+            context: .
+          - image: api
+            dockerfile: Dockerfile.api
+            context: .
+          - image: workers
+            dockerfile: Dockerfile.workers
+            context: .
+          - image: gui
+            dockerfile: src/uvo-gui-react/Dockerfile
+            context: src/uvo-gui-react
+          # Legacy one-shot backfill CLI (deploy/k8s/base/pipeline-job.yaml
+          # runs it as a manual batch/v1 Job, never a Deployment — see
+          # deploy/README.md). Not long-lived and not part of the
+          # kustomize-managed image list, but a real, runnable artifact:
+          # ci.yml already builds and import-checks it, and someone has to
+          # be able to `kubectl apply` the Job with a real tag. Publishing
+          # it here is the cheapest way to keep that path unbroken.
+          - image: pipeline
+            dockerfile: Dockerfile.pipeline
+            context: .
 
     steps:
       - uses: actions/checkout@v4
@@ -29,22 +70,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata for MCP image
-        id: meta-mcp
+      - name: Extract metadata for ${{ matrix.image }} image
+        id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_MCP }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/uvo-${{ matrix.image }}
           tags: |
             type=raw,value=latest
             type=sha,format=short
 
-      - name: Build and push MCP server image
+      - name: Build and push ${{ matrix.image }} image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: Dockerfile.mcp
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
-          tags: ${{ steps.meta-mcp.outputs.tags }}
-          labels: ${{ steps.meta-mcp.outputs.labels }}
-          cache-from: type=gha,scope=mcp
-          cache-to: type=gha,mode=max,scope=mcp
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
