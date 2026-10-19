@@ -83,7 +83,7 @@ describe('Layout + Routing', () => {
 
   it('has nav aria-label', async () => {
     renderApp()
-    const nav = screen.getByLabelText('Hlavna navigacia')
+    const nav = screen.getByLabelText('Hlavná navigácia')
     expect(nav).toBeInTheDocument()
   })
 })

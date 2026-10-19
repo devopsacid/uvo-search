@@ -100,7 +100,7 @@ export function ZakazkyPage() {
                 onChange={(e) => setParam('year', e.target.value)}
                 className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                <option value="">Všetky</option>
+                <option value="">{sk.common.all}</option>
                 {YEAR_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
@@ -113,7 +113,7 @@ export function ZakazkyPage() {
               label={sk.search.filterCpv}
               value={cpv}
               onChange={(e) => setParam('cpv', e.target.value)}
-              placeholder="napr. 45000000"
+              placeholder={sk.search.cpvPlaceholder}
             />
           </SidebarSection>
 
@@ -122,7 +122,7 @@ export function ZakazkyPage() {
               label={sk.search.filterSupplier}
               value={supplier_ico}
               onChange={(e) => setParam('supplier_ico', e.target.value)}
-              placeholder="IČO"
+              placeholder={sk.common.ico}
             />
           </SidebarSection>
 

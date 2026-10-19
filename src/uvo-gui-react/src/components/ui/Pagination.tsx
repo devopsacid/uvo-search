@@ -1,3 +1,4 @@
+import sk from '@/i18n/sk'
 import { cn } from '@/lib/utils'
 
 interface PaginationProps {
@@ -18,7 +19,7 @@ export function Pagination({ page, pageSize, total, onPageChange, className }: P
   return (
     <div className={cn('flex items-center justify-between gap-4 py-3 text-sm', className)}>
       <span className="text-muted-foreground">
-        {from}–{to} z {total}
+        {from}–{to} {sk.common.rangeOf} {total}
       </span>
       <div className="flex gap-1">
         <button
@@ -26,7 +27,7 @@ export function Pagination({ page, pageSize, total, onPageChange, className }: P
           disabled={page <= 1}
           className="rounded px-2 py-1 text-sm text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
         >
-          ‹ Predchádzajúca
+          {sk.common.previous}
         </button>
         {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
           // Simple windowing: show first, last, and up to 5 around current
@@ -58,7 +59,7 @@ export function Pagination({ page, pageSize, total, onPageChange, className }: P
           disabled={page >= totalPages}
           className="rounded px-2 py-1 text-sm text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-40"
         >
-          Ďalšia ›
+          {sk.common.next}
         </button>
       </div>
     </div>

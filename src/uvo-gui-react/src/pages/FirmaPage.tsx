@@ -40,7 +40,7 @@ export function FirmaPage() {
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <p className="text-lg font-medium text-foreground">{sk.firma.notFound}</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Firma s IČO {safeIco} sa v dátach nenašla.
+          {sk.firma.notFoundDetail.replace('{ico}', safeIco)}
         </p>
         <Link
           to="/firmy"
@@ -90,7 +90,7 @@ export function FirmaPage() {
           ) : (
             <h1 className="text-xl font-semibold text-foreground">{profile?.name}</h1>
           )}
-          <p className="mt-1 text-sm text-muted-foreground">IČO: {safeIco}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{sk.common.ico}: {safeIco}</p>
         </div>
         {!isLoading && profile?.roles && (
           <div className="flex flex-wrap gap-1.5 pt-1">
@@ -102,7 +102,7 @@ export function FirmaPage() {
       </div>
 
       {/* Tab strip */}
-      <nav className="flex gap-1 border-b border-border pb-0" aria-label="Sekcie firmy">
+      <nav className="flex gap-1 border-b border-border pb-0" aria-label={sk.firma.sectionsLabel}>
         {tabs.map(({ to, label }) => (
           <NavLink
             key={to}

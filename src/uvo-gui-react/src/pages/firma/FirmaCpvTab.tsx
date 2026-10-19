@@ -40,10 +40,10 @@ function CpvBarTable({ rows }: { rows: CpvProfileRow[] }) {
         <thead>
           <tr className="border-b border-border text-left text-xs text-muted-foreground">
             <th className="pb-2 pr-4 font-medium">CPV</th>
-            <th className="pb-2 pr-4 font-medium">Kategória</th>
-            <th className="pb-2 pr-4 w-32 font-medium">Podiel</th>
-            <th className="pb-2 pr-4 text-right font-medium">Hodnota</th>
-            <th className="pb-2 text-right font-medium">Zákazky</th>
+            <th className="pb-2 pr-4 font-medium">{sk.firma.colCategory}</th>
+            <th className="pb-2 pr-4 w-32 font-medium">{sk.firma.colShare}</th>
+            <th className="pb-2 pr-4 text-right font-medium">{sk.firma.colHodnota}</th>
+            <th className="pb-2 text-right font-medium">{sk.firma.colZakazky}</th>
           </tr>
         </thead>
         <tbody>

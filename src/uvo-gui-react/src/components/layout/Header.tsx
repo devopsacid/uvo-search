@@ -19,7 +19,7 @@ export function Header() {
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
         <span className="text-base font-semibold text-foreground">UVO</span>
         <GlobalSearch />
-        <nav className="flex gap-1" aria-label="Hlavna navigacia">
+        <nav className="flex gap-1" aria-label={sk.common.mainNavLabel}>
           {navItems.map(({ to, label, end }) => (
             <NavLink
               key={to}

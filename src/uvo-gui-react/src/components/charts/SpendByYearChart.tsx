@@ -8,16 +8,13 @@ import {
   YAxis,
 } from 'recharts'
 import type { SpendByYear } from '@/api/types'
-import { formatCurrency } from '@/lib/utils'
+import sk from '@/i18n/sk'
+import { formatCurrency, formatMillions } from '@/lib/utils'
+
+const formatChartAxis = (value: number) => `${formatMillions(value)} €`
 
 interface SpendByYearChartProps {
   data: SpendByYear[]
-}
-
-function formatMillions(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} M €`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(0)} tis. €`
-  return `${value} €`
 }
 
 export function SpendByYearChart({ data }: SpendByYearChartProps) {
@@ -33,14 +30,14 @@ export function SpendByYearChart({ data }: SpendByYearChartProps) {
           className="fill-muted-foreground"
         />
         <YAxis
-          tickFormatter={formatMillions}
+          tickFormatter={formatChartAxis}
           tick={{ fontSize: 11 }}
           width={70}
           className="fill-muted-foreground"
         />
         <Tooltip
-          formatter={(value: number) => [formatCurrency(value), 'Objem']}
-          labelFormatter={(label) => `Rok ${label}`}
+          formatter={(value: number) => [formatCurrency(value), sk.common.valueSeries]}
+          labelFormatter={(label) => `${sk.common.year} ${label}`}
           contentStyle={{
             fontSize: 12,
             borderRadius: 6,

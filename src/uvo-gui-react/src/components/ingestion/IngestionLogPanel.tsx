@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useIngestionLog } from '@/api/queries/ingestionLog'
 import type { IngestionLogLevel } from '@/api/types'
 import sk from '@/i18n/sk'
-import { cn } from '@/lib/utils'
+import { cn, formatLogTime } from '@/lib/utils'
 
 const LEVELS: Array<{ key: IngestionLogLevel | 'all'; label: string }> = [
   { key: 'all', label: sk.ingestionLog.levelAll },
@@ -31,16 +31,6 @@ const LEVEL_CLASSES: Record<IngestionLogLevel, string> = {
   warning: 'text-amber-600',
   error: 'text-red-600',
   critical: 'text-red-700 font-semibold',
-}
-
-function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat('sk-SK', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(new Date(iso))
 }
 
 export function IngestionLogPanel() {
@@ -122,7 +112,7 @@ export function IngestionLogPanel() {
             {data.items.map((it, i) => (
               <tr key={i} className="border-t border-slate-100 align-top">
                 <td className="py-1 pr-2 whitespace-nowrap text-slate-600">
-                  {formatTime(it.ts)}
+                  {formatLogTime(it.ts)}
                 </td>
                 <td className={cn('py-1 pr-2', LEVEL_CLASSES[it.level])}>{it.level}</td>
                 <td className="py-1 pr-2 font-mono text-xs">{it.event}</td>

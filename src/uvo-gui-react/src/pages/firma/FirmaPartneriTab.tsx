@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Pagination } from '@/components/ui/Pagination'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
@@ -217,9 +217,7 @@ export function FirmaPartneriTab() {
                     {formatCurrency(row.total_value)}
                   </TableCell>
                   <TableCell>
-                    {row.last_contract_at
-                      ? new Date(row.last_contract_at).toLocaleDateString('sk-SK')
-                      : '—'}
+                    {formatDate(row.last_contract_at)}
                   </TableCell>
                 </TableRow>
               ))}
