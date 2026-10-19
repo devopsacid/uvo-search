@@ -110,8 +110,8 @@ curl http://localhost:8094/health  # itms
 Per-cycle behavior:
 1. Acquire distributed lock `extractor:lock:<source>` (TTL = 2×interval)
 2. Iterate source API, buffer `CanonicalNotice` objects
-3. Every 500 items (configurable `BATCH_SIZE`): `XADD notices:<source> MAXLEN ~ 100000 ...`
-4. After API loop: flush remainder + update checkpoint in Mongo `pipeline_state`
+3. Every 500 items: wait for consumer-group capacity (backpressure: pause while `lag + pending >= STREAM_HIGH_WATER`, fail the cycle after 15 min), then one pipelined `XADD notices:<source> MAXLEN ~ STREAM_MAXLEN_APPROX ...` for the whole batch
+4. After API loop: flush remainder + update checkpoint in Mongo `pipeline_state` (CRZ/TED: cycle *start* minus `CHECKPOINT_OVERLAP_SECONDS`)
 5. Release lock, sleep until next interval
 
 ### Ingestor
@@ -126,8 +126,14 @@ curl http://localhost:8095/health
 XREADGROUP GROUP ingestor <instance-id> COUNT <INGESTOR_BATCH_SIZE>
            BLOCK 5000 STREAMS notices:vestnik notices:crz notices:ted notices:itms > > > >
 # → decode payloads, upsert Mongo+Neo4j
-# → on success: XACK + PUBLISH notices:written
-# → on failure: skip XACK (re-delivers next read)
+# → XACK only the entries whose notice reached BOTH Mongo and Neo4j, then PUBLISH notices:written
+# → failed entries stay pending; every INGESTOR_RECLAIM_INTERVAL_SECONDS (traffic or not)
+#   stale pending entries are XAUTOCLAIMed (cursor paged) and retried
+# → after INGESTOR_MAX_DELIVERIES deliveries an entry is processed alone; if it still
+#   fails it is copied to the `notices:dead` stream and acked (skipped when every
+#   over-limit entry fails, which indicates a Mongo/Neo4j outage rather than poison data)
+# → every INGESTOR_MAINTENANCE_INTERVAL_SECONDS: XTRIM MINID of fully-acked entries
+#   (never unread/pending ones) and refresh stream lag / PEL / dead-letter metrics
 ```
 
 ### Dedup-worker
@@ -373,7 +379,12 @@ ITMS_CACHE_TTL_SECONDS=604800     # 7 days
 
 # Ingestor batching
 INGESTOR_BATCH_SIZE=100           # messages per XREADGROUP call
-STREAM_MAXLEN_APPROX=100000       # approximate max entries per stream
+STREAM_MAXLEN_APPROX=1000000      # memory safety net only; acked entries are trimmed by the ingestor
+STREAM_HIGH_WATER=50000           # producers pause while group lag+pending >= this
+CHECKPOINT_OVERLAP_SECONDS=86400  # CRZ/TED re-fetch window behind the cycle start
+INGESTOR_MAX_DELIVERIES=5         # deliveries before an entry is dead-lettered
+INGESTOR_RECLAIM_INTERVAL_SECONDS=30
+INGESTOR_RECLAIM_MIN_IDLE_MS=60000
 
 # Legacy pipeline (one-shot backfill mode)
 HISTORICAL_FROM_YEAR=2014         # used by `pipeline run --mode historical`

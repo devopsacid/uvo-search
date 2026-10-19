@@ -179,7 +179,13 @@ The public SPA lives in [`src/uvo-gui-react/`](../src/uvo-gui-react/) (React 18 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `INGESTOR_BATCH_SIZE` | `100` | Messages per XREADGROUP call |
-| `STREAM_MAXLEN_APPROX` | `100000` | Approximate max entries per Redis stream |
+| `STREAM_MAXLEN_APPROX` | `1000000` | Memory safety cap per Redis stream (acked entries are trimmed separately; backpressure keeps unread entries far below it) |
+| `STREAM_HIGH_WATER` | `50000` | Extractors pause while consumer-group lag + pending reaches this |
+| `CHECKPOINT_OVERLAP_SECONDS` | `86400` | CRZ/TED re-fetch window behind the cycle start |
+| `INGESTOR_MAX_DELIVERIES` | `5` | Deliveries before a failing entry is dead-lettered to `notices:dead` |
+| `INGESTOR_RECLAIM_INTERVAL_SECONDS` | `30` | How often stale pending entries are reclaimed |
+| `INGESTOR_RECLAIM_MIN_IDLE_MS` | `60000` | Idle time before a pending entry is reclaimable |
+| `DEDUP_LOCK_TTL_SECONDS` | `1800` | TTL of the cross-replica `dedup:lock` |
 
 **Legacy Pipeline** (one-shot backfill mode):
 | Variable | Default | Purpose |
