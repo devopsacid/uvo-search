@@ -1,5 +1,5 @@
 # tests/api/test_suppliers.py
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -75,24 +75,51 @@ def test_list_suppliers_search_by_ico(client):
     assert args.get("ico") == "87654321"
 
 
+PROFILE = {
+    "contract_count": 400,
+    "total_value": 9_000_000.0,
+    "spend_by_year": [
+        {"year": 2021, "total_value": 4_000_000.0},
+        {"year": 2023, "total_value": 5_000_000.0},
+    ],
+    "years_active": [2021, 2023],
+    "partners": [
+        {"ico": "12345678", "name": "Ministry", "contract_count": 300, "total_value": 7e6},
+        {"ico": "99999999", "name": "Tax Office", "contract_count": 100, "total_value": 2e6},
+    ],
+    "partner_total_value": 9_000_000.0,
+    "partner_count": 2,
+    "hhi": 6500.0,
+}
+
+SUPPLIER_DOC = {
+    "ico": "87654321",
+    "name": "Tech Corp",
+    "contract_count": 1,
+    "total_value": 500000.0,
+}
+
+
+def _entity_patches(supplier):
+    return (
+        patch("uvo_api.routers.suppliers.get_db", return_value=MagicMock()),
+        patch(
+            "uvo_api.routers.suppliers.get_entity_by_ico",
+            new=AsyncMock(return_value={"supplier": supplier, "procurer": None}),
+        ),
+        patch("uvo_api.routers.suppliers.entity_profile", new=AsyncMock(return_value=PROFILE)),
+    )
+
+
 def test_get_supplier_detail(client):
-    with patch(
-        "uvo_api.routers.suppliers.run_query",
-        new=AsyncMock(
-            side_effect=[
-                {
-                    "items": [
-                        {
-                            "ico": "87654321",
-                            "name": "Tech Corp",
-                            "contract_count": 1,
-                            "total_value": 500000.0,
-                        }
-                    ],
-                    "total": 1,
-                },
-                SAMPLE_CONTRACTS_FOR_SUPPLIER,
-            ]
+    p1, p2, p3 = _entity_patches(SUPPLIER_DOC)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "uvo_api.routers.suppliers.run_query",
+            new=AsyncMock(return_value=SAMPLE_CONTRACTS_FOR_SUPPLIER),
         ),
     ):
         response = client.get("/api/suppliers/87654321")
@@ -102,39 +129,25 @@ def test_get_supplier_detail(client):
     assert body["contract_count"] == 1
     assert len(body["contracts"]) == 1
     assert body["contracts"][0]["id"] == "1001"
+    # counterparties / years come from the full-population aggregation
+    assert [p["ico"] for p in body["top_procurers"]] == ["12345678", "99999999"]
+    assert body["years_active"] == [2021, 2023]
 
 
 def test_get_supplier_summary(client):
-    with patch(
-        "uvo_api.routers.suppliers.run_query",
-        new=AsyncMock(
-            side_effect=[
-                {
-                    "items": [
-                        {
-                            "ico": "87654321",
-                            "name": "Tech Corp",
-                            "contract_count": 1,
-                            "total_value": 500000.0,
-                        }
-                    ],
-                    "total": 1,
-                },
-                SAMPLE_CONTRACTS_FOR_SUPPLIER,
-            ]
-        ),
-    ):
+    p1, p2, p3 = _entity_patches(SUPPLIER_DOC)
+    run = AsyncMock()
+    with p1, p2, p3, patch("uvo_api.routers.suppliers.run_query", new=run):
         response = client.get("/api/suppliers/87654321/summary")
     assert response.status_code == 200
     body = response.json()
     assert body["ico"] == "87654321"
-    assert "spend_by_year" in body
-    assert body["spend_by_year"][0]["year"] == 2023
+    assert [y["year"] for y in body["spend_by_year"]] == [2021, 2023]
+    run.assert_not_called()
 
 
 def test_get_supplier_not_found(client):
-    with patch(
-        "uvo_api.routers.suppliers.run_query", new=AsyncMock(return_value={"data": [], "total": 0})
-    ):
+    p1, p2, p3 = _entity_patches(None)
+    with p1, p2, p3:
         response = client.get("/api/suppliers/00000000")
     assert response.status_code == 404

@@ -51,18 +51,32 @@ def first_supplier(item: dict) -> dict:
     return awards[0] if awards else {}
 
 
+def award_supplier(award: dict) -> tuple[str | None, str | None]:
+    """(name, ico) of an award's supplier.
+
+    Stored notices nest the supplier (``awards[].supplier.{name,ico}``); the flat
+    ``supplier_name`` / ``supplier_ico`` (or bare ``name`` / ``ico``) keys are kept
+    as fallbacks for older payloads.
+    """
+    nested = award.get("supplier") or {}
+    name = nested.get("name") or award.get("supplier_name") or award.get("name")
+    ico = nested.get("ico") or award.get("supplier_ico") or award.get("ico")
+    return name, ico
+
+
 def map_contract_row(item: dict) -> ContractRow:
     year = year_from_date(contract_date(item))
     award = first_supplier(item)
     procurer = item.get("procurer") or {}
     status = item.get("status") or status_from_year(year)
+    supplier_name, supplier_ico = award_supplier(award)
     return ContractRow(
         id=str(item.get("_id") or item.get("id") or ""),
         title=item.get("title") or "",
         procurer_name=procurer.get("name") or "",
         procurer_ico=procurer.get("ico") or "",
-        supplier_name=award.get("supplier_name") or award.get("name"),
-        supplier_ico=award.get("supplier_ico") or award.get("ico"),
+        supplier_name=supplier_name,
+        supplier_ico=supplier_ico,
         value=contract_value(item),
         cpv_code=item.get("cpv_code"),
         year=year,

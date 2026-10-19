@@ -117,7 +117,11 @@ async def test_top_contracts_by_value_sorts_largest_first_for_supplier():
 async def test_top_contracts_by_value_procurer_role():
     db = AsyncMongoMockClient()["top_contracts_procurer"]
     await db.notices.insert_many(
-        [_notice("a", "P1", "S1", 10.0), _notice("b", "P1", "S2", 30.0), _notice("c", "P2", "S1", 99.0)]
+        [
+            _notice("a", "P1", "S1", 10.0),
+            _notice("b", "P1", "S2", 30.0),
+            _notice("c", "P2", "S1", 99.0),
+        ]
     )
     items = await top_contracts_by_value(db, "P1", "procurer", limit=5)
     assert [i["final_value"] for i in items] == [30.0, 10.0]
@@ -125,7 +129,9 @@ async def test_top_contracts_by_value_procurer_role():
 
 async def test_entity_profile_covers_full_population_beyond_100_rows(mongomock_year_expr):
     db = AsyncMongoMockClient()["profile_full"]
-    docs = [_notice(f"n{i}", "P1", f"S{i % 150}", 10.0, f"{2015 + i % 5}-03-01") for i in range(300)]
+    docs = [
+        _notice(f"n{i}", "P1", f"S{i % 150}", 10.0, f"{2015 + i % 5}-03-01") for i in range(300)
+    ]
     await db.notices.insert_many(docs)
 
     profile = await entity_profile(db, "P1", "procurer")
@@ -143,7 +149,11 @@ async def test_entity_profile_covers_full_population_beyond_100_rows(mongomock_y
 async def test_entity_profile_supplier_role_counterparties_are_procurers(mongomock_year_expr):
     db = AsyncMongoMockClient()["profile_supplier"]
     await db.notices.insert_many(
-        [_notice("a", "P1", "S1", 60.0), _notice("b", "P2", "S1", 40.0), _notice("c", "P2", "S2", 5.0)]
+        [
+            _notice("a", "P1", "S1", 60.0),
+            _notice("b", "P2", "S1", 40.0),
+            _notice("c", "P2", "S2", 5.0),
+        ]
     )
     profile = await entity_profile(db, "S1", "supplier")
     assert profile["contract_count"] == 2

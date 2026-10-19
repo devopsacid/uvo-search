@@ -1,11 +1,12 @@
 # src/uvo_api/routers/procurers.py
 """Procurers endpoints."""
 
-from collections import defaultdict
+import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from uvo_api._schema import contract_date, contract_value, map_contract_row, year_from_date
+from uvo_api._schema import map_contract_row
+from uvo_api.db import get_db
 from uvo_api.models import (
     ConcentrationResponse,
     ContractRow,
@@ -19,6 +20,8 @@ from uvo_api.models import (
     SupplierShare,
 )
 from uvo_api.services import run_query
+from uvo_core.adapters.mongo.analytics import entity_profile
+from uvo_core.adapters.mongo.entities import get_entity_by_ico
 
 router = APIRouter(prefix="/api/procurers", tags=["procurers"])
 
@@ -55,31 +58,29 @@ async def list_procurers(
     )
 
 
-async def _fetch_procurer_and_contracts(ico: str) -> tuple[dict, list[dict]]:
-    procurer_result = await run_query("find_procurer", {"ico": ico, "limit": 1})
-    procurers = procurer_result.get("items", [])
-    if not procurers:
+async def _require_procurer(ico: str) -> dict:
+    """Identity record for a procurer (cached point lookup); 404 when unknown."""
+    entity = await get_entity_by_ico(get_db(), ico)
+    procurer = entity["procurer"]
+    if not procurer:
         raise HTTPException(status_code=404, detail=f"Procurer {ico} not found")
-    procurer = procurers[0]
+    return procurer
 
-    contracts_result = await run_query(
-        "search_completed_procurements", {"procurer_id": ico, "limit": 100}
-    )
-    contracts = contracts_result.get("items", [])
-    return procurer, contracts
+
+def _spend_by_year(profile: dict) -> list[SpendByYear]:
+    return [
+        SpendByYear(year=y["year"], total_value=y["total_value"]) for y in profile["spend_by_year"]
+    ]
 
 
 @router.get("/{ico}/summary", response_model=ProcurerSummary)
 async def get_procurer_summary(ico: str) -> ProcurerSummary:
-    procurer, contracts = await _fetch_procurer_and_contracts(ico)
+    procurer, profile = await asyncio.gather(
+        _require_procurer(ico), entity_profile(get_db(), ico, "procurer")
+    )
 
-    spend_by_year: dict[int, float] = defaultdict(float)
-    for c in contracts:
-        year = year_from_date(contract_date(c))
-        spend_by_year[year] += contract_value(c)
-
-    total_spend = float(procurer.get("total_value") or sum(spend_by_year.values()))
-    count = int(procurer.get("contract_count") or len(contracts))
+    total_spend = float(procurer.get("total_value") or profile["total_value"])
+    count = int(procurer.get("contract_count") or profile["contract_count"])
 
     return ProcurerSummary(
         ico=str(procurer.get("ico") or ico),
@@ -87,43 +88,33 @@ async def get_procurer_summary(ico: str) -> ProcurerSummary:
         contract_count=count,
         total_spend=total_spend,
         avg_value=total_spend / count if count else 0,
-        spend_by_year=[
-            SpendByYear(year=y, total_value=v) for y, v in sorted(spend_by_year.items()) if y > 0
-        ],
+        spend_by_year=_spend_by_year(profile),
     )
 
 
 @router.get("/{ico}", response_model=ProcurerDetail)
 async def get_procurer_detail(ico: str) -> ProcurerDetail:
-    procurer, contracts = await _fetch_procurer_and_contracts(ico)
+    procurer, profile, contracts_result = await asyncio.gather(
+        _require_procurer(ico),
+        entity_profile(get_db(), ico, "procurer"),
+        # Only the displayed contract rows come from the (paged) search; every
+        # aggregate figure below is computed over the full population.
+        run_query("search_completed_procurements", {"procurer_id": ico, "limit": 100}),
+    )
+    rows: list[ContractRow] = [map_contract_row(c) for c in contracts_result.get("items", [])]
 
-    supplier_totals: dict[str, dict] = defaultdict(lambda: {"name": "", "count": 0, "value": 0.0})
-    years: set[int] = set()
-    rows: list[ContractRow] = []
+    top_suppliers = [
+        SupplierRelation(
+            ico=p["ico"],
+            name=p["name"],
+            contract_count=p["contract_count"],
+            total_value=p["total_value"],
+        )
+        for p in profile["partners"]
+    ]
 
-    for c in contracts:
-        row = map_contract_row(c)
-        rows.append(row)
-        years.add(row.year)
-        if row.supplier_ico:
-            s = supplier_totals[row.supplier_ico]
-            s["name"] = row.supplier_name or ""
-            s["count"] += 1
-            s["value"] += row.value
-
-    top_suppliers = sorted(
-        [
-            SupplierRelation(
-                ico=k, name=v["name"], contract_count=v["count"], total_value=v["value"]
-            )
-            for k, v in supplier_totals.items()
-        ],
-        key=lambda x: x.total_value,
-        reverse=True,
-    )[:10]
-
-    total_spend = float(procurer.get("total_value") or sum(r.value for r in rows))
-    count = int(procurer.get("contract_count") or len(rows))
+    total_spend = float(procurer.get("total_value") or profile["total_value"])
+    count = int(procurer.get("contract_count") or profile["contract_count"])
 
     return ProcurerDetail(
         ico=str(procurer.get("ico") or ico),
@@ -131,7 +122,7 @@ async def get_procurer_detail(ico: str) -> ProcurerDetail:
         contract_count=count,
         total_spend=total_spend,
         avg_value=total_spend / count if count else 0,
-        years_active=sorted(y for y in years if y > 0),
+        years_active=profile["years_active"],
         top_suppliers=top_suppliers,
         contracts=rows,
     )
@@ -142,36 +133,12 @@ async def get_procurer_concentration(
     ico: str,
     top_n: int = Query(10, ge=1, le=50),
 ) -> ConcentrationResponse:
-    """Supplier concentration for a procurer with HHI computed server-side over all suppliers."""
-    procurer_result = await run_query("find_procurer", {"ico": ico, "limit": 1})
-    procurers = procurer_result.get("items", [])
-    if not procurers:
-        raise HTTPException(status_code=404, detail=f"Procurer {ico} not found")
-    procurer_name = procurers[0].get("name") or ""
-
-    # Fetch all contracts for this procurer to compute HHI over full population
-    contracts_result = await run_query(
-        "search_completed_procurements", {"procurer_id": ico, "limit": 100}
+    """Supplier concentration for a procurer with HHI computed over all suppliers."""
+    procurer, profile = await asyncio.gather(
+        _require_procurer(ico), entity_profile(get_db(), ico, "procurer", top_n)
     )
-    contracts = contracts_result.get("items", [])
-
-    # Aggregate by supplier
-    supplier_totals: dict[str, dict] = defaultdict(lambda: {"name": "", "value": 0.0})
-    total_spend = 0.0
-    for c in contracts:
-        awards = c.get("awards") or []
-        if not awards:
-            continue
-        a = awards[0]
-        s_ico = str(a.get("supplier_ico") or a.get("ico") or "")
-        if not s_ico:
-            continue
-        v = contract_value(c)
-        supplier_totals[s_ico]["name"] = (
-            a.get("supplier_name") or a.get("name") or supplier_totals[s_ico]["name"]
-        )
-        supplier_totals[s_ico]["value"] += v
-        total_spend += v
+    procurer_name = procurer.get("name") or ""
+    total_spend = profile["partner_total_value"]
 
     if not total_spend:
         return ConcentrationResponse(
@@ -181,24 +148,19 @@ async def get_procurer_concentration(
             hhi=0.0,
         )
 
-    # HHI = sum of (market share %)^2 over ALL suppliers
-    hhi = sum((v["value"] / total_spend * 100) ** 2 for v in supplier_totals.values())
-
-    # Return only top_n for display
-    sorted_suppliers = sorted(supplier_totals.items(), key=lambda x: x[1]["value"], reverse=True)
     top_suppliers = [
         SupplierShare(
-            ico=k,
-            name=v["name"],
-            total_value=v["value"],
-            share=round(v["value"] / total_spend * 100, 2),
+            ico=p["ico"],
+            name=p["name"],
+            total_value=p["total_value"],
+            share=round(p["total_value"] / total_spend * 100, 2),
         )
-        for k, v in sorted_suppliers[:top_n]
+        for p in profile["partners"][:top_n]
     ]
 
     return ConcentrationResponse(
         procurer_ico=ico,
         procurer_name=procurer_name,
         top_suppliers=top_suppliers,
-        hhi=round(hhi, 1),
+        hhi=round(profile["hhi"], 1),
     )

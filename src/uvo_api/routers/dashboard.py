@@ -7,14 +7,13 @@ aggregated a 500-doc MCP-paged sample, which silently truncated every number
 (plan §1.3.2). Response shapes are unchanged — the React GUI depends on them.
 """
 
-import json
+import asyncio
 from collections import defaultdict
-from pathlib import Path
 
 from fastapi import APIRouter, Query
 
 from uvo_api._schema import contract_date, contract_value, year_from_date
-from uvo_api.db import get_analytics
+from uvo_api.db import get_analytics, get_db
 from uvo_api.models import (
     CpvShare,
     DashboardDelta,
@@ -26,29 +25,14 @@ from uvo_api.models import (
     TopSupplier,
 )
 from uvo_api.services import run_query
+from uvo_core.adapters.mongo.entities import entity_totals
+from uvo_core.domain.cpv import cpv_prefix, load_cpv_labels
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
-
-_CPV_LABELS: dict[str, dict[str, str]] = {}
-
-
-def _load_cpv_labels() -> dict[str, dict[str, str]]:
-    global _CPV_LABELS
-    if not _CPV_LABELS:
-        path = Path(__file__).parent.parent / "data" / "cpv_labels.json"
-        _CPV_LABELS = json.loads(path.read_text(encoding="utf-8"))
-    return _CPV_LABELS
 
 
 def _status_from_year(year: int) -> str:
     return "active" if year >= 2024 else "closed"
-
-
-def _cpv_prefix(code: str | None) -> str:
-    if not code:
-        return "00000000"
-    digits = code.replace("-", "").replace(" ", "")[:8]
-    return digits.ljust(8, "0")
 
 
 @router.get("/summary", response_model=DashboardSummary)
@@ -57,16 +41,16 @@ async def dashboard_summary(
     entity_type: str | None = Query(None),
 ) -> DashboardSummary:
     analytics = get_analytics()
-    year_rows = await analytics.spend_by_year(ico, entity_type)
+    year_rows, totals = await asyncio.gather(
+        analytics.spend_by_year(ico, entity_type),
+        entity_totals(get_db()),
+    )
 
     total_value = sum(float(r.get("total") or 0.0) for r in year_rows)
     contract_count = sum(int(r.get("count") or 0) for r in year_rows)
     avg_value = total_value / contract_count if contract_count else 0.0
 
-    suppliers_result = await run_query("find_supplier", {"limit": 1})
-    active_suppliers = int(suppliers_result.get("total") or 0)
-    procurers_result = await run_query("find_procurer", {"limit": 1})
-    active_procurers = int(procurers_result.get("total") or 0)
+    active_suppliers = totals["suppliers"]
 
     # Per-year comparison against the previous year, over the full corpus.
     valid = [(year_from_date(str(r.get("_id"))), r) for r in year_rows]
@@ -103,7 +87,7 @@ async def dashboard_summary(
         total_value=total_value,
         contract_count=contract_count,
         avg_value=avg_value,
-        active_suppliers=active_suppliers or active_procurers,
+        active_suppliers=active_suppliers,
         deltas=deltas,
     )
 
@@ -164,11 +148,11 @@ async def by_cpv(
     year_to: int | None = Query(None),
 ) -> list[CpvShare]:
     rows = await get_analytics().cpv_breakdown(ico, entity_type, year_from, year_to)
-    labels = _load_cpv_labels()
+    labels = load_cpv_labels()
 
     buckets: dict[str, float] = defaultdict(float)
     for r in rows:
-        buckets[_cpv_prefix(r.get("_id"))] += float(r.get("total") or 0.0)
+        buckets[cpv_prefix(r.get("_id"))] += float(r.get("total") or 0.0)
 
     total = sum(buckets.values()) or 1
     shares = []

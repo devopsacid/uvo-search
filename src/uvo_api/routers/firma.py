@@ -5,7 +5,7 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from uvo_api._schema import contract_date, contract_value, year_from_date
+from uvo_api._schema import award_supplier, contract_date, contract_value, year_from_date
 from uvo_api.db import get_db
 from uvo_api.models import (
     CpvProfileResponse,
@@ -21,14 +21,17 @@ from uvo_api.models import (
     PartnerRow,
     SpendByYear,
 )
-from uvo_api.routers.dashboard import _cpv_prefix, _load_cpv_labels
 from uvo_api.services import run_query
 from uvo_core.adapters.mongo.analytics import (
     _firma_core_agg,
     _firma_partners_agg,
     _market_cpv_agg,
+    top_contracts_by_value,
 )
+from uvo_core.adapters.mongo.entities import entity_roles, get_entity_by_ico
 from uvo_core.domain.companies import merge_companies_by_ico, primary_role
+from uvo_core.domain.cpv import cpv_prefix as _cpv_prefix
+from uvo_core.domain.cpv import load_cpv_labels as _load_cpv_labels
 
 router = APIRouter(prefix="/api/firma", tags=["firma"])
 firmy_router = APIRouter(prefix="/api/firmy", tags=["firmy"])
@@ -49,15 +52,17 @@ def _first_award(item: dict) -> dict:
 async def get_firma_profile(ico: str) -> FirmaProfile:
     db = get_db()
 
-    # Identity + top contracts (still via MCP — cached at MCP layer)
-    supplier_result, procurer_result, core = await asyncio.gather(
-        run_query("find_supplier", {"ico": ico, "limit": 1}),
-        run_query("find_procurer", {"ico": ico, "limit": 1}),
+    # Identity (point lookups), aggregate stats and both top-contract lists are
+    # independent, so run them concurrently; top lists are ignored for absent roles.
+    entity, core, top_s_items, top_p_items = await asyncio.gather(
+        get_entity_by_ico(db, ico),
         _firma_core_agg(db, ico),
+        top_contracts_by_value(db, ico, "supplier", 5),
+        top_contracts_by_value(db, ico, "procurer", 5),
     )
 
-    supplier_items = supplier_result.get("items", [])
-    procurer_items = procurer_result.get("items", [])
+    supplier_items = [entity["supplier"]] if entity["supplier"] else []
+    procurer_items = [entity["procurer"]] if entity["procurer"] else []
 
     if not supplier_items and not procurer_items:
         raise HTTPException(status_code=404, detail="Firma nenájdená")
@@ -66,11 +71,7 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
     procurer = procurer_items[0] if procurer_items else {}
     name = supplier.get("name") or procurer.get("name") or ""
 
-    roles: list[str] = []
-    if supplier_items:
-        roles.append("supplier")
-    if procurer_items:
-        roles.append("procurer")
+    roles = entity_roles(entity)
 
     # Stats from aggregation
     def _block(facet_key: str) -> FirmaStatsBlock | None:
@@ -94,24 +95,9 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
         procurer_count=as_procurer.contract_count if as_procurer else 0,
     )
 
-    # Top contracts (still via MCP for sort-by-value)
-    top_s_coro = (
-        run_query(
-            "search_completed_procurements",
-            {"supplier_ico": ico, "limit": 5, "sort_by": "value_desc"},
-        )
-        if supplier_items
-        else _empty()
-    )
-    top_p_coro = (
-        run_query(
-            "search_completed_procurements",
-            {"procurer_id": ico, "limit": 5, "sort_by": "value_desc"},
-        )
-        if procurer_items
-        else _empty()
-    )
-    top_s_result, top_p_result = await asyncio.gather(top_s_coro, top_p_coro)
+    # Top contracts: largest by value (dedicated sorted query, not the newest-first search).
+    top_s_result = {"items": top_s_items if supplier_items else []}
+    top_p_result = {"items": top_p_items if procurer_items else []}
 
     top_s_rows: list[FirmaTopContract] = []
     for c in top_s_result.get("items", []):
@@ -130,15 +116,15 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
 
     top_p_rows: list[FirmaTopContract] = []
     for c in top_p_result.get("items", []):
-        award = _first_award(c)
+        award_name, award_ico = award_supplier(_first_award(c))
         top_p_rows.append(
             FirmaTopContract(
                 id=str(c.get("_id") or c.get("id") or ""),
                 title=c.get("title") or "",
                 value=contract_value(c) or None,
                 year=year_from_date(contract_date(c)) or None,
-                counterparty_name=award.get("supplier_name") or award.get("name"),
-                counterparty_ico=award.get("supplier_ico") or award.get("ico"),
+                counterparty_name=award_name,
+                counterparty_ico=award_ico,
                 role="procurer",
             )
         )

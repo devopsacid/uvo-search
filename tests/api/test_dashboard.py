@@ -77,9 +77,10 @@ def fake_analytics():
 def test_dashboard_summary(client, fake_analytics):
     with (
         patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics),
+        patch("uvo_api.routers.dashboard.get_db", return_value=MagicMock()),
         patch(
-            "uvo_api.routers.dashboard.run_query",
-            new=AsyncMock(side_effect=[SAMPLE_SUPPLIERS, SAMPLE_PROCURERS]),
+            "uvo_api.routers.dashboard.entity_totals",
+            new=AsyncMock(return_value={"suppliers": 2, "procurers": 1}),
         ),
     ):
         response = client.get("/api/dashboard/summary")
@@ -89,6 +90,19 @@ def test_dashboard_summary(client, fake_analytics):
     assert body["total_value"] == 1500000.0
     assert body["avg_value"] == 750000.0
     assert body["active_suppliers"] == 2
+
+
+def test_dashboard_summary_never_reports_procurer_count_as_suppliers(client, fake_analytics):
+    with (
+        patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics),
+        patch("uvo_api.routers.dashboard.get_db", return_value=MagicMock()),
+        patch(
+            "uvo_api.routers.dashboard.entity_totals",
+            new=AsyncMock(return_value={"suppliers": 0, "procurers": 9}),
+        ),
+    ):
+        body = client.get("/api/dashboard/summary").json()
+    assert body["active_suppliers"] == 0
 
 
 def test_dashboard_spend_by_year(client, fake_analytics):
