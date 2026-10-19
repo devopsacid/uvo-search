@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends
 
 from uvo_api.auth import require_ops_token
-from uvo_api.db import get_db
+from uvo_api.db import Db
 from uvo_api.models import (
     DailyBucket,
     IngestionDashboard,
@@ -131,8 +131,7 @@ async def _timeseries(db, now: datetime) -> list[DailyBucket]:
 
 
 @router.get("/ingestion", response_model=IngestionDashboard)
-async def ingestion_dashboard() -> IngestionDashboard:
-    db = get_db()
+async def ingestion_dashboard(db: Db) -> IngestionDashboard:
     now = datetime.now(UTC)
 
     report = await collect(db)

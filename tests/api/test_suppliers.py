@@ -1,5 +1,6 @@
 # tests/api/test_suppliers.py
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import nullcontext
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -44,7 +45,8 @@ def client(monkeypatch):
 
 def test_list_suppliers(client):
     with patch(
-        "uvo_api.routers.suppliers.run_query", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)
+        "uvo_api.routers.suppliers.find_suppliers",
+        new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE),
     ):
         response = client.get("/api/suppliers")
     assert response.status_code == 200
@@ -58,20 +60,22 @@ def test_list_suppliers(client):
 
 def test_list_suppliers_search_by_name(client):
     with patch(
-        "uvo_api.routers.suppliers.run_query", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)
+        "uvo_api.routers.suppliers.find_suppliers",
+        new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE),
     ) as mock:
         client.get("/api/suppliers?q=Tech")
     mock.assert_called_once()
-    args = mock.call_args[0][1]
+    args = mock.call_args.kwargs
     assert args.get("name_query") == "Tech"
 
 
 def test_list_suppliers_search_by_ico(client):
     with patch(
-        "uvo_api.routers.suppliers.run_query", new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE)
+        "uvo_api.routers.suppliers.find_suppliers",
+        new=AsyncMock(return_value=SAMPLE_SUPPLIER_RESPONSE),
     ) as mock:
         client.get("/api/suppliers?ico=87654321")
-    args = mock.call_args[0][1]
+    args = mock.call_args.kwargs
     assert args.get("ico") == "87654321"
 
 
@@ -102,7 +106,7 @@ SUPPLIER_DOC = {
 
 def _entity_patches(supplier):
     return (
-        patch("uvo_api.routers.suppliers.get_db", return_value=MagicMock()),
+        nullcontext(),  # db handle: inert resources from conftest
         patch(
             "uvo_api.routers.suppliers.get_entity_by_ico",
             new=AsyncMock(return_value={"supplier": supplier, "procurer": None}),
@@ -118,7 +122,7 @@ def test_get_supplier_detail(client):
         p2,
         p3,
         patch(
-            "uvo_api.routers.suppliers.run_query",
+            "uvo_api.routers.suppliers.search_procurements",
             new=AsyncMock(return_value=SAMPLE_CONTRACTS_FOR_SUPPLIER),
         ),
     ):
@@ -137,7 +141,7 @@ def test_get_supplier_detail(client):
 def test_get_supplier_summary(client):
     p1, p2, p3 = _entity_patches(SUPPLIER_DOC)
     run = AsyncMock()
-    with p1, p2, p3, patch("uvo_api.routers.suppliers.run_query", new=run):
+    with p1, p2, p3, patch("uvo_api.routers.suppliers.search_procurements", new=run):
         response = client.get("/api/suppliers/87654321/summary")
     assert response.status_code == 200
     body = response.json()

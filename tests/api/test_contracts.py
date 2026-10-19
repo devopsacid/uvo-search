@@ -1,10 +1,12 @@
 # tests/api/test_contracts.py
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.api._deps import deps
 from uvo_api.app import create_app
+from uvo_api.db import get_notice_repo
 
 SAMPLE_MCP_RESPONSE = {
     "items": [
@@ -40,7 +42,7 @@ def _repo(*, search=None, detail=None):
 
 def test_list_contracts_returns_paginated_response(client):
     repo = _repo(search=SAMPLE_MCP_RESPONSE)
-    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+    with deps(client, get_notice_repo, repo):
         response = client.get("/api/contracts")
     assert response.status_code == 200
     body = response.json()
@@ -53,7 +55,7 @@ def test_list_contracts_returns_paginated_response(client):
 
 def test_list_contracts_maps_fields_correctly(client):
     repo = _repo(search=SAMPLE_MCP_RESPONSE)
-    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+    with deps(client, get_notice_repo, repo):
         response = client.get("/api/contracts")
     row = response.json()["data"][0]
     assert row["title"] == "IT Infrastructure"
@@ -67,7 +69,7 @@ def test_list_contracts_maps_fields_correctly(client):
 
 def test_list_contracts_pushes_value_filter_into_query(client):
     repo = _repo(search=EMPTY_MCP_RESPONSE)
-    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+    with deps(client, get_notice_repo, repo):
         response = client.get("/api/contracts?value_min=1000&value_max=5000")
     assert response.status_code == 200
     # The filter is pushed into the repository query, not applied post-pagination.
@@ -78,7 +80,7 @@ def test_list_contracts_pushes_value_filter_into_query(client):
 
 def test_list_contracts_empty_result(client):
     repo = _repo(search=EMPTY_MCP_RESPONSE)
-    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+    with deps(client, get_notice_repo, repo):
         response = client.get("/api/contracts")
     assert response.status_code == 200
     assert response.json()["data"] == []
@@ -96,7 +98,7 @@ def test_get_contract_detail_returns_detail(client):
         "cpv_code": "72000000",
     }
     repo = _repo(detail=detail)
-    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+    with deps(client, get_notice_repo, repo):
         response = client.get("/api/contracts/1001")
     assert response.status_code == 200
     assert response.json()["id"] == "1001"
@@ -105,6 +107,6 @@ def test_get_contract_detail_returns_detail(client):
 
 def test_get_contract_detail_not_found(client):
     repo = _repo(detail={"error": "not found", "status_code": 404})
-    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+    with deps(client, get_notice_repo, repo):
         response = client.get("/api/contracts/9999")
     assert response.status_code == 404

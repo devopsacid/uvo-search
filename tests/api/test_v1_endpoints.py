@@ -7,6 +7,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from uvo_api.app import create_app
+from uvo_api.db import (
+    Resources,
+    get_analytics,
+    get_graph_store,
+    get_notice_repo,
+    install_resources,
+)
 
 ACTIVE_KEY = {"_id": "key_pro", "plan": "pro", "owner_email": "a@b.sk", "active": True}
 AUTH_HEADERS = {"X-API-Key": "raw"}
@@ -65,19 +72,25 @@ PARTNERS_AGG = {
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("API_MCP_SERVER_URL", "http://localhost:8000/mcp")
-    monkeypatch.setattr(
-        "uvo_api.ratelimit.get_redis",
-        AsyncMock(return_value=fakeredis.aioredis.FakeRedis(decode_responses=True)),
-    )
     monkeypatch.setattr("uvo_api.auth._lookup_key", AsyncMock(return_value=ACTIVE_KEY))
     app = create_app()
+    install_resources(
+        app,
+        Resources(
+            mongo_client=MagicMock(),
+            db=MagicMock(),
+            redis=fakeredis.aioredis.FakeRedis(decode_responses=True),
+        ),
+    )
     return TestClient(app)
 
 
 def test_search_companies_merges_and_envelopes(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.run_query",
-        AsyncMock(side_effect=[SUPPLIER_RESULT, PROCURER_RESULT]),
+        "uvo_api.routers.v1.companies.find_suppliers", AsyncMock(return_value=SUPPLIER_RESULT)
+    )
+    monkeypatch.setattr(
+        "uvo_api.routers.v1.companies.find_procurers", AsyncMock(return_value=PROCURER_RESULT)
     )
     resp = client.get("/v1/companies?q=tech&limit=10", headers=AUTH_HEADERS)
     assert resp.status_code == 200
@@ -109,7 +122,7 @@ def test_get_company_record_not_found(client, monkeypatch):
     assert resp.json()["error"]["code"] == "company_not_found"
 
 
-def test_company_profile(client, monkeypatch):
+def test_company_profile(client, monkeypatch, override):
     monkeypatch.setattr(
         "uvo_api.routers.v1.companies.get_entity_by_ico",
         AsyncMock(return_value={"supplier": SUPPLIER_RESULT["items"][0], "procurer": None}),
@@ -117,7 +130,7 @@ def test_company_profile(client, monkeypatch):
     analytics = MagicMock()
     analytics.core_stats = AsyncMock(return_value=CORE_AGG)
     analytics.partners = AsyncMock(return_value=PARTNERS_AGG)
-    monkeypatch.setattr("uvo_api.routers.v1.companies.get_analytics", lambda: analytics)
+    override(get_analytics, analytics)
     resp = client.get("/v1/companies/87654321/profile", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()["data"]
@@ -131,7 +144,7 @@ def test_company_profile(client, monkeypatch):
     assert data["cpv_breakdown"][0]["code"] == "72000000"
 
 
-def test_company_risk(client, monkeypatch):
+def test_company_risk(client, monkeypatch, override):
     monkeypatch.setattr(
         "uvo_api.routers.v1.companies.get_entity_by_ico",
         AsyncMock(return_value={"supplier": SUPPLIER_RESULT["items"][0], "procurer": None}),
@@ -185,8 +198,8 @@ def test_company_risk(client, monkeypatch):
             for d in (1, 3, 6, 9)
         ]
     )
-    monkeypatch.setattr("uvo_api.routers.v1.companies.get_analytics", lambda: analytics)
-    monkeypatch.setattr("uvo_api.routers.v1.companies.get_graph_store", lambda: None)
+    override(get_analytics, analytics)
+    override(get_graph_store, None)
 
     resp = client.get("/v1/companies/87654321/risk", headers=AUTH_HEADERS)
     assert resp.status_code == 200
@@ -226,9 +239,9 @@ def _contracts_repo(*, search=None, detail=None):
     return repo
 
 
-def test_search_contracts(client, monkeypatch):
+def test_search_contracts(client, monkeypatch, override):
     repo = _contracts_repo(search={"items": [CONTRACT_ITEM], "total": 1})
-    monkeypatch.setattr("uvo_api.routers.v1.contracts.get_notice_repo", lambda: repo)
+    override(get_notice_repo, repo)
     resp = client.get("/v1/contracts?q=IT&limit=20", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     body = resp.json()
@@ -240,10 +253,10 @@ def test_search_contracts(client, monkeypatch):
     assert body["pagination"]["next_cursor"] is None
 
 
-def test_search_contracts_min_value_filter(client, monkeypatch):
+def test_search_contracts_min_value_filter(client, monkeypatch, override):
     # The value filter is pushed into the query; a filtered corpus returns empty.
     repo = _contracts_repo(search={"items": [], "total": 0})
-    monkeypatch.setattr("uvo_api.routers.v1.contracts.get_notice_repo", lambda: repo)
+    override(get_notice_repo, repo)
     resp = client.get("/v1/contracts?min_value=200000", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["data"] == []
@@ -251,9 +264,9 @@ def test_search_contracts_min_value_filter(client, monkeypatch):
     assert kwargs["value_min"] == 200000
 
 
-def test_get_contract_detail(client, monkeypatch):
+def test_get_contract_detail(client, monkeypatch, override):
     repo = _contracts_repo(detail=CONTRACT_ITEM)
-    monkeypatch.setattr("uvo_api.routers.v1.contracts.get_notice_repo", lambda: repo)
+    override(get_notice_repo, repo)
     resp = client.get("/v1/contracts/c001", headers=AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()["data"]
@@ -262,9 +275,9 @@ def test_get_contract_detail(client, monkeypatch):
     assert data["publication_date"] == "2024-01-15"
 
 
-def test_get_contract_detail_not_found(client, monkeypatch):
+def test_get_contract_detail_not_found(client, monkeypatch, override):
     repo = _contracts_repo(detail={"error": "not found", "status_code": 404})
-    monkeypatch.setattr("uvo_api.routers.v1.contracts.get_notice_repo", lambda: repo)
+    override(get_notice_repo, repo)
     resp = client.get("/v1/contracts/9999", headers=AUTH_HEADERS)
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "contract_not_found"

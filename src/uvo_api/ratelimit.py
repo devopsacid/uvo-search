@@ -4,10 +4,10 @@ import logging
 import time
 
 import redis.asyncio as aioredis
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from uvo_api.auth import ApiKeyContext, require_api_key
-from uvo_api.config import get_settings
+from uvo_api.db import get_redis
 from uvo_api.v1_errors import ApiV1Error
 
 logger = logging.getLogger(__name__)
@@ -18,31 +18,20 @@ PLAN_LIMITS: dict[str, int] = {"free": 30, "pro": 300, "business": 1000}
 USAGE_STREAM = "api:usage"
 USAGE_STREAM_MAXLEN = 100_000
 
-_redis_client: aioredis.Redis | None = None
-
-
-async def get_redis() -> aioredis.Redis:
-    global _redis_client
-    if _redis_client is None:
-        settings = get_settings()
-        _redis_client = aioredis.from_url(
-            settings.redis_url,
-            password=settings.redis_password or None,
-            decode_responses=True,
-        )
-    return _redis_client
-
 
 async def enforce_rate_limit(
+    request: Request,
     ctx: ApiKeyContext = Depends(require_api_key),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> ApiKeyContext:
     """Fixed-window (per minute) rate limit via Redis INCR + EXPIRE."""
+    # The usage-metering middleware runs outside DI; hand it the same client.
+    request.state.usage_redis = redis
     limit = PLAN_LIMITS.get(ctx.plan, PLAN_LIMITS["free"])
     now = time.time()
     window = int(now // 60)
     key = f"api:ratelimit:{ctx.key_id}:{window}"
 
-    redis = await get_redis()
     count = await redis.incr(key)
     if count == 1:
         await redis.expire(key, 60)
@@ -59,10 +48,9 @@ async def enforce_rate_limit(
     return ctx
 
 
-async def record_usage(key_id: str, endpoint: str, status: int) -> None:
+async def record_usage(redis: aioredis.Redis, key_id: str, endpoint: str, status: int) -> None:
     """Append one usage event to the ``api:usage`` Redis stream (best-effort)."""
     try:
-        redis = await get_redis()
         await redis.xadd(
             USAGE_STREAM,
             {"key_id": key_id, "endpoint": endpoint, "status": str(status), "ts": str(time.time())},

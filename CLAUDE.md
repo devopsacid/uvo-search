@@ -145,7 +145,7 @@ uv run python scripts/enrich_itms_procurers.py --limit 100 # run on first 100
 ## Data / search gotchas
 
 - Mongo uses a custom `sk_folding` analyzer (standard tokenizer + `lowercase` + `icuFolding`) for case- and diacritic-insensitive Slovak search. Name fields carry an `autocomplete` (edgeGram) subfield powering the live dropdown.
-- Atlas Search indexes are created on `uvo_mcp` startup — expect a cold-start lag on a fresh Mongo volume.
+- Atlas Search indexes are created idempotently on `uvo_mcp` and `uvo_api` startup (`uvo_core.adapters.mongo.search_indexes`) — expect a cold-start lag on a fresh Mongo volume; both `/readyz` endpoints stay 503 until the required indexes exist. Failures are logged at ERROR.
 - Legacy-data migration after Mongo image swap: `scripts/migrate_to_atlas_local.sh` (one-shot).
 - Graph page (`/graph`) depends on Neo4j + `graph_ego_network` / `graph_cpv_network` MCP tools; if Neo4j is down the page will error, not silently degrade.
 

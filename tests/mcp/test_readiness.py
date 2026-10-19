@@ -12,10 +12,17 @@ async def test_readyz_503_without_mongo_handle(monkeypatch):
     assert response.status_code == 503
 
 
+def _probe(ready: bool):
+    probe = MagicMock()
+    probe.ready = AsyncMock(return_value=ready)
+    return probe
+
+
 async def test_readyz_200_when_ping_ok(monkeypatch):
     db = MagicMock()
     db.command = AsyncMock(return_value={"ok": 1})
     monkeypatch.setitem(server._runtime, "mongo_db", db)
+    monkeypatch.setitem(server._runtime, "index_probe", _probe(True))
     response = await server.readiness_check(MagicMock())
     assert response.status_code == 200
     assert json.loads(response.body)["status"] == "ready"
@@ -25,6 +32,14 @@ async def test_readyz_503_when_ping_fails(monkeypatch):
     db = MagicMock()
     db.command = AsyncMock(side_effect=RuntimeError("down"))
     monkeypatch.setitem(server._runtime, "mongo_db", db)
+    assert (await server.readiness_check(MagicMock())).status_code == 503
+
+
+async def test_readyz_503_when_required_search_indexes_missing(monkeypatch):
+    db = MagicMock()
+    db.command = AsyncMock(return_value={"ok": 1})
+    monkeypatch.setitem(server._runtime, "mongo_db", db)
+    monkeypatch.setitem(server._runtime, "index_probe", _probe(False))
     assert (await server.readiness_check(MagicMock())).status_code == 503
 
 

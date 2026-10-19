@@ -1,7 +1,8 @@
 # tests/api/test_concentration.py
 """Tests for procurer concentration endpoint."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import nullcontext
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,7 +34,7 @@ SAMPLE_PROFILE = {
 
 def _patches(procurer, profile=None):
     return (
-        patch("uvo_api.routers.procurers.get_db", return_value=MagicMock()),
+        nullcontext(),  # db handle: inert resources from conftest
         patch(
             "uvo_api.routers.procurers.get_entity_by_ico",
             new=AsyncMock(return_value={"supplier": None, "procurer": procurer}),

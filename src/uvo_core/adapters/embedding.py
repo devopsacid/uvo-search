@@ -32,6 +32,7 @@ def load_embedder() -> Any | None:
     maxsize=512,
     ttl=300,
     key_from=lambda model, text: _make_key((text,), {}),
+    depends_on_data=False,
 )
 async def embed(model, text: str) -> list[float]:
     loop = asyncio.get_event_loop()

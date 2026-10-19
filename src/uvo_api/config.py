@@ -25,6 +25,16 @@ class ApiSettings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     redis_password: str = ""
 
+    # Client bounds (explicit timeouts/pools; see uvo_core.infra.clients). Read from
+    # API_MONGO_* / API_NEO4J_* / API_REDIS_* — all optional, defaults are production-safe.
+    mongo_server_selection_timeout_ms: int = 5_000
+    mongo_connect_timeout_ms: int = 5_000
+    mongo_max_pool_size: int = 50
+    neo4j_connection_timeout: float = 5.0
+    neo4j_max_pool_size: int = 50
+    redis_socket_timeout: float = 5.0
+    redis_socket_connect_timeout: float = 5.0
+
     # Bearer token guarding operational endpoints (ingestion, ingestion-log,
     # worker-status). Empty means those routes are disabled entirely.
     ops_token: str = ""

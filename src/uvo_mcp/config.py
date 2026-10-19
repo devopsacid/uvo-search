@@ -22,6 +22,19 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str | None = None
 
+    # Redis — only used by the notices:written cache-invalidation subscriber.
+    # Best-effort: when unreachable the in-process caches simply expire by TTL.
+    redis_url: str = "redis://redis:6379/0"
+    redis_password: str = ""
+
+    # Client bounds (explicit timeouts/pools; see uvo_core.infra.clients).
+    mongo_server_selection_timeout_ms: int = 5_000
+    mongo_connect_timeout_ms: int = 5_000
+    mongo_max_pool_size: int = 50
+    neo4j_connection_timeout: float = 5.0
+    neo4j_max_pool_size: int = 50
+    redis_socket_connect_timeout: float = 5.0
+
     model_config = {
         "env_file": ".env",
         "env_prefix": "",

@@ -1,12 +1,13 @@
 """Auth + rate limiting for the public /v1 API."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
 
 from uvo_api.app import create_app
+from uvo_api.db import Resources, install_resources
 
 ACTIVE_FREE_KEY = {"_id": "key_free", "plan": "free", "owner_email": "a@b.sk", "active": True}
 ACTIVE_PRO_KEY = {"_id": "key_pro", "plan": "pro", "owner_email": "a@b.sk", "active": True}
@@ -28,11 +29,12 @@ def fake_redis(fake_redis_server):
 @pytest.fixture
 def client(monkeypatch, fake_redis):
     monkeypatch.setenv("API_MCP_SERVER_URL", "http://localhost:8000/mcp")
-    monkeypatch.setattr("uvo_api.ratelimit.get_redis", AsyncMock(return_value=fake_redis))
-    monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.run_query", AsyncMock(return_value=EMPTY_ENTITY)
-    )
+    for fn in ("find_suppliers", "find_procurers"):
+        monkeypatch.setattr(
+            f"uvo_api.routers.v1.companies.{fn}", AsyncMock(return_value=EMPTY_ENTITY)
+        )
     app = create_app()
+    install_resources(app, Resources(mongo_client=MagicMock(), db=MagicMock(), redis=fake_redis))
     return TestClient(app)
 
 

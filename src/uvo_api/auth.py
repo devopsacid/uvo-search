@@ -20,7 +20,7 @@ from cachetools import TTLCache
 from fastapi import Header, HTTPException, Request, status
 
 from uvo_api.config import get_settings
-from uvo_api.db import get_db
+from uvo_api.db import Db
 from uvo_api.v1_errors import ApiV1Error
 
 logger = logging.getLogger(__name__)
@@ -41,10 +41,9 @@ def hash_key(raw_key: str) -> str:
     return hashlib.sha256(raw_key.encode()).hexdigest()
 
 
-async def _lookup_key(key_hash: str) -> dict | None:
+async def _lookup_key(db, key_hash: str) -> dict | None:
     if key_hash in _key_cache:
         return _key_cache[key_hash]
-    db = get_db()
     doc = await db["api_keys"].find_one({"key_hash": key_hash})
     _key_cache[key_hash] = doc
     return doc
@@ -52,12 +51,13 @@ async def _lookup_key(key_hash: str) -> dict | None:
 
 async def require_api_key(
     request: Request,
+    db: Db,
     x_api_key: str | None = Header(None, alias="X-API-Key"),
 ) -> ApiKeyContext:
     if not x_api_key:
         raise ApiV1Error(401, "missing_api_key", "Provide an API key in the X-API-Key header.")
 
-    doc = await _lookup_key(hash_key(x_api_key))
+    doc = await _lookup_key(db, hash_key(x_api_key))
     if not doc or not doc.get("active", False):
         raise ApiV1Error(401, "invalid_api_key", "The provided API key is invalid or inactive.")
 

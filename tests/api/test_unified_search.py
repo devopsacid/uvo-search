@@ -1,12 +1,15 @@
 # tests/api/test_unified_search.py
 """Tests for GET /api/search/unified."""
 
-from unittest.mock import AsyncMock, patch
+from contextlib import ExitStack, contextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.api._deps import deps
 from uvo_api.app import create_app
+from uvo_api.db import get_embedder
 
 SUPPLIER_RESULT = {
     "items": [
@@ -53,10 +56,41 @@ def client(monkeypatch):
     return TestClient(app)
 
 
-def _make_call_tool_side_effect(*results):
-    """Return an AsyncMock that yields results in order across multiple calls."""
-    mock = AsyncMock(side_effect=list(results))
-    return mock
+_MODULE = "uvo_api.routers.search"
+
+
+@contextmanager
+def _search_patches(
+    client,
+    *,
+    supplier=SUPPLIER_RESULT,
+    procurer=PROCURER_RESULT,
+    vector=EMPTY_RESULT,
+    contracts=CONTRACT_RESULT,
+    failing: frozenset[str] = frozenset(),
+):
+    """Patch the four typed search functions the router calls; yield them by name.
+
+    ``failing`` names the branches (supplier/procurer/vector/contracts) that raise.
+    """
+    answers = {
+        "supplier": ("find_suppliers", supplier),
+        "procurer": ("find_procurers", procurer),
+        "vector": ("vector_search_companies", vector),
+        "contracts": ("search_procurements", contracts),
+    }
+    mocks: dict[str, AsyncMock] = {}
+    with ExitStack() as stack:
+        # A loaded embedder is required for the vector branch to run at all.
+        stack.enter_context(deps(client, get_embedder, MagicMock(name="embedder")))
+        for branch, (fn_name, answer) in answers.items():
+            if branch in failing:
+                mock = AsyncMock(side_effect=RuntimeError(f"{branch} exploded"))
+            else:
+                mock = AsyncMock(return_value=answer)
+            mocks[branch] = mock
+            stack.enter_context(patch(f"{_MODULE}.{fn_name}", new=mock))
+        yield mocks
 
 
 # ---------------------------------------------------------------------------
@@ -65,12 +99,7 @@ def _make_call_tool_side_effect(*results):
 
 
 def test_unified_returns_grouped_shape(client):
-    with patch(
-        "uvo_api.routers.search.run_query",
-        new=AsyncMock(
-            side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]
-        ),
-    ):
+    with _search_patches(client):
         response = client.get("/api/search/unified?q=acme")
     assert response.status_code == 200
     body = response.json()
@@ -79,13 +108,17 @@ def test_unified_returns_grouped_shape(client):
     assert "zakazky" in body
 
 
+def test_unified_calls_typed_functions_with_explicit_keywords(client):
+    with _search_patches(client) as mocks:
+        client.get("/api/search/unified?q=acme&limit=7")
+    assert mocks["supplier"].await_args.kwargs == {"name_query": "acme", "limit": 7}
+    assert mocks["procurer"].await_args.kwargs == {"name_query": "acme", "limit": 7}
+    assert mocks["contracts"].await_args.kwargs == {"text_query": "acme", "limit": 7}
+    assert mocks["vector"].await_args.args[2:] == ("acme", 7)
+
+
 def test_unified_firmy_shape(client):
-    with patch(
-        "uvo_api.routers.search.run_query",
-        new=AsyncMock(
-            side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]
-        ),
-    ):
+    with _search_patches(client):
         response = client.get("/api/search/unified?q=acme")
     firmy = response.json()["firmy"]
     assert len(firmy) >= 1
@@ -98,12 +131,7 @@ def test_unified_firmy_shape(client):
 
 
 def test_unified_zakazky_shape(client):
-    with patch(
-        "uvo_api.routers.search.run_query",
-        new=AsyncMock(
-            side_effect=[SUPPLIER_RESULT, PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]
-        ),
-    ):
+    with _search_patches(client):
         response = client.get("/api/search/unified?q=road")
     zakazky = response.json()["zakazky"]
     assert len(zakazky) == 1
@@ -117,17 +145,21 @@ def test_unified_zakazky_shape(client):
 
 def test_unified_firmy_deduplication(client):
     """Supplier + procurer with same ICO → single FirmaHit with both roles."""
-    with patch(
-        "uvo_api.routers.search.run_query",
-        new=AsyncMock(
-            side_effect=[SUPPLIER_RESULT, OVERLAP_PROCURER_RESULT, EMPTY_RESULT, CONTRACT_RESULT]
-        ),
-    ):
+    with _search_patches(client, procurer=OVERLAP_PROCURER_RESULT):
         response = client.get("/api/search/unified?q=acme")
     firmy = response.json()["firmy"]
     matched = [f for f in firmy if f["ico"] == "11223344"]
     assert len(matched) == 1
     assert set(matched[0]["roles"]) == {"supplier", "procurer"}
+
+
+def test_unified_without_embedder_degrades_to_text_hits(client):
+    """No FastEmbed model: vector branch is skipped, text branches still answer."""
+    with _search_patches(client) as mocks, deps(client, get_embedder, None):
+        response = client.get("/api/search/unified?q=acme")
+    assert response.status_code == 200
+    assert len(response.json()["firmy"]) == 2
+    mocks["vector"].assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -136,10 +168,7 @@ def test_unified_firmy_deduplication(client):
 
 
 def test_unified_ico_query_returns_only_firmy(client):
-    with patch(
-        "uvo_api.routers.search.run_query",
-        new=AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY_RESULT]),
-    ):
+    with _search_patches(client, procurer=EMPTY_RESULT):
         response = client.get("/api/search/unified?q=11223344")
     assert response.status_code == 200
     body = response.json()
@@ -148,38 +177,28 @@ def test_unified_ico_query_returns_only_firmy(client):
 
 
 def test_unified_ico_query_does_not_call_contract_search(client):
-    mock = AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY_RESULT])
-    with patch("uvo_api.routers.search.run_query", new=mock):
+    with _search_patches(client, procurer=EMPTY_RESULT) as mocks:
         client.get("/api/search/unified?q=11223344")
-    tool_names = [call.args[0] for call in mock.call_args_list]
-    assert "search_completed_procurements" not in tool_names
+    mocks["contracts"].assert_not_called()
+    mocks["vector"].assert_not_called()
+    assert mocks["supplier"].await_args.kwargs == {"ico": "11223344", "limit": 8}
 
 
 # ---------------------------------------------------------------------------
-# Short query — early return, no MCP calls
+# Short query — early return, no backend calls
 # ---------------------------------------------------------------------------
 
 
-def test_unified_short_query_returns_empty(client):
-    mock = AsyncMock(return_value=EMPTY_RESULT)
-    with patch("uvo_api.routers.search.run_query", new=mock):
-        response = client.get("/api/search/unified?q=a")
+@pytest.mark.parametrize("query", ["a", ""])
+def test_unified_short_query_returns_empty(client, query):
+    with _search_patches(client) as mocks:
+        response = client.get(f"/api/search/unified?q={query}")
     assert response.status_code == 200
     body = response.json()
     assert body["firmy"] == []
     assert body["zakazky"] == []
-    mock.assert_not_called()
-
-
-def test_unified_empty_query_returns_empty(client):
-    mock = AsyncMock(return_value=EMPTY_RESULT)
-    with patch("uvo_api.routers.search.run_query", new=mock):
-        response = client.get("/api/search/unified?q=")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["firmy"] == []
-    assert body["zakazky"] == []
-    mock.assert_not_called()
+    for mock in mocks.values():
+        mock.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -195,9 +214,8 @@ def test_unified_respects_limit(client):
         ],
         "total": 15,
     }
-    with patch(
-        "uvo_api.routers.search.run_query",
-        new=AsyncMock(side_effect=[many_suppliers, EMPTY_RESULT, EMPTY_RESULT, EMPTY_RESULT]),
+    with _search_patches(
+        client, supplier=many_suppliers, procurer=EMPTY_RESULT, contracts=EMPTY_RESULT
     ):
         response = client.get("/api/search/unified?q=firm&limit=5")
     assert response.status_code == 200
@@ -209,27 +227,8 @@ def test_unified_respects_limit(client):
 # ---------------------------------------------------------------------------
 
 
-def _branch_router(failing: set[str]):
-    """run_query stand-in that raises for the named tools and answers the rest."""
-    answers = {
-        "find_supplier": SUPPLIER_RESULT,
-        "find_procurer": PROCURER_RESULT,
-        "search_companies_vector": EMPTY_RESULT,
-        "search_completed_procurements": CONTRACT_RESULT,
-    }
-
-    async def _run(tool, args):
-        if tool in failing:
-            raise RuntimeError(f"{tool} exploded")
-        return answers[tool]
-
-    return _run
-
-
 def test_unified_contract_branch_failure_keeps_firmy_and_logs(client, caplog):
-    with patch(
-        "uvo_api.routers.search.run_query", new=_branch_router({"search_completed_procurements"})
-    ):
+    with _search_patches(client, failing=frozenset({"contracts"})):
         with caplog.at_level("WARNING", logger="uvo_api.routers.search"):
             response = client.get("/api/search/unified?q=acme")
     assert response.status_code == 200
@@ -242,7 +241,7 @@ def test_unified_contract_branch_failure_keeps_firmy_and_logs(client, caplog):
 
 
 def test_unified_vector_branch_failure_keeps_contracts(client):
-    with patch("uvo_api.routers.search.run_query", new=_branch_router({"search_companies_vector"})):
+    with _search_patches(client, failing=frozenset({"vector"})):
         response = client.get("/api/search/unified?q=acme")
     assert response.status_code == 200
     body = response.json()
@@ -251,12 +250,7 @@ def test_unified_vector_branch_failure_keeps_contracts(client):
 
 
 def test_unified_all_branches_failing_propagates(client):
-    failing = {
-        "find_supplier",
-        "find_procurer",
-        "search_companies_vector",
-        "search_completed_procurements",
-    }
-    with patch("uvo_api.routers.search.run_query", new=_branch_router(failing)):
+    failing = frozenset({"supplier", "procurer", "vector", "contracts"})
+    with _search_patches(client, failing=failing):
         with pytest.raises(RuntimeError, match="exploded"):
             client.get("/api/search/unified?q=acme")

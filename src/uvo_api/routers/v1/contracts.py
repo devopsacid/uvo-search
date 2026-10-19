@@ -1,6 +1,8 @@
 """Public /v1 contract endpoints — search and detail."""
 
-from fastapi import APIRouter, Query
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
 
 from uvo_api._schema import map_contract_detail, map_contract_row
 from uvo_api.db import get_notice_repo
@@ -13,12 +15,16 @@ from uvo_api.routers.v1.models import (
     Pagination,
 )
 from uvo_api.v1_errors import ApiV1Error
+from uvo_core.ports import NoticeRepository
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
+
+NoticeRepo = Annotated[NoticeRepository, Depends(get_notice_repo)]
 
 
 @router.get("", response_model=ContractListResponse)
 async def search_contracts(
+    repo: NoticeRepo,
     q: str | None = Query(None, description="Full-text query over title/description/parties."),
     cpv: str | None = Query(None, description="CPV code filter."),
     date_from: str | None = Query(None, description="ISO date lower bound (publication_date)."),
@@ -29,7 +35,7 @@ async def search_contracts(
 ) -> ContractListResponse:
     """Search completed procurement contracts."""
     offset = decode_cursor(cursor)
-    result = await get_notice_repo().search(
+    result = await repo.search(
         text_query=q or None,
         cpv_codes=[cpv] if cpv else None,
         date_from=date_from,
@@ -50,9 +56,9 @@ async def search_contracts(
 
 
 @router.get("/{contract_id}", response_model=ContractDetailResponse)
-async def get_contract(contract_id: str) -> ContractDetailResponse:
+async def get_contract(contract_id: str, repo: NoticeRepo) -> ContractDetailResponse:
     """Full detail for a single contract by id."""
-    result = await get_notice_repo().get_by_source_id(contract_id)
+    result = await repo.get_by_source_id(contract_id)
     if "error" in result:
         raise ApiV1Error(404, "contract_not_found", f"No contract found for id {contract_id}.")
 

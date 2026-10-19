@@ -8,7 +8,11 @@ import logging
 
 from mcp.server.fastmcp import Context
 
-from uvo_core.services.search import fetch_procurement_detail, search_procurements
+from uvo_core.services.search import (
+    clamp_page,
+    fetch_procurement_detail,
+    search_procurements,
+)
 from uvo_mcp.server import AppContext, mcp
 
 # Re-exported for tests and backwards compatibility; the cached query object is
@@ -16,10 +20,6 @@ from uvo_mcp.server import AppContext, mcp
 _search_mongo_procurements = search_procurements
 
 logger = logging.getLogger(__name__)
-
-# Deep-paging bound, same as the FastAPI routers (`Query(le=10_000)`): skip cost
-# grows with the offset even on an index-backed sort.
-_MAX_OFFSET = 10_000
 
 
 def _get_app_context(ctx: Context) -> AppContext:
@@ -42,6 +42,7 @@ async def search_completed_procurements(
     app_ctx = _get_app_context(ctx)
     if app_ctx.mongo_db is None:
         return {"error": "MongoDB not configured", "status_code": 503}
+    limit, offset = clamp_page(limit, offset, max_limit=app_ctx.settings.max_page_size)
     return await search_procurements(
         app_ctx.mongo_db,
         text_query=text_query,
@@ -50,8 +51,8 @@ async def search_completed_procurements(
         supplier_ico=supplier_ico,
         date_from=date_from,
         date_to=date_to,
-        limit=min(limit, app_ctx.settings.max_page_size),
-        offset=min(max(offset, 0), _MAX_OFFSET),
+        limit=limit,
+        offset=offset,
     )
 
 

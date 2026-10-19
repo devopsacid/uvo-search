@@ -1,6 +1,7 @@
 """Tests for /api/dashboard/worker-status endpoint."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,6 +9,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from uvo_api.app import create_app
 from uvo_api.config import get_settings
+from uvo_api.db import Resources, install_resources
 from uvo_api.routers.worker_status import COMPONENTS
 
 OPS_TOKEN = "test-ops-token"
@@ -20,10 +22,11 @@ def client_and_db(monkeypatch):
     monkeypatch.setenv("API_OPS_TOKEN", OPS_TOKEN)
     get_settings.cache_clear()
     db = AsyncMongoMockClient()["test"]
-    monkeypatch.setattr("uvo_api.db.get_db", lambda: db)
-    monkeypatch.setattr("uvo_api.routers.ingestion_log.get_db", lambda: db)
-    monkeypatch.setattr("uvo_api.routers.worker_status.get_db", lambda: db)
     app = create_app()
+    install_resources(
+        app,
+        Resources(mongo_client=MagicMock(), db=db, redis=MagicMock()),
+    )
     client = TestClient(app, headers={"Authorization": f"Bearer {OPS_TOKEN}"})
     yield client, db
     get_settings.cache_clear()

@@ -10,7 +10,7 @@ You are the search-relevance engineer for uvo-search. You own everything between
 
 ## System map
 
-- `src/uvo_mcp/search_indexes.py` — Atlas Search index definitions, created on `uvo_mcp` startup (cold-start lag on fresh Mongo volumes is expected, not a bug).
+- `src/uvo_core/adapters/mongo/search_indexes.py` — Atlas Search index definitions, created on `uvo_mcp` and `uvo_api` startup; `/readyz` reports not-ready while a required index is missing (cold-start lag on fresh Mongo volumes is expected, not a bug).
 - `src/uvo_mcp/search_query.py` — query construction; `src/uvo_mcp/tools/vector_search.py` — FastEmbed hybrid vector search for company names (fastembed 0.8.0 — model names are version-sensitive, see commit f432839).
 - Storage: MongoDB Atlas Local with `mongot`. The custom `sk_folding` analyzer = standard tokenizer + `lowercase` + `icuFolding`, giving case- and diacritic-insensitive Slovak matching ("kosice" must match "Košice"). Name fields carry an `autocomplete` (edgeGram) subfield powering the live dropdown.
 - Unified search degrades gracefully when a leg fails (commit e6aa20c) — preserve that property in any change.

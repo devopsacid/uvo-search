@@ -1,55 +1,57 @@
-"""Uniform error handling for uvo_core-backed routes.
+"""Uniform backend-failure handling for uvo_core-backed routes.
 
-The API used to hop through the MCP server; a failed hop raised McpToolError
-and returned an {"error": ..., "status_code": ...} envelope that routers had
-to check by hand. That hop is gone (routers call uvo_core.services in-process
-via run_query / the repository ports), but the same two failure shapes remain:
+Routers call uvo_core services in-process, so a failing dependency shows up as an
+exception, never as an ``{"error": ...}`` envelope:
 
-  1. A degraded-but-handled dependency (Neo4j down, embedder unavailable)
-     still comes back as an {"error": ...} envelope from run_query.
-  2. A genuine backend outage (Mongo unreachable, driver exception) now
-     raises instead of returning a dict, and would otherwise surface as a
-     bare 500 whose detail can embed a connection string.
+  1. A dependency that is known to be unavailable (Neo4j not configured, ...)
+     raises the typed ``uvo_core.errors.BackendUnavailable``.
+  2. A genuine outage (Mongo unreachable, Neo4j connection dropped) raises the
+     driver's own exception.
 
-Both must become a 5xx with a generic, non-leaking detail — never a silent
-empty 200, and never the raw exception/driver message.
+Both are mapped here, in one place, to a 503 with a generic, non-leaking detail —
+never a silent empty 200, and never the raw exception text (driver messages for
+connection failures embed URIs with credentials).
 """
 
 import logging
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from neo4j.exceptions import DriverError, Neo4jError
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+
+from uvo_core.errors import BackendUnavailable
 
 logger = logging.getLogger(__name__)
 
-_GENERIC_DETAIL = "Backend temporarily unavailable"
+GENERIC_DETAIL = "Backend temporarily unavailable"
 
-
-def raise_for_tool_error(result: dict, tool_name: str) -> dict:
-    """Convert a run_query error envelope into an HTTP error.
-
-    Call sites that read `result.get("items", [])` without checking for an
-    "error" key silently turn a backend outage into an empty 200. Wrapping
-    the result here makes that impossible to forget.
-    """
-    if isinstance(result, dict) and result.get("error"):
-        status_code = int(result.get("status_code", 503))
-        logger.error("query %s returned error envelope: %s", tool_name, result["error"])
-        raise HTTPException(status_code=status_code, detail=_GENERIC_DETAIL)
-    return result
+# Exceptions that mean "a backing service is down/unreachable" (as opposed to a bug).
+BACKEND_ERRORS: tuple[type[Exception], ...] = (
+    BackendUnavailable,
+    ConnectionFailure,  # AutoReconnect, NetworkTimeout, ...
+    ServerSelectionTimeoutError,
+    DriverError,
+    Neo4jError,
+)
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    """Map unhandled backend exceptions to 503 without leaking details.
+    """Map backend exceptions (and, as a last resort, any unhandled error) to 503.
 
-    HTTPException (including the ones raised by raise_for_tool_error above)
-    is already handled by FastAPI's own handler and is unaffected by this
-    catch-all — Starlette dispatches to the most specific registered handler.
+    ``HTTPException`` keeps FastAPI's own handler; Starlette dispatches to the most
+    specific registered handler.
     """
+
+    async def _handle_backend_error(request: Request, exc: Exception) -> JSONResponse:
+        # Full detail to the server log only.
+        logger.error("Backend unavailable for %s: %s", request.url.path, exc, exc_info=True)
+        return JSONResponse(status_code=503, content={"detail": GENERIC_DETAIL})
+
+    for exc_type in BACKEND_ERRORS:
+        app.add_exception_handler(exc_type, _handle_backend_error)
 
     @app.exception_handler(Exception)
     async def _handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-        # Full detail to the server log only — driver messages for Mongo/Neo4j
-        # connection failures embed URIs with credentials.
         logger.error("Unhandled error for %s: %s", request.url.path, exc, exc_info=True)
-        return JSONResponse(status_code=503, content={"detail": _GENERIC_DETAIL})
+        return JSONResponse(status_code=503, content={"detail": GENERIC_DETAIL})

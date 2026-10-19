@@ -7,10 +7,11 @@ apply uniformly without touching the internal /api routers.
 
 from fastapi import Depends, FastAPI, Request
 
+from uvo_api.errors import BACKEND_ERRORS
 from uvo_api.ratelimit import enforce_rate_limit, record_usage
 from uvo_api.routers.v1 import companies, contracts
 from uvo_api.routers.v1.models import ErrorResponse
-from uvo_api.v1_errors import ApiV1Error, api_v1_error_handler
+from uvo_api.v1_errors import ApiV1Error, api_v1_error_handler, backend_unavailable_handler
 
 
 def create_v1_app() -> FastAPI:
@@ -25,13 +26,16 @@ def create_v1_app() -> FastAPI:
     )
 
     app.add_exception_handler(ApiV1Error, api_v1_error_handler)
+    for exc_type in BACKEND_ERRORS:
+        app.add_exception_handler(exc_type, backend_unavailable_handler)
 
     @app.middleware("http")
     async def meter_usage(request: Request, call_next):
         response = await call_next(request)
         ctx = getattr(request.state, "api_key_ctx", None)
-        if ctx is not None:
-            await record_usage(ctx.key_id, request.url.path, response.status_code)
+        redis = getattr(request.state, "usage_redis", None)
+        if ctx is not None and redis is not None:
+            await record_usage(redis, ctx.key_id, request.url.path, response.status_code)
         return response
 
     guarded = [Depends(enforce_rate_limit)]

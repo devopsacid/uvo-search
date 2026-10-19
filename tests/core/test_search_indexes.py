@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from uvo_mcp.search_indexes import (
+from uvo_core.adapters.mongo.search_indexes import (
     INDEX_DEFINITIONS,
     definition_is_current,
     ensure_indexes,
@@ -181,3 +181,95 @@ def test_definition_deepcopy_not_mutated_by_check():
     snapshot = copy.deepcopy(desired)
     definition_is_current(desired, _live_from_desired(desired))
     assert desired == snapshot
+
+
+# --- readiness probe (A13) -------------------------------------------------
+
+
+class _ListingDB:
+    """db[coll].list_search_indexes() yields the configured index docs per collection."""
+
+    def __init__(self, per_coll, fail=False):
+        self._per_coll = per_coll
+        self._fail = fail
+        self.calls = 0
+
+    def __getitem__(self, coll):
+        outer = self
+
+        class _Coll:
+            async def list_search_indexes(self_inner):
+                outer.calls += 1
+                if outer._fail:
+                    raise RuntimeError("mongot down")
+                for i in outer._per_coll.get(coll, []):
+                    yield i
+
+        return _Coll()
+
+
+def _all_present():
+    return {c: [{"name": "default", "queryable": True}] for c in INDEX_DEFINITIONS}
+
+
+@pytest.mark.asyncio
+async def test_missing_search_indexes_empty_when_all_present():
+    from uvo_core.adapters.mongo.search_indexes import missing_search_indexes
+
+    assert await missing_search_indexes(_ListingDB(_all_present())) == []
+
+
+@pytest.mark.asyncio
+async def test_missing_search_indexes_reports_absent_and_unqueryable():
+    from uvo_core.adapters.mongo.search_indexes import missing_search_indexes
+
+    per = _all_present()
+    per["notices"] = []
+    per["suppliers"] = [{"name": "default", "queryable": False}]
+    assert sorted(await missing_search_indexes(_ListingDB(per))) == [
+        "notices.default",
+        "suppliers.default",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_missing_search_indexes_all_missing_when_server_errors():
+    from uvo_core.adapters.mongo.search_indexes import missing_search_indexes
+
+    missing = await missing_search_indexes(_ListingDB({}, fail=True))
+    assert len(missing) == len(INDEX_DEFINITIONS)
+
+
+@pytest.mark.asyncio
+async def test_probe_caches_result_within_ttl_then_refreshes():
+    from uvo_core.adapters.mongo.search_indexes import SearchIndexProbe
+
+    now = {"t": 100.0}
+    probe = SearchIndexProbe(ttl=30.0, clock=lambda: now["t"])
+    db = _ListingDB(_all_present())
+
+    assert await probe.ready(db) is True
+    calls_after_first = db.calls
+    now["t"] = 110.0
+    assert await probe.ready(db) is True
+    assert db.calls == calls_after_first  # served from cache
+
+    now["t"] = 140.0
+    assert await probe.ready(db) is True
+    assert db.calls > calls_after_first  # ttl elapsed -> re-checked
+
+
+@pytest.mark.asyncio
+async def test_ensure_indexes_logs_error_on_failure(caplog):
+    import logging
+
+    class _Boom:
+        def __getitem__(self, coll):
+            raise RuntimeError("boom")
+
+        async def command(self, *a, **kw):
+            return {}
+
+    with caplog.at_level(logging.ERROR):
+        await ensure_indexes(_Boom())
+    assert any(r.levelno == logging.ERROR for r in caplog.records)

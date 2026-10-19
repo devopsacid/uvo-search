@@ -9,12 +9,14 @@ returns `total` from a $facet count over the filtered set, not the page
 length. This test pins that behaviour against regression.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.api._deps import deps
 from uvo_api.app import create_app
+from uvo_api.db import get_notice_repo
 
 RESPONSE = {"items": [], "total": 0, "limit": 20, "offset": 0}
 
@@ -32,7 +34,7 @@ def _mock_repo(search_return: dict) -> MagicMock:
 
 def test_value_bounds_are_forwarded_to_the_query(client):
     repo = _mock_repo(RESPONSE)
-    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+    with deps(client, get_notice_repo, repo):
         client.get("/api/contracts", params={"value_min": 1000, "value_max": 5000})
     kwargs = repo.search.await_args.kwargs
     assert kwargs["value_min"] == 1000
@@ -42,6 +44,6 @@ def test_value_bounds_are_forwarded_to_the_query(client):
 def test_total_comes_from_the_query_not_the_page(client):
     """total must reflect the full filtered result set, not the current page."""
     repo = _mock_repo({"items": [], "total": 4321, "limit": 20, "offset": 0})
-    with patch("uvo_api.routers.contracts.get_notice_repo", return_value=repo):
+    with deps(client, get_notice_repo, repo):
         response = client.get("/api/contracts", params={"value_min": 1000})
     assert response.json()["pagination"]["total"] == 4321

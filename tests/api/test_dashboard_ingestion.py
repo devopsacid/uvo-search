@@ -2,15 +2,16 @@
 """Unit tests for GET /api/dashboard/ingestion."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
+from tests.api._deps import deps
 from uvo_api.app import create_app
 from uvo_api.config import get_settings
+from uvo_api.db import get_db
 
 SOURCES = ["vestnik", "crz", "ted", "uvo", "itms"]
 OPS_TOKEN = "test-ops-token"
@@ -92,7 +93,7 @@ async def test_response_shape(client, mock_db):
     await _seed_notices(mock_db, "vestnik", 5, now - timedelta(hours=1))
     await _seed_registry(mock_db, "vestnik", 5, 0)
 
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -133,7 +134,7 @@ async def test_response_shape(client, mock_db):
 @pytest.mark.asyncio
 async def test_sources_always_five(client, mock_db):
     """sources list must contain exactly the 5 expected names even with no data."""
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -161,7 +162,7 @@ async def test_status_thresholds(client, mock_db, hours_ago, expected_status):
     ingested_at = _now() - timedelta(hours=hours_ago)
     await _seed_notices(mock_db, "vestnik", 1, ingested_at)
 
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -175,7 +176,7 @@ async def test_status_thresholds(client, mock_db, hours_ago, expected_status):
 @pytest.mark.asyncio
 async def test_status_unknown_when_no_notices(client, mock_db):
     """Source with no notices must report status=unknown."""
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -192,7 +193,7 @@ async def test_status_unknown_when_no_notices(client, mock_db):
 
 @pytest.mark.asyncio
 async def test_timeseries_has_30_entries(client, mock_db):
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -202,7 +203,7 @@ async def test_timeseries_has_30_entries(client, mock_db):
 
 @pytest.mark.asyncio
 async def test_timeseries_has_all_source_keys(client, mock_db):
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -214,7 +215,7 @@ async def test_timeseries_has_all_source_keys(client, mock_db):
 
 @pytest.mark.asyncio
 async def test_timeseries_ascending_dates(client, mock_db):
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -228,7 +229,7 @@ async def test_timeseries_counts_ingested_today(client, mock_db):
     ingested_at = _now() - timedelta(hours=2)
     await _seed_notices(mock_db, "crz", 3, ingested_at)
 
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -242,7 +243,7 @@ async def test_timeseries_counts_ingested_today(client, mock_db):
 @pytest.mark.asyncio
 async def test_timeseries_zeros_for_missing_days(client, mock_db):
     """Days with no ingestion must be zero-filled, not absent."""
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -260,7 +261,7 @@ async def test_timeseries_zeros_for_missing_days(client, mock_db):
 
 @pytest.mark.asyncio
 async def test_totals_sources_total_is_five(client, mock_db):
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -277,7 +278,7 @@ async def test_sources_healthy_counts_only_healthy(client, mock_db):
     await _seed_notices(mock_db, "crz", 1, now - timedelta(hours=30))
     # rest: no data → unknown
 
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200
@@ -288,7 +289,7 @@ async def test_sources_healthy_counts_only_healthy(client, mock_db):
 async def test_dedup_match_rate_zero_when_no_matches(client, mock_db):
     await _seed_notices(mock_db, "vestnik", 10, _now() - timedelta(hours=1))
 
-    with patch("uvo_api.routers.ingestion.get_db", return_value=mock_db):
+    with deps(client, get_db, mock_db):
         resp = client.get("/api/dashboard/ingestion")
 
     assert resp.status_code == 200

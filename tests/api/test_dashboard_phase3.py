@@ -5,12 +5,12 @@ Driven through the in-memory CompanyAnalytics fake so the full-corpus year
 filtering and month bucketing (moved server-side in Phase 3) run for real.
 """
 
-from unittest.mock import patch
-
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.api._deps import deps
 from uvo_api.app import create_app
+from uvo_api.db import get_analytics
 from uvo_core.testing import InMemoryCompanyAnalytics
 
 SAMPLE_NOTICES = [
@@ -49,7 +49,7 @@ def fake_analytics():
 
 
 def test_by_cpv_no_year_filter(client, fake_analytics):
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
+    with deps(client, get_analytics, fake_analytics):
         response = client.get("/api/dashboard/by-cpv")
     assert response.status_code == 200
     body = response.json()
@@ -59,7 +59,7 @@ def test_by_cpv_no_year_filter(client, fake_analytics):
 
 
 def test_by_cpv_year_from_filter(client, fake_analytics):
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
+    with deps(client, get_analytics, fake_analytics):
         response = client.get("/api/dashboard/by-cpv?year_from=2024")
     assert response.status_code == 200
     body = response.json()
@@ -70,7 +70,7 @@ def test_by_cpv_year_from_filter(client, fake_analytics):
 
 
 def test_by_cpv_year_to_filter(client, fake_analytics):
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
+    with deps(client, get_analytics, fake_analytics):
         response = client.get("/api/dashboard/by-cpv?year_to=2023")
     assert response.status_code == 200
     body = response.json()
@@ -80,7 +80,7 @@ def test_by_cpv_year_to_filter(client, fake_analytics):
 
 
 def test_by_month_returns_12_buckets(client, fake_analytics):
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
+    with deps(client, get_analytics, fake_analytics):
         response = client.get("/api/dashboard/by-month?year=2024")
     assert response.status_code == 200
     body = response.json()
@@ -90,7 +90,7 @@ def test_by_month_returns_12_buckets(client, fake_analytics):
 
 
 def test_by_month_counts_correctly(client, fake_analytics):
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
+    with deps(client, get_analytics, fake_analytics):
         response = client.get("/api/dashboard/by-month?year=2024")
     assert response.status_code == 200
     body = response.json()

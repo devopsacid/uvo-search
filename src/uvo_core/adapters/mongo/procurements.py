@@ -99,7 +99,7 @@ def _search_filters(
     """Atlas Search ``compound.filter`` clauses equivalent to ``_find_filter``.
 
     Every path is mapped as ``token`` in the notices search index
-    (uvo_mcp.search_indexes). ``publication_date`` is an ISO string, so a string
+    (uvo_core.adapters.mongo.search_indexes). ``publication_date`` is an ISO string, so a string
     ``range`` on the token mapping keeps the old lexicographic ``$gte``/``$lte``
     semantics exactly.
     """

@@ -9,8 +9,14 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from uvo_api._schema import contract_date, contract_value, year_from_date
-from uvo_api.services import run_query
+from uvo_api.db import Db, OptionalEmbedder
 from uvo_core.domain.companies import merge_companies_by_ico
+from uvo_core.services.search import (
+    find_procurers,
+    find_suppliers,
+    search_procurements,
+    vector_search_companies,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +56,14 @@ class UnifiedSearchResponse(BaseModel):
     q: str
     firmy: list[FirmaHit]
     zakazky: list[ZakazkaHit]
+
+
+async def _vector_hits(db, embedder, query: str, limit: int) -> dict:
+    """Vector branch; an unavailable embedder degrades to "no vector hits" (not an error)."""
+    if embedder is None:
+        logger.debug("vector search skipped: embedder unavailable")
+        return {}
+    return await vector_search_companies(db, embedder, query, limit)
 
 
 def _as_hit(item: dict, kind: str) -> EntityHit:
@@ -102,36 +116,34 @@ def _merge_firmy_with_vector(
 
 @router.get("/entities", response_model=EntitySearchResponse)
 async def search_entities(
+    db: Db,
+    embedder: OptionalEmbedder,
     q: str = Query("", description="Name fragment; empty returns top suppliers/procurers."),
     limit: int = Query(10, ge=1, le=50),
 ) -> EntitySearchResponse:
     """Search suppliers and procurers by name, merged and sorted by relevance.
 
-    The MCP `find_supplier` / `find_procurer` tools do the matching; we merge
+    The shared supplier/procurer/vector searches do the matching; we merge
     results and rank: exact name match first, then name prefix match, then
     anything else, with ties broken by contract count (desc).
     """
     per = max(1, limit // 2 + 2)
-    args: dict = {"limit": per}
-    if q:
-        args["name_query"] = q
-
-    vec_args: dict = {"query": q, "limit": limit} if q else {}
+    name_query = q or None
 
     if q:
         supp_result, proc_result, vec_result = await asyncio.gather(
-            run_query("find_supplier", args),
-            run_query("find_procurer", args),
-            run_query("search_companies_vector", vec_args),
+            find_suppliers(db, name_query=name_query, limit=per),
+            find_procurers(db, name_query=name_query, limit=per),
+            _vector_hits(db, embedder, q, limit),
         )
     else:
         supp_result, proc_result = await asyncio.gather(
-            run_query("find_supplier", args),
-            run_query("find_procurer", args),
+            find_suppliers(db, name_query=name_query, limit=per),
+            find_procurers(db, name_query=name_query, limit=per),
         )
         vec_result = {}
 
-    vec_items = vec_result.get("items", []) if "error" not in vec_result else []
+    vec_items = vec_result.get("items", [])
 
     seen_icos: set[str] = {str(v.get("ico") or "") for v in vec_items}
     hits: list[EntityHit] = []
@@ -166,6 +178,8 @@ async def search_entities(
 
 @router.get("/unified", response_model=UnifiedSearchResponse)
 async def unified_search(
+    db: Db,
+    embedder: OptionalEmbedder,
     q: str = Query("", description="Search query."),
     limit: int = Query(8, ge=1, le=20),
 ) -> UnifiedSearchResponse:
@@ -179,8 +193,8 @@ async def unified_search(
 
     if _ICO_RE.match(q.strip()):
         supp_result, proc_result = await asyncio.gather(
-            run_query("find_supplier", {"ico": q.strip(), "limit": limit}),
-            run_query("find_procurer", {"ico": q.strip(), "limit": limit}),
+            find_suppliers(db, ico=q.strip(), limit=limit),
+            find_procurers(db, ico=q.strip(), limit=limit),
         )
         firmy = _merge_firmy(
             supp_result.get("items", []),
@@ -189,15 +203,12 @@ async def unified_search(
         )
         return UnifiedSearchResponse(q=q, firmy=firmy, zakazky=[])
 
-    entity_args = {"name_query": q.strip(), "limit": limit}
-    contract_args = {"text_query": q.strip(), "limit": limit}
-    vec_args = {"query": q.strip(), "limit": limit}
-
+    needle = q.strip()
     branches = {
-        "supplier": run_query("find_supplier", entity_args),
-        "procurer": run_query("find_procurer", entity_args),
-        "vector": run_query("search_companies_vector", vec_args),
-        "contracts": run_query("search_completed_procurements", contract_args),
+        "supplier": find_suppliers(db, name_query=needle, limit=limit),
+        "procurer": find_procurers(db, name_query=needle, limit=limit),
+        "vector": _vector_hits(db, embedder, needle, limit),
+        "contracts": search_procurements(db, text_query=needle, limit=limit),
     }
     outcomes = await asyncio.gather(*branches.values(), return_exceptions=True)
 
@@ -217,7 +228,7 @@ async def unified_search(
     supp_result, proc_result = results["supplier"], results["procurer"]
     vec_result, contract_result = results["vector"], results["contracts"]
 
-    vec_items = vec_result.get("items", []) if "error" not in vec_result else []
+    vec_items = vec_result.get("items", [])
     firmy = _merge_firmy_with_vector(
         supp_result.get("items", []),
         proc_result.get("items", []),

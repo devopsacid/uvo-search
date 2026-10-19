@@ -13,13 +13,74 @@ from uvo_core.adapters.mongo.subjects import SortBy, entity_search
 from uvo_core.adapters.mongo.vector import vsearch
 
 __all__ = [
+    "MAX_OFFSET",
+    "MAX_PAGE_SIZE",
     "SortBy",
+    "clamp_page",
     "entity_search",
     "fetch_procurement_detail",
+    "find_procurers",
+    "find_suppliers",
     "run_autocomplete",
     "search_procurements",
     "vector_search_companies",
 ]
+
+# Page bounds shared by every delivery layer (FastAPI routers and MCP tools).
+MAX_PAGE_SIZE = 100
+# Deep-paging bound: skip cost grows with the offset even on an index-backed sort.
+MAX_OFFSET = 10_000
+
+
+def clamp_page(limit: int, offset: int = 0, *, max_limit: int = MAX_PAGE_SIZE) -> tuple[int, int]:
+    """Clamp ``(limit, offset)`` to the shared paging bounds."""
+    return min(int(limit), max_limit), min(max(int(offset), 0), MAX_OFFSET)
+
+
+async def find_suppliers(
+    db,
+    *,
+    name_query: str | None = None,
+    ico: str | None = None,
+    sort_by: SortBy = "name",
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    """Suppliers matching a name fragment or ICO, with contract counts and totals."""
+    limit, offset = clamp_page(limit, offset)
+    return await entity_search(
+        db,
+        "suppliers",
+        "awards.supplier.ico",
+        name_query=name_query,
+        ico=ico,
+        sort_by=sort_by,
+        limit=limit,
+        offset=offset,
+    )
+
+
+async def find_procurers(
+    db,
+    *,
+    name_query: str | None = None,
+    ico: str | None = None,
+    sort_by: SortBy = "name",
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    """Procurers matching a name fragment or ICO, with contract counts and totals."""
+    limit, offset = clamp_page(limit, offset)
+    return await entity_search(
+        db,
+        "procurers",
+        "procurer.ico",
+        name_query=name_query,
+        ico=ico,
+        sort_by=sort_by,
+        limit=limit,
+        offset=offset,
+    )
 
 
 async def vector_search_companies(
