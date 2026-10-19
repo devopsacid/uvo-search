@@ -1,19 +1,29 @@
-"""Ingestor worker — reads Redis Streams and writes to Mongo + Neo4j."""
+"""Ingestor worker — reads Redis Streams and writes to Mongo + Neo4j.
+
+Delivery contract: an entry is acknowledged only once its notice has been
+written to *both* stores. Entries whose write failed stay pending and are
+redelivered by the periodic reclaim; after ``ingestor_max_deliveries``
+deliveries an entry is processed on its own and, if it still fails, parked in
+the ``notices:dead`` stream and acknowledged so it cannot loop forever.
+"""
 
 import asyncio
 import logging
 import os
 import signal
+import time
 import uuid
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from neo4j import AsyncGraphDatabase
 from pydantic_settings import BaseSettings
+from redis.exceptions import RedisError
 
 from uvo_core.domain.models import CanonicalNotice
 from uvo_pipeline.config import get_pipeline_settings
-from uvo_pipeline.ingestion_log import log_event
+from uvo_pipeline.ingestion_log import IngestionLogEntry, log_event, log_events
 from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
 from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
 from uvo_pipeline.pubsub import publish
@@ -22,8 +32,11 @@ from uvo_pipeline.streams import (
     ack,
     autoclaim_stale,
     decode_entry,
+    delivery_counts,
     ensure_consumer_group,
+    group_stats,
     read_group,
+    trim_consumed,
 )
 from uvo_pipeline.utils.date_validation import validate_notice_dates
 from uvo_workers.errors import redact_exception
@@ -34,14 +47,31 @@ logger = logging.getLogger(__name__)
 
 _SOURCES = ["vestnik", "crz", "ted", "itms"]
 _STREAMS = [f"notices:{s}" for s in _SOURCES]
+_GROUP = "ingestor"
+DEAD_LETTER_STREAM = "notices:dead"
+_DEAD_LETTER_MAXLEN = 10_000
 
 # Neo4j constraint creation races uvo_mcp's identical bootstrap and can deadlock.
 _BOOTSTRAP_ATTEMPTS = 3
 _BOOTSTRAP_BACKOFF_SECONDS = 2.0
 
+# Individually re-processing this many suspects and seeing *all* of them fail
+# looks like a dependency outage, not poison data: dead-lettering then would
+# discard good entries, so they are left pending instead.
+_OUTAGE_SUSPECT_THRESHOLD = 3
+
 
 class IngestorSettings(BaseSettings):
     ingestor_batch_size: int = 100
+    # Deliveries before a failing entry is processed alone and, if it still
+    # fails, dead-lettered.
+    ingestor_max_deliveries: int = 5
+    # How often (and how stale an entry must be) to reclaim pending entries,
+    # independent of whether new traffic is flowing.
+    ingestor_reclaim_interval_seconds: float = 30.0
+    ingestor_reclaim_min_idle_ms: int = 60_000
+    # Cadence for safe stream trimming + lag/PEL metric refresh.
+    ingestor_maintenance_interval_seconds: float = 30.0
     health_port: int = 8095
 
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
@@ -51,6 +81,33 @@ class IngestorSettings(BaseSettings):
 def get_settings() -> IngestorSettings:
     """One IngestorSettings construction per process (cached factory idiom)."""
     return IngestorSettings()
+
+
+@dataclass
+class IngestorContext:
+    """Long-lived handles shared by the batch-processing functions."""
+
+    db: AsyncIOMotorDatabase
+    redis: object
+    neo4j_driver: object
+    instance_id: str
+    metrics: dict = field(default_factory=dict)
+
+
+@dataclass
+class BatchOutcome:
+    """Result of processing one group of stream entries."""
+
+    succeeded: list[bytes] = field(default_factory=list)
+    # Entries whose notice failed to write to Mongo/Neo4j (left pending).
+    failed: list[tuple[bytes, dict]] = field(default_factory=list)
+    # Set when the whole batch raised (infrastructure error); nothing was acked.
+    error: BaseException | None = None
+
+
+def is_due(last_run: float | None, now: float, interval: float) -> bool:
+    """True when a periodic task last run at ``last_run`` should run again."""
+    return last_run is None or (now - last_run) >= interval
 
 
 async def process_batch_logs(
@@ -64,26 +121,285 @@ async def process_batch_logs(
     """Validate dates on each notice, log issues, return cleaned notices.
 
     The cleaned list keeps the same length and order as the input so the
-    caller can ack the same set of stream entry IDs.
+    caller can ack the same set of stream entry IDs. All issues of a batch
+    are written with a single ``insert_many``.
     """
     source = stream_name.removeprefix("notices:")
     cleaned: list[CanonicalNotice] = []
+    entries: list[IngestionLogEntry] = []
     for notice in notices:
         clean, issues = validate_notice_dates(notice)
         cleaned.append(clean)
         for issue in issues:
-            await log_event(
-                db,
-                level="warning",
-                event="notice_invalid_date",
-                component=component,
-                source=source,
-                source_id=notice.source_id,
-                instance_id=instance_id,
-                message=(f"{issue['field']} year {issue['year']} {issue['reason']}; nulled"),
-                details=issue,
+            entries.append(
+                IngestionLogEntry(
+                    level="warning",
+                    event="notice_invalid_date",
+                    component=component,
+                    source=source,
+                    source_id=notice.source_id,
+                    instance_id=instance_id,
+                    message=f"{issue['field']} year {issue['year']} {issue['reason']}; nulled",
+                    details=issue,
+                )
             )
+    await log_events(db, entries)
     return cleaned
+
+
+def _failed_keys(result: object) -> set[tuple[str, str]]:
+    """Failed (source, source_id) pairs from a loader result (tolerates stubs)."""
+    if not isinstance(result, dict):
+        return set()
+    return {tuple(k) for k in result.get("failed") or []}
+
+
+async def dead_letter(
+    ctx: IngestorContext,
+    stream_name: str,
+    entry_id: bytes,
+    fields: dict,
+    reason: str,
+) -> None:
+    """Best-effort copy of an entry into ``notices:dead`` for later inspection."""
+    try:
+        await ctx.redis.xadd(
+            DEAD_LETTER_STREAM,
+            {
+                "stream": stream_name,
+                "entry_id": entry_id,
+                "error": reason,
+                "payload": fields.get(b"payload", b""),
+            },
+            maxlen=_DEAD_LETTER_MAXLEN,
+            approximate=True,
+        )
+    except Exception as exc:
+        logger.error("ingestor: failed to dead-letter %r from %s: %s", entry_id, stream_name, exc)
+
+
+async def _reject_poison(
+    ctx: IngestorContext, stream_name: str, entry_id: bytes, fields: dict, exc: Exception
+) -> None:
+    """Log, ack and park an entry that cannot be decoded.
+
+    Acked immediately: the failure is durably logged, and an unparseable
+    payload cannot succeed on retry, so leaving it pending would redeliver it
+    forever. The dead-letter write is best-effort and never blocks the ack.
+    """
+    logger.warning("Failed to decode entry from %s: %s", stream_name, exc)
+    await log_event(
+        ctx.db,
+        level="warning",
+        event="decode_failed",
+        component="ingestor",
+        source=stream_name.removeprefix("notices:"),
+        instance_id=ctx.instance_id,
+        message=f"decode failed: {redact_exception(exc)}",
+    )
+    try:
+        await ack(ctx.redis, stream_name, _GROUP, [entry_id])
+    except Exception as ack_exc:
+        logger.error("ingestor: failed to ack poison entry from %s: %s", stream_name, ack_exc)
+    await dead_letter(ctx, stream_name, entry_id, fields, str(exc))
+
+
+async def process_entries(
+    ctx: IngestorContext, stream_name: str, entries: list[tuple[bytes, dict]]
+) -> BatchOutcome:
+    """Decode, write and acknowledge one group of entries from ``stream_name``.
+
+    Only entries whose notice reached both Mongo and Neo4j are acked; the rest
+    stay pending for redelivery. Never raises for per-batch failures.
+    """
+    outcome = BatchOutcome()
+    source = stream_name.removeprefix("notices:")
+    notices: list[CanonicalNotice] = []
+    kept: list[tuple[bytes, dict]] = []
+
+    for entry_id, fields in entries:
+        try:
+            decoded = decode_entry(fields)
+            notices.append(CanonicalNotice.model_validate(decoded["payload"]))
+            kept.append((entry_id, fields))
+        except Exception as exc:
+            await _reject_poison(ctx, stream_name, entry_id, fields, exc)
+
+    if not notices:
+        return outcome
+
+    notices = await process_batch_logs(
+        ctx.db,
+        notices=notices,
+        component="ingestor",
+        instance_id=ctx.instance_id,
+        stream_name=stream_name,
+    )
+
+    try:
+        failed = _failed_keys(await upsert_batch(ctx.db, notices))
+        mongo_ok = [n for n in notices if (n.source, n.source_id) not in failed]
+        if mongo_ok:
+            async with ctx.neo4j_driver.session() as neo4j_session:
+                failed |= _failed_keys(await merge_notice_batch(neo4j_session, mongo_ok))
+
+        ok_ids: list[bytes] = []
+        for (entry_id, fields), notice in zip(kept, notices, strict=True):
+            if (notice.source, notice.source_id) in failed:
+                outcome.failed.append((entry_id, fields))
+            else:
+                ok_ids.append(entry_id)
+        outcome.succeeded = ok_ids
+
+        if ok_ids:
+            await ack(ctx.redis, stream_name, _GROUP, ok_ids)
+            await publish(ctx.redis, "notices:written", {"source": source, "count": len(ok_ids)})
+            ctx.metrics["batches_processed"] = ctx.metrics.get("batches_processed", 0) + 1
+            ctx.metrics["notices_written"] = ctx.metrics.get("notices_written", 0) + len(ok_ids)
+            ctx.metrics["last_success_at"] = time.time()
+            logger.info("ingestor: wrote %d notices from %s", len(ok_ids), stream_name)
+            await log_event(
+                ctx.db,
+                level="info",
+                event="batch_written",
+                component="ingestor",
+                source=source,
+                instance_id=ctx.instance_id,
+                message=f"wrote {len(ok_ids)} notices from {stream_name}",
+                details={"count": len(ok_ids)},
+            )
+
+        if outcome.failed:
+            msg = f"{len(outcome.failed)} of {len(kept)} notices failed to write; left pending"
+            logger.error("ingestor: %s (%s)", msg, stream_name)
+            ctx.metrics["last_error"] = msg
+            await log_event(
+                ctx.db,
+                level="error",
+                event="partial_write_failed",
+                component="ingestor",
+                source=source,
+                instance_id=ctx.instance_id,
+                message=msg,
+                details={"failed": len(outcome.failed), "total": len(kept)},
+            )
+        else:
+            # Clear a prior cycle's error now that a batch has written cleanly:
+            # last_error must reflect the last cycle, not "any cycle ever this
+            # process lifetime", or one transient failure marks /readyz unready
+            # until restart.
+            ctx.metrics["last_error"] = None
+
+    except Exception as exc:
+        logger.error(
+            "ingestor: write failed for %s, not acking: %s", stream_name, exc, exc_info=True
+        )
+        msg = redact_exception(exc)
+        ctx.metrics["last_error"] = msg
+        outcome.error = exc
+        await log_event(
+            ctx.db,
+            level="error",
+            event="write_failed",
+            component="ingestor",
+            source=source,
+            instance_id=ctx.instance_id,
+            message=msg,
+        )
+
+    return outcome
+
+
+async def reclaim_pending(
+    ctx: IngestorContext, settings: IngestorSettings, consumer_name: str
+) -> int:
+    """Reclaim stale pending entries on every stream and re-process them.
+
+    Entries delivered fewer than ``ingestor_max_deliveries`` times are retried
+    as a batch. Entries at/over the limit are processed one at a time so a
+    single poison notice cannot sink its neighbours; those that still fail are
+    dead-lettered and acked. Returns the number of entries reclaimed.
+    """
+    total = 0
+    for stream in _STREAMS:
+        entries = await autoclaim_stale(
+            ctx.redis,
+            stream,
+            _GROUP,
+            consumer_name,
+            min_idle_ms=settings.ingestor_reclaim_min_idle_ms,
+        )
+        if not entries:
+            continue
+        total += len(entries)
+        logger.info("ingestor: reclaimed %d stale entries from %s", len(entries), stream)
+
+        counts = await delivery_counts(ctx.redis, stream, _GROUP, [eid for eid, _ in entries])
+        limit = settings.ingestor_max_deliveries
+        fresh = [e for e in entries if counts.get(e[0], 1) < limit]
+        suspects = [e for e in entries if counts.get(e[0], 1) >= limit]
+
+        if fresh:
+            await process_entries(ctx, stream, fresh)
+
+        outcomes = [(entry, await process_entries(ctx, stream, [entry])) for entry in suspects]
+        failing = [(entry, out) for entry, out in outcomes if out.failed or out.error]
+        outage = len(suspects) >= _OUTAGE_SUSPECT_THRESHOLD and len(failing) == len(suspects)
+        if outage:
+            logger.warning(
+                "ingestor: all %d over-limit entries on %s failed individually; "
+                "treating as a dependency outage, not dead-lettering",
+                len(suspects),
+                stream,
+            )
+            continue
+        for (entry_id, fields), out in failing:
+            if out.error is not None:
+                continue  # infrastructure error, not evidence the entry is bad
+            await _park_failed_entry(ctx, stream, entry_id, fields, counts.get(entry_id, limit))
+    return total
+
+
+async def _park_failed_entry(
+    ctx: IngestorContext, stream: str, entry_id: bytes, fields: dict, deliveries: int
+) -> None:
+    reason = f"write failed after {deliveries} deliveries"
+    logger.error("ingestor: dead-lettering %r from %s: %s", entry_id, stream, reason)
+    await dead_letter(ctx, stream, entry_id, fields, reason)
+    await ack(ctx.redis, stream, _GROUP, [entry_id])
+    await log_event(
+        ctx.db,
+        level="error",
+        event="entry_dead_lettered",
+        component="ingestor",
+        source=stream.removeprefix("notices:"),
+        instance_id=ctx.instance_id,
+        message=reason,
+        details={"entry_id": entry_id.decode(errors="replace"), "deliveries": deliveries},
+    )
+
+
+async def run_maintenance(ctx: IngestorContext) -> None:
+    """Trim fully-acked stream prefixes and refresh lag/PEL/dead-letter metrics."""
+    lag: dict[str, int] = {}
+    pending: dict[str, int] = {}
+    for stream in _STREAMS:
+        try:
+            removed = await trim_consumed(ctx.redis, stream, _GROUP)
+            if removed:
+                logger.info("ingestor: trimmed %d consumed entries from %s", removed, stream)
+            stats = await group_stats(ctx.redis, stream, _GROUP)
+        except RedisError as exc:
+            logger.warning("ingestor: maintenance failed on %s: %s", stream, exc)
+            continue
+        lag[stream] = stats["lag"]
+        pending[stream] = stats["pending"]
+    ctx.metrics["stream_lag"] = lag
+    ctx.metrics["stream_pending"] = pending
+    try:
+        ctx.metrics["dead_letter_length"] = await ctx.redis.xlen(DEAD_LETTER_STREAM)
+    except RedisError as exc:
+        logger.warning("ingestor: dead-letter length unavailable: %s", exc)
 
 
 async def run_ingestor() -> None:
@@ -107,6 +423,10 @@ async def run_ingestor() -> None:
         "batches_processed": 0,
         "notices_written": 0,
         "last_error": None,
+        "last_success_at": None,
+        "stream_lag": {},
+        "stream_pending": {},
+        "dead_letter_length": 0,
         "redis_connected": False,
     }
 
@@ -164,7 +484,7 @@ async def run_ingestor() -> None:
 
     # Ensure consumer groups exist for all source streams
     for stream in _STREAMS:
-        await ensure_consumer_group(redis_client, stream, "ingestor")
+        await ensure_consumer_group(redis_client, stream, _GROUP)
 
     neo4j_driver = AsyncGraphDatabase.driver(
         pipeline_settings.neo4j_uri,
@@ -207,12 +527,22 @@ async def run_ingestor() -> None:
                 message=redact_exception(exc),
             )
 
+    ctx = IngestorContext(
+        db=db,
+        redis=redis_client,
+        neo4j_driver=neo4j_driver,
+        instance_id=instance_id,
+        metrics=metrics,
+    )
+    last_reclaim: float | None = None
+    last_maintenance: float | None = None
+
     try:
         while not stop_event.is_set():
             try:
                 results = await read_group(
                     redis_client,
-                    "ingestor",
+                    _GROUP,
                     consumer_name,
                     _STREAMS,
                     count=settings.ingestor_batch_size,
@@ -224,137 +554,26 @@ async def run_ingestor() -> None:
                 await asyncio.sleep(1)
                 continue
 
-            if not results:
-                reclaimed = []
-                for stream in _STREAMS:
-                    entries = await autoclaim_stale(redis_client, stream, "ingestor", consumer_name)
-                    if entries:
-                        reclaimed.append((stream, entries))
-                        logger.info(
-                            "ingestor: reclaimed %d stale entries from %s", len(entries), stream
-                        )
-                if not reclaimed:
-                    continue
-                results = reclaimed
-
+            backoff = False
             for stream_name, entries in results:
-                notices: list[CanonicalNotice] = []
-                entry_ids: list[bytes] = []
+                outcome = await process_entries(ctx, stream_name, entries)
+                backoff = backoff or outcome.error is not None
+            if backoff:
+                await asyncio.sleep(1)
 
-                for entry_id, fields in entries:
-                    try:
-                        decoded = decode_entry(fields)
-                        notice = CanonicalNotice.model_validate(decoded["payload"])
-                        notices.append(notice)
-                        entry_ids.append(entry_id)
-                    except Exception as exc:
-                        logger.warning("Failed to decode entry from %s: %s", stream_name, exc)
-                        await log_event(
-                            db,
-                            level="warning",
-                            event="decode_failed",
-                            component="ingestor",
-                            source=stream_name.removeprefix("notices:"),
-                            instance_id=instance_id,
-                            message=f"decode failed: {redact_exception(exc)}",
-                        )
-                        # Ack immediately rather than leaving it pending: the
-                        # failure is already durably logged above, and a
-                        # payload that fails to decode/validate cannot
-                        # possibly succeed on retry. Left unacked, autoclaim_stale
-                        # redelivers it every idle cycle forever — a poison
-                        # entry would otherwise never leave the PEL.
-                        try:
-                            await ack(redis_client, stream_name, "ingestor", [entry_id])
-                        except Exception as ack_exc:
-                            logger.error(
-                                "ingestor: failed to ack poison entry from %s: %s",
-                                stream_name,
-                                ack_exc,
-                            )
-                        # Best-effort: preserve the raw payload for inspection.
-                        # Never blocks acking above — a dead-letter write
-                        # failure must not resurrect a poison entry.
-                        try:
-                            await redis_client.xadd(
-                                "notices:dead",
-                                {
-                                    "stream": stream_name,
-                                    "entry_id": entry_id,
-                                    "error": str(exc),
-                                    "payload": fields.get(b"payload", b""),
-                                },
-                                maxlen=10_000,
-                                approximate=True,
-                            )
-                        except Exception as dead_letter_exc:
-                            logger.debug(
-                                "ingestor: failed to dead-letter poison entry from %s: %s",
-                                stream_name,
-                                dead_letter_exc,
-                            )
-
-                if not notices:
-                    continue
-
-                notices = await process_batch_logs(
-                    db,
-                    notices=notices,
-                    component="ingestor",
-                    instance_id=instance_id,
-                    stream_name=stream_name,
-                )
-
+            # Periodic work runs whether or not traffic is flowing: under
+            # sustained load read_group never comes back empty, which used to
+            # starve reclaim and strand pending entries indefinitely.
+            now = time.monotonic()
+            if is_due(last_reclaim, now, settings.ingestor_reclaim_interval_seconds):
+                last_reclaim = now
                 try:
-                    await upsert_batch(db, notices)
-                    async with neo4j_driver.session() as neo4j_session:
-                        await merge_notice_batch(neo4j_session, notices)
-
-                    source = stream_name.removeprefix("notices:")
-                    await ack(redis_client, stream_name, "ingestor", entry_ids)
-                    await publish(
-                        redis_client, "notices:written", {"source": source, "count": len(notices)}
-                    )
-
-                    metrics["batches_processed"] += 1
-                    metrics["notices_written"] += len(notices)
-                    # Clear a prior cycle's error now that a batch has written
-                    # cleanly — last_error must reflect the last cycle, not
-                    # "any cycle ever this process lifetime", or a single
-                    # transient failure marks /readyz unready until restart.
-                    metrics["last_error"] = None
-                    logger.info("ingestor: wrote %d notices from %s", len(notices), stream_name)
-
-                    await log_event(
-                        db,
-                        level="info",
-                        event="batch_written",
-                        component="ingestor",
-                        source=source,
-                        instance_id=instance_id,
-                        message=f"wrote {len(notices)} notices from {stream_name}",
-                        details={"count": len(notices)},
-                    )
-
+                    await reclaim_pending(ctx, settings, consumer_name)
                 except Exception as exc:
-                    logger.error(
-                        "ingestor: write failed for %s, not acking: %s",
-                        stream_name,
-                        exc,
-                        exc_info=True,
-                    )
-                    msg = redact_exception(exc)
-                    metrics["last_error"] = msg
-                    await log_event(
-                        db,
-                        level="error",
-                        event="write_failed",
-                        component="ingestor",
-                        source=stream_name.removeprefix("notices:"),
-                        instance_id=instance_id,
-                        message=msg,
-                    )
-                    await asyncio.sleep(1)
+                    logger.error("ingestor: reclaim failed: %s", exc, exc_info=True)
+            if is_due(last_maintenance, now, settings.ingestor_maintenance_interval_seconds):
+                last_maintenance = now
+                await run_maintenance(ctx)
 
     finally:
         health_task.cancel()

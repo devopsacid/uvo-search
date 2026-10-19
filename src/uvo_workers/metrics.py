@@ -44,6 +44,39 @@ class WorkerMetricsCollector:
         notices.add_metric([self.component], self.snapshot.get("notices_written") or 0)
         yield notices
 
+        for family, help_text, key in (
+            (
+                "uvo_worker_stream_lag",
+                "Entries not yet delivered to the consumer group",
+                "stream_lag",
+            ),
+            (
+                "uvo_worker_stream_pending",
+                "Delivered but unacked entries (PEL size)",
+                "stream_pending",
+            ),
+        ):
+            per_stream = GaugeMetricFamily(family, help_text, labels=["component", "stream"])
+            for stream, value in (self.snapshot.get(key) or {}).items():
+                per_stream.add_metric([self.component, stream], value or 0)
+            yield per_stream
+
+        dead = GaugeMetricFamily(
+            "uvo_worker_dead_letter_length",
+            "Entries parked in the notices:dead stream",
+            labels=["component"],
+        )
+        dead.add_metric([self.component], self.snapshot.get("dead_letter_length") or 0)
+        yield dead
+
+        last_ok = GaugeMetricFamily(
+            "uvo_worker_last_success_timestamp_seconds",
+            "Unix time of the last successful batch/cycle (0 = none yet)",
+            labels=["component"],
+        )
+        last_ok.add_metric([self.component], self.snapshot.get("last_success_at") or 0)
+        yield last_ok
+
         redis_gauge = GaugeMetricFamily(
             "uvo_worker_redis_connected",
             "1 when the Redis connection is healthy",

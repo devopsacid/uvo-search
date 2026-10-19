@@ -65,7 +65,7 @@ async def test_search_partial_page_then_error_raises():
         mock.post("/v3/notices/search").mock(
             side_effect=[
                 httpx.Response(200, json=page1),
-                httpx.Response(503),
+                *[httpx.Response(503)] * 5,  # persistent outage outlasts the retries
             ]
         )
         async with httpx.AsyncClient(base_url="https://api.ted.europa.eu") as client:

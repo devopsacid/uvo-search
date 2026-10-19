@@ -7,6 +7,8 @@ from datetime import date, datetime
 
 import httpx
 
+from uvo_pipeline.utils.http_retry import fetch_with_retry
+
 logger = logging.getLogger(__name__)
 
 _SPARQL_TEMPLATE = """\
@@ -65,10 +67,13 @@ async def discover_vestnik_datasets(
             offset=offset,
         )
         try:
-            response = await client.post(
-                sparql_url,
-                data={"query": query},
-                headers={"Accept": "application/sparql-results+json"},
+            response = await fetch_with_retry(
+                lambda: client.post(
+                    sparql_url,
+                    data={"query": query},
+                    headers={"Accept": "application/sparql-results+json"},
+                ),
+                label="nkod sparql",
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

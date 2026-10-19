@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import signal
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -75,6 +76,7 @@ async def run_extractor_loop(
         "cycles_completed": 0,
         "cycles_skipped_locked": 0,
         "last_error": None,
+        "last_success_at": None,
         "redis_connected": False,
     }
 
@@ -153,6 +155,11 @@ async def run_extractor_loop(
                     try:
                         count = await extract(redis_client, state)
                         metrics["cycles_completed"] += 1
+                        # last_error must describe the *latest* cycle: a single
+                        # transient failure would otherwise keep /readyz
+                        # unready until restart.
+                        metrics["last_error"] = None
+                        metrics["last_success_at"] = time.time()
                         logger.info("%s: cycle complete, %d items XADDed", source, count)
                     except Exception as exc:
                         logger.error("%s: extract error: %s", source, exc, exc_info=True)

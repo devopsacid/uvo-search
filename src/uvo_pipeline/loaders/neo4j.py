@@ -1,6 +1,7 @@
 """Neo4j loader — MERGE nodes and relationships for graph queries."""
 
 import logging
+from typing import Any
 
 from neo4j import AsyncSession
 
@@ -176,9 +177,14 @@ async def merge_relationships(session: AsyncSession, notice: CanonicalNotice) ->
 async def merge_notice_batch(
     session: AsyncSession,
     notices: list[CanonicalNotice],
-) -> dict[str, int]:
-    """Merge a batch of notices into Neo4j. Returns {merged, errors}."""
+) -> dict[str, Any]:
+    """Merge a batch of notices into Neo4j.
+
+    Returns {merged, errors, failed}; ``failed`` lists ``(source, source_id)``
+    of notices that did not merge so callers can leave them unacknowledged.
+    """
     merged = errors = 0
+    failed: list[tuple[str, str]] = []
     for notice in notices:
         try:
             await merge_notice_node(session, notice)
@@ -187,4 +193,5 @@ async def merge_notice_batch(
         except Exception as exc:
             logger.error("Neo4j merge failed for %s/%s: %s", notice.source, notice.source_id, exc)
             errors += 1
-    return {"merged": merged, "errors": errors}
+            failed.append((notice.source, notice.source_id))
+    return {"merged": merged, "errors": errors, "failed": failed}

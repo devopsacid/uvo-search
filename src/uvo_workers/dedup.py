@@ -5,6 +5,7 @@ import logging
 import signal
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
 
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -14,6 +15,7 @@ from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.dedup import run_cross_source_dedup
 from uvo_pipeline.ingestion_log import log_event
 from uvo_pipeline.loaders.mongo import recompute_entity_stats
+from uvo_pipeline.locks import lock
 from uvo_pipeline.pubsub import subscribe
 from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
 from uvo_workers.errors import redact_exception
@@ -27,6 +29,30 @@ logger = logging.getLogger(__name__)
 # few seconds during backfill. This is a floor on how often the scan may start,
 # independent of how many write notifications arrive.
 MIN_DEDUP_INTERVAL_SECONDS = 300.0
+
+
+DEDUP_LOCK_KEY = "dedup:lock"
+
+
+async def run_under_lock(
+    redis_client,
+    instance_id: str,
+    ttl_seconds: int,
+    work: Callable[[], Awaitable[None]],
+) -> bool:
+    """Run ``work`` only if this instance wins the cross-replica dedup lock.
+
+    Dedup + entity-stats recompute are full-window scans and write
+    ``canonical_id``; two replicas running them concurrently double the load
+    and race on the same documents. Returns False when another instance holds
+    the lock (the run is skipped, not queued).
+    """
+    async with lock(redis_client, DEDUP_LOCK_KEY, instance_id, ttl_seconds=ttl_seconds) as acquired:
+        if not acquired:
+            logger.info("dedup: another instance holds %s; skipping run", DEDUP_LOCK_KEY)
+            return False
+        await work()
+        return True
 
 
 def should_run(last_run_monotonic: float | None, now_monotonic: float) -> bool:
@@ -70,6 +96,8 @@ class DedupWorkerSettings(BaseSettings):
     dedup_interval_seconds: int = 3600
     dedup_debounce_seconds: int = 5
     dedup_window_days: int = 30
+    # Must exceed a worst-case dedup + stats pass; the lock auto-expires if the holder dies.
+    dedup_lock_ttl_seconds: int = 1800
     health_port: int = 8096
 
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
@@ -162,6 +190,11 @@ async def run_dedup_worker() -> None:
     last_dedup_run: list[float | None] = [None]
 
     async def _run_dedup() -> None:
+        await run_under_lock(
+            redis_client, instance_id, settings.dedup_lock_ttl_seconds, _run_dedup_locked
+        )
+
+    async def _run_dedup_locked() -> None:
         # Reuse the worker's single long-lived Motor client (log_mongo_client)
         # instead of opening a fresh one per dedup run (plan §1.3.5) — this
         # runs on every debounced write and on every interval tick, so a

@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import redis.asyncio as aioredis
 
+from uvo_pipeline.streams import DEFAULT_MAXLEN_SAFETY_NET
 from uvo_pipeline.streams import ack as _ack
 from uvo_pipeline.streams import read_group as _read_group
+from uvo_pipeline.streams import wait_for_capacity as _wait_for_capacity
+from uvo_pipeline.streams import xadd_many as _xadd_many
 from uvo_pipeline.streams import xadd_notice as _xadd_notice
 
 
@@ -21,8 +24,16 @@ class RedisNoticeStream:
     threading them through the port's generic single-argument signature.
     """
 
-    def __init__(self, redis_client: aioredis.Redis, source: str, *, maxlen: int = 100_000) -> None:
+    def __init__(
+        self,
+        redis_client: aioredis.Redis,
+        source: str,
+        *,
+        maxlen: int = DEFAULT_MAXLEN_SAFETY_NET,
+        group: str = "ingestor",
+    ) -> None:
         self._redis = redis_client
+        self._group = group
         self._source = source
         self._stream = f"notices:{source}"
         self._maxlen = maxlen
@@ -37,6 +48,17 @@ class RedisNoticeStream:
             maxlen=self._maxlen,
         )
         return entry_id.decode() if isinstance(entry_id, bytes) else entry_id
+
+    async def xadd_many(self, payloads: list[dict]) -> list[str]:
+        """XADD many payloads in one non-transactional pipeline round trip."""
+        ids = await _xadd_many(self._redis, self._source, payloads, maxlen=self._maxlen)
+        return [i.decode() if isinstance(i, bytes) else i for i in ids]
+
+    async def wait_for_capacity(self, *, high_water: int, **kwargs) -> None:
+        """Block while the consumer group's backlog is at/above ``high_water``."""
+        await _wait_for_capacity(
+            self._redis, self._stream, self._group, high_water=high_water, **kwargs
+        )
 
     async def read_group(self, group: str, consumer: str, count: int) -> list:
         return await _read_group(self._redis, group, consumer, [self._stream], count=count)

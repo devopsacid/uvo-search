@@ -53,3 +53,26 @@ async def test_merge_notice_node(mock_session):
     await merge_notice_node(mock_session, notice)
     mock_session.run.assert_called_once()
     assert "MERGE (n:Notice" in mock_session.run.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_merge_notice_batch_reports_failed_keys(monkeypatch):
+    from uvo_pipeline.loaders import neo4j as neo4j_loader
+
+    async def _node(session, notice):
+        if notice.source_id == "bad":
+            raise RuntimeError("neo4j down")
+
+    monkeypatch.setattr(neo4j_loader, "merge_notice_node", _node)
+    monkeypatch.setattr(neo4j_loader, "merge_relationships", AsyncMock())
+
+    def _n(sid):
+        return CanonicalNotice(
+            source="vestnik", source_id=sid, notice_type="contract_award", title="t"
+        )
+
+    result = await neo4j_loader.merge_notice_batch(MagicMock(), [_n("ok"), _n("bad")])
+
+    assert result["merged"] == 1
+    assert result["errors"] == 1
+    assert result["failed"] == [("vestnik", "bad")]

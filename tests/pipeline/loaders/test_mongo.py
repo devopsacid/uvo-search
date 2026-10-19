@@ -174,3 +174,94 @@ async def test_upsert_batch_dedupes_shared_entities_within_batch(mock_mongo_db):
     assert supplier_count == 1
     supplier = await mock_mongo_db.suppliers.find_one({"ico": "11112222"})
     assert set(supplier["sources"]) == {"vestnik", "crz"}
+
+
+class _FlakyCollection:
+    """Proxy a mongomock collection; bulk_write applies all ops except those at
+    ``fail_idx`` and then raises BulkWriteError, like Mongo does for unordered writes."""
+
+    def __init__(self, real, fail_idx: set[int]):
+        self._real = real
+        self._fail_idx = fail_idx
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    async def bulk_write(self, ops, ordered=True, **kwargs):
+        from pymongo.errors import BulkWriteError
+
+        ok = [op for i, op in enumerate(ops) if i not in self._fail_idx]
+        if ok:
+            await self._real.bulk_write(ok, ordered=False)
+        raise BulkWriteError(
+            {
+                "writeErrors": [
+                    {"index": i, "code": 11000, "errmsg": "boom"} for i in sorted(self._fail_idx)
+                ],
+                "upserted": [],
+            }
+        )
+
+
+class _FlakyDb:
+    def __init__(self, real_db, *, notices_fail_idx: set[int]):
+        self._db = real_db
+        self.notices = _FlakyCollection(real_db.notices, notices_fail_idx)
+
+    def __getattr__(self, name):
+        return getattr(self._db, name)
+
+
+@pytest.mark.asyncio
+async def test_upsert_batch_failed_notice_gets_no_registry_entry(mock_mongo_db):
+    """A notice whose notices-write failed must NOT be registered, otherwise the
+    next delivery is skipped as 'unchanged' and the notice is lost forever."""
+    notices = [_notice("ok-1"), _notice("bad-1"), _notice("ok-2")]
+    db = _FlakyDb(mock_mongo_db, notices_fail_idx={1})
+
+    result = await upsert_batch(db, notices)
+
+    assert result["errors"] == 1
+    assert result["failed"] == [("vestnik", "bad-1")]
+    assert await mock_mongo_db.ingested_docs.find_one({"source_id": "bad-1"}) is None
+    assert await mock_mongo_db.ingested_docs.find_one({"source_id": "ok-1"}) is not None
+    assert await mock_mongo_db.ingested_docs.find_one({"source_id": "ok-2"}) is not None
+
+    # Retry with a healthy db: the previously failed notice is written, not skipped.
+    retry = await upsert_batch(mock_mongo_db, [_notice("bad-1")])
+    assert retry["inserted"] == 1
+    assert retry["failed"] == []
+
+
+@pytest.mark.asyncio
+async def test_upsert_batch_reports_no_failures_on_success(mock_mongo_db):
+    result = await upsert_batch(mock_mongo_db, [_notice("fine-1")])
+    assert result["failed"] == []
+
+
+@pytest.mark.asyncio
+async def test_upsert_batch_collapses_entity_ops_by_ico(mock_mongo_db):
+    """N notices sharing a procurer/supplier ICO produce one entity op each."""
+    seen = {"procurers": 0, "suppliers": 0}
+
+    class _Counting(_FlakyCollection):
+        def __init__(self, real, key):
+            super().__init__(real, set())
+            self._key = key
+
+        async def bulk_write(self, ops, ordered=True, **kwargs):
+            seen[self._key] += len(ops)
+            return await self._real.bulk_write(ops, ordered=ordered)
+
+    class _Db(_FlakyDb):
+        def __init__(self, real):
+            super().__init__(real, notices_fail_idx=set())
+            self.notices = real.notices
+            self.procurers = _Counting(real.procurers, "procurers")
+            self.suppliers = _Counting(real.suppliers, "suppliers")
+
+    notices = [_notice(f"shared-{i}") for i in range(10)]
+    await upsert_batch(_Db(mock_mongo_db), notices)
+
+    assert seen == {"procurers": 1, "suppliers": 1}
+    assert await mock_mongo_db.procurers.count_documents({"ico": "12345678"}) == 1

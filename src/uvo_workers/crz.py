@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime
 from functools import lru_cache
 
 import httpx
@@ -19,6 +19,8 @@ from uvo_pipeline.redis_client import get_redis_settings
 from uvo_pipeline.transformers.crz import transform_contract
 from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
+from uvo_workers.checkpoints import next_checkpoint, resolve_since
+from uvo_workers.flush import flush_notices
 from uvo_workers.runner import run_extractor_loop
 
 logger = logging.getLogger(__name__)
@@ -28,7 +30,14 @@ FLUSH_BATCH = 500
 
 class CrzSettings(BaseSettings):
     crz_interval_seconds: int = 3600
-    stream_maxlen_approx: int = 100_000
+    # MAXLEN is only a memory safety net; backpressure (stream_high_water)
+    # keeps the consumer-group backlog far below it so unread entries are
+    # never trimmed.
+    stream_maxlen_approx: int = 1_000_000
+    stream_high_water: int = 50_000
+    # Re-fetch this much history on every cycle so late-published or
+    # still-propagating records are not skipped (ingestion is idempotent).
+    checkpoint_overlap_seconds: int = 86_400
     health_port: int = 8092
 
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
@@ -44,6 +53,7 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
     settings = get_settings()
     pipeline_settings = get_pipeline_settings()
     run_id = uuid.uuid4().hex
+    cycle_start = datetime.now(UTC)
 
     # Reuse the runner's long-lived Motor client/checkpoint store when running
     # inside run_extractor_loop; only open a fresh (short-lived) client when
@@ -58,14 +68,11 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
 
     try:
         checkpoint = await checkpoint_store.get("crz")
-        crz_checkpoint = checkpoint.get("crz_since")
-        if crz_checkpoint:
-            try:
-                since = datetime.fromisoformat(str(crz_checkpoint)).date()
-            except (ValueError, TypeError):
-                since = (datetime.utcnow() - timedelta(days=pipeline_settings.recent_days)).date()
-        else:
-            since = (datetime.utcnow() - timedelta(days=pipeline_settings.recent_days)).date()
+        since = resolve_since(
+            checkpoint.get("crz_since"),
+            recent_days=pipeline_settings.recent_days,
+            now=cycle_start,
+        )
 
         logger.info("crz: extracting since=%s", since)
 
@@ -92,17 +99,22 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
                     logger.warning("crz transform error: %s", exc)
 
                 if len(buffer) >= FLUSH_BATCH:
-                    for n in buffer:
-                        await notice_stream.xadd_notice(n.model_dump(mode="json"))
-                        count += 1
+                    count += await flush_notices(
+                        notice_stream, buffer, high_water=settings.stream_high_water
+                    )
                     buffer.clear()
 
-        for n in buffer:
-            await notice_stream.xadd_notice(n.model_dump(mode="json"))
-            count += 1
+        count += await flush_notices(notice_stream, buffer, high_water=settings.stream_high_water)
         buffer.clear()
 
-        await checkpoint_store.save("crz", {"crz_since": datetime.utcnow().isoformat()})
+        await checkpoint_store.save(
+            "crz",
+            {
+                "crz_since": next_checkpoint(
+                    cycle_start, overlap_seconds=settings.checkpoint_overlap_seconds
+                )
+            },
+        )
 
     finally:
         if mongo_client is not None:

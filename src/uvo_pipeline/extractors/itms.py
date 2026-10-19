@@ -21,12 +21,16 @@ from collections.abc import AsyncIterator
 import httpx
 
 from uvo_pipeline.cache import CacheBackend, MemoryCache
+from uvo_pipeline.utils.http_retry import fetch_with_retry
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 _LIST_PATH = "/v2/verejneObstaravania"
 _SUBJECT_PATH = "/v2/subjekty"
 _SUPPLIER_PATH = "/v2/dodavatelia"
+
+# A 404 is a stable answer, but cache it only briefly: records can appear later.
+_NEGATIVE_CACHE_TTL_SECONDS = 3600
 
 
 async def _fetch_by_id(
@@ -38,22 +42,37 @@ async def _fetch_by_id(
     key_prefix: str,
     cache_ttl_seconds: int,
 ) -> dict | None:
-    """Fetch /{path_prefix}/{id_} via cache_backend; returns {} on 404/error."""
+    """Fetch /{path_prefix}/{id_} via cache_backend.
+
+    Returns None when the record is missing or could not be fetched. Only a
+    definitive 404 is (briefly) negative-cached; transient failures (5xx,
+    timeouts, connection errors) are retried and, if they persist, are NOT
+    cached so the next lookup tries again instead of hiding the record for
+    ``cache_ttl_seconds``.
+    """
     key = f"{key_prefix}:{id_}"
     cached = await cache_backend.get(key)
     if cached is not None:
         return cached if cached else None
     await rate_limiter.acquire()
     try:
-        resp = await client.get(f"{path_prefix}/{id_}")
-        if resp.status_code != 200:
-            await cache_backend.set(key, {}, ttl_seconds=cache_ttl_seconds)
-            return None
-        data = resp.json() or {}
-    except httpx.RequestError as exc:
-        logger.warning("ITMS %s/%s fetch failed: %s", path_prefix, id_, exc)
-        await cache_backend.set(key, {}, ttl_seconds=cache_ttl_seconds)
+        resp = await fetch_with_retry(
+            lambda: client.get(f"{path_prefix}/{id_}"), label=f"itms {path_prefix}/{id_}"
+        )
+    except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+        logger.warning("ITMS %s/%s fetch failed (not cached): %s", path_prefix, id_, exc)
         return None
+    if resp.status_code == 404:
+        await cache_backend.set(
+            key, {}, ttl_seconds=min(cache_ttl_seconds, _NEGATIVE_CACHE_TTL_SECONDS)
+        )
+        return None
+    if resp.status_code != 200:
+        logger.warning(
+            "ITMS %s/%s returned HTTP %s (not cached)", path_prefix, id_, resp.status_code
+        )
+        return None
+    data = resp.json() or {}
     await cache_backend.set(key, data, ttl_seconds=cache_ttl_seconds)
     return data
 
@@ -103,7 +122,10 @@ async def fetch_procurements(
             return
         await rate_limiter.acquire()
         try:
-            response = await client.get(_LIST_PATH, params={"minId": cursor, "limit": 100})
+            response = await fetch_with_retry(
+                lambda: client.get(_LIST_PATH, params={"minId": cursor, "limit": 100}),
+                label="itms list",
+            )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.error("ITMS list HTTP %s: %s", exc.response.status_code, exc.response.text[:200])
@@ -121,19 +143,24 @@ async def fetch_procurements(
 
             await rate_limiter.acquire()
             try:
-                detail_resp = await client.get(f"{_LIST_PATH}/{pid}")
+                detail_resp = await fetch_with_retry(
+                    lambda pid=pid: client.get(f"{_LIST_PATH}/{pid}"), label=f"itms detail {pid}"
+                )
                 item = detail_resp.json() if detail_resp.status_code == 200 else stub
-            except httpx.RequestError as exc:
+            except (httpx.HTTPStatusError, httpx.RequestError) as exc:
                 logger.warning("ITMS detail failed id=%s: %s", pid, exc)
                 item = stub
 
             await rate_limiter.acquire()
             try:
-                contracts_resp = await client.get(f"{_LIST_PATH}/{pid}/zmluvyVerejneObstaravanie")
+                contracts_resp = await fetch_with_retry(
+                    lambda pid=pid: client.get(f"{_LIST_PATH}/{pid}/zmluvyVerejneObstaravanie"),
+                    label=f"itms contracts {pid}",
+                )
                 item["_contracts"] = (
                     contracts_resp.json() if contracts_resp.status_code == 200 else []
                 )
-            except httpx.RequestError as exc:
+            except (httpx.HTTPStatusError, httpx.RequestError) as exc:
                 logger.warning("ITMS contracts failed id=%s: %s", pid, exc)
                 item["_contracts"] = []
 
