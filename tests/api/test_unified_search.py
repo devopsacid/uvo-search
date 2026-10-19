@@ -27,7 +27,7 @@ PROCURER_RESULT = {
 
 OVERLAP_PROCURER_RESULT = {
     "items": [
-        # same ICO as SUPPLIER_RESULT — should be merged into one FirmaHit
+        # same ICO as SUPPLIER_RESULT — should be merged into one CompanyHit
         {"ico": "11223344", "name": "Acme Corp", "contract_count": 5, "total_value": 100000.0},
     ],
     "total": 1,
@@ -104,8 +104,8 @@ def test_unified_returns_grouped_shape(client):
     assert response.status_code == 200
     body = response.json()
     assert body["q"] == "acme"
-    assert "firmy" in body
-    assert "zakazky" in body
+    assert "companies" in body
+    assert "contracts" in body
 
 
 def test_unified_calls_typed_functions_with_explicit_keywords(client):
@@ -117,25 +117,25 @@ def test_unified_calls_typed_functions_with_explicit_keywords(client):
     assert mocks["vector"].await_args.args[2:] == ("acme", 7)
 
 
-def test_unified_firmy_shape(client):
+def test_unified_companies_shape(client):
     with _search_patches(client):
         response = client.get("/api/search/unified?q=acme")
-    firmy = response.json()["firmy"]
-    assert len(firmy) >= 1
-    firma = firmy[0]
-    assert "ico" in firma
-    assert "name" in firma
-    assert "roles" in firma
-    assert isinstance(firma["roles"], list)
-    assert "contract_count" in firma
+    companies = response.json()["companies"]
+    assert len(companies) >= 1
+    company = companies[0]
+    assert "ico" in company
+    assert "name" in company
+    assert "roles" in company
+    assert isinstance(company["roles"], list)
+    assert "contract_count" in company
 
 
-def test_unified_zakazky_shape(client):
+def test_unified_contracts_shape(client):
     with _search_patches(client):
         response = client.get("/api/search/unified?q=road")
-    zakazky = response.json()["zakazky"]
-    assert len(zakazky) == 1
-    z = zakazky[0]
+    contracts = response.json()["contracts"]
+    assert len(contracts) == 1
+    z = contracts[0]
     assert z["id"] == "abc123"
     assert z["title"] == "Road repair works"
     assert z["procurer_name"] == "City Hall"
@@ -143,12 +143,12 @@ def test_unified_zakazky_shape(client):
     assert z["year"] == 2023
 
 
-def test_unified_firmy_deduplication(client):
-    """Supplier + procurer with same ICO → single FirmaHit with both roles."""
+def test_unified_companies_deduplication(client):
+    """Supplier + procurer with same ICO → single CompanyHit with both roles."""
     with _search_patches(client, procurer=OVERLAP_PROCURER_RESULT):
         response = client.get("/api/search/unified?q=acme")
-    firmy = response.json()["firmy"]
-    matched = [f for f in firmy if f["ico"] == "11223344"]
+    companies = response.json()["companies"]
+    matched = [f for f in companies if f["ico"] == "11223344"]
     assert len(matched) == 1
     assert set(matched[0]["roles"]) == {"supplier", "procurer"}
 
@@ -158,7 +158,7 @@ def test_unified_without_embedder_degrades_to_text_hits(client):
     with _search_patches(client) as mocks, deps(client, get_embedder, None):
         response = client.get("/api/search/unified?q=acme")
     assert response.status_code == 200
-    assert len(response.json()["firmy"]) == 2
+    assert len(response.json()["companies"]) == 2
     mocks["vector"].assert_not_called()
 
 
@@ -167,13 +167,13 @@ def test_unified_without_embedder_degrades_to_text_hits(client):
 # ---------------------------------------------------------------------------
 
 
-def test_unified_ico_query_returns_only_firmy(client):
+def test_unified_ico_query_returns_only_companies(client):
     with _search_patches(client, procurer=EMPTY_RESULT):
         response = client.get("/api/search/unified?q=11223344")
     assert response.status_code == 200
     body = response.json()
-    assert body["zakazky"] == []
-    assert len(body["firmy"]) >= 1
+    assert body["contracts"] == []
+    assert len(body["companies"]) >= 1
 
 
 def test_unified_ico_query_does_not_call_contract_search(client):
@@ -195,8 +195,8 @@ def test_unified_short_query_returns_empty(client, query):
         response = client.get(f"/api/search/unified?q={query}")
     assert response.status_code == 200
     body = response.json()
-    assert body["firmy"] == []
-    assert body["zakazky"] == []
+    assert body["companies"] == []
+    assert body["contracts"] == []
     for mock in mocks.values():
         mock.assert_not_called()
 
@@ -219,7 +219,7 @@ def test_unified_respects_limit(client):
     ):
         response = client.get("/api/search/unified?q=firm&limit=5")
     assert response.status_code == 200
-    assert len(response.json()["firmy"]) <= 5
+    assert len(response.json()["companies"]) <= 5
 
 
 # ---------------------------------------------------------------------------
@@ -227,14 +227,14 @@ def test_unified_respects_limit(client):
 # ---------------------------------------------------------------------------
 
 
-def test_unified_contract_branch_failure_keeps_firmy_and_logs(client, caplog):
+def test_unified_contract_branch_failure_keeps_companies_and_logs(client, caplog):
     with _search_patches(client, failing=frozenset({"contracts"})):
         with caplog.at_level("WARNING", logger="uvo_api.routers.search"):
             response = client.get("/api/search/unified?q=acme")
     assert response.status_code == 200
     body = response.json()
-    assert len(body["firmy"]) == 2
-    assert body["zakazky"] == []
+    assert len(body["companies"]) == 2
+    assert body["contracts"] == []
     record = next(r for r in caplog.records if "contracts" in r.getMessage())
     assert record.levelname == "WARNING"
     assert record.exc_info is not None
@@ -245,8 +245,8 @@ def test_unified_vector_branch_failure_keeps_contracts(client):
         response = client.get("/api/search/unified?q=acme")
     assert response.status_code == 200
     body = response.json()
-    assert len(body["firmy"]) == 2
-    assert len(body["zakazky"]) >= 1
+    assert len(body["companies"]) == 2
+    assert len(body["contracts"]) >= 1
 
 
 def test_unified_all_branches_failing_propagates(client):

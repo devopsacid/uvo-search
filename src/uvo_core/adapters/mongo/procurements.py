@@ -36,8 +36,8 @@ _SEARCH_INDEX = "default"
 _TEXT_PATHS = ["title", "description", "procurer.name", "awards.supplier.name"]
 _NOTICE_TYPE = "contract_award"
 
-# B13: fields no list view reads (uvo_api._schema.map_contract_row, firma top
-# contracts, unified-search zakazky, MCP list tool). Exclusion-only, so any new
+# B13: fields no list view reads (uvo_api._schema.map_contract_row, company top
+# contracts, unified-search contracts, MCP list tool). Exclusion-only, so any new
 # field still reaches list consumers by default; the detail fetch stays full.
 NOTICE_LIST_PROJECTION: dict[str, int] = {
     "description": 0,

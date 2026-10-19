@@ -1,5 +1,5 @@
-# tests/api/test_firma_extensions.py
-"""Tests for the three firma extension endpoints: partneri, cpv-profile, firmy."""
+# tests/api/test_companies_extensions.py
+"""Tests for the three company extension endpoints: partners, cpv-profile, companies list."""
 
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
@@ -185,18 +185,18 @@ MARKET_AGG_RESULT = [
 
 
 # ---------------------------------------------------------------------------
-# TASK-05: /api/firma/{ico}/partneri
+# TASK-05: /api/companies/{ico}/partners
 # ---------------------------------------------------------------------------
 
 
-def test_partneri_returns_correct_shape(client):
+def test_partners_returns_correct_shape(client):
     with (
         patch(
-            "uvo_api.routers.firma._firma_partners_agg",
+            "uvo_api.routers.companies._company_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_RESULT),
         ),
     ):
-        response = client.get(f"/api/firma/{ICO}/partneri")
+        response = client.get(f"/api/companies/{ICO}/partners")
 
     assert response.status_code == 200
     body = response.json()
@@ -209,15 +209,15 @@ def test_partneri_returns_correct_shape(client):
         assert field in item
 
 
-def test_partneri_role_filter_supplier(client):
+def test_partners_role_filter_supplier(client):
     """role=supplier returns only counterparties that acted as suppliers."""
     with (
         patch(
-            "uvo_api.routers.firma._firma_partners_agg",
+            "uvo_api.routers.companies._company_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_SUPPLIER_ONLY),
         ),
     ):
-        response = client.get(f"/api/firma/{ICO}/partneri?role=supplier")
+        response = client.get(f"/api/companies/{ICO}/partners?role=supplier")
 
     assert response.status_code == 200
     body = response.json()
@@ -225,15 +225,15 @@ def test_partneri_role_filter_supplier(client):
         assert item["role"] == "supplier"
 
 
-def test_partneri_role_filter_procurer(client):
+def test_partners_role_filter_procurer(client):
     """role=procurer returns only counterparties that acted as procurers."""
     with (
         patch(
-            "uvo_api.routers.firma._firma_partners_agg",
+            "uvo_api.routers.companies._company_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_PROCURER_ONLY),
         ),
     ):
-        response = client.get(f"/api/firma/{ICO}/partneri?role=procurer")
+        response = client.get(f"/api/companies/{ICO}/partners?role=procurer")
 
     assert response.status_code == 200
     body = response.json()
@@ -241,15 +241,15 @@ def test_partneri_role_filter_procurer(client):
         assert item["role"] == "procurer"
 
 
-def test_partneri_all_has_both_roles(client):
+def test_partners_all_has_both_roles(client):
     """role=all (default) returns counterparties from both sides."""
     with (
         patch(
-            "uvo_api.routers.firma._firma_partners_agg",
+            "uvo_api.routers.companies._company_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_RESULT),
         ),
     ):
-        response = client.get(f"/api/firma/{ICO}/partneri")
+        response = client.get(f"/api/companies/{ICO}/partners")
 
     body = response.json()
     roles = {item["role"] for item in body["items"]}
@@ -257,15 +257,15 @@ def test_partneri_all_has_both_roles(client):
     assert "procurer" in roles
 
 
-def test_partneri_sort_by_count(client):
+def test_partners_sort_by_count(client):
     """sort=count orders by contract_count desc."""
     with (
         patch(
-            "uvo_api.routers.firma._firma_partners_agg",
+            "uvo_api.routers.companies._company_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_RESULT),
         ),
     ):
-        response = client.get(f"/api/firma/{ICO}/partneri?sort=count")
+        response = client.get(f"/api/companies/{ICO}/partners?sort=count")
 
     body = response.json()
     counts = [item["contract_count"] for item in body["items"]]
@@ -273,18 +273,22 @@ def test_partneri_sort_by_count(client):
 
 
 # ---------------------------------------------------------------------------
-# TASK-06: /api/firma/{ico}/cpv-profile
+# TASK-06: /api/companies/{ico}/cpv-profile
 # ---------------------------------------------------------------------------
 
 
 def test_cpv_profile_shape(client):
     with (
-        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
         patch(
-            "uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)
+            "uvo_api.routers.companies._company_core_agg",
+            new=AsyncMock(return_value=CORE_AGG_RESULT),
+        ),
+        patch(
+            "uvo_api.routers.companies._market_cpv_agg",
+            new=AsyncMock(return_value=MARKET_AGG_RESULT),
         ),
     ):
-        response = client.get(f"/api/firma/{ICO}/cpv-profile")
+        response = client.get(f"/api/companies/{ICO}/cpv-profile")
 
     assert response.status_code == 200
     body = response.json()
@@ -299,12 +303,16 @@ def test_cpv_profile_shape(client):
 
 def test_cpv_profile_percentages_sum_to_100(client):
     with (
-        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
         patch(
-            "uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)
+            "uvo_api.routers.companies._company_core_agg",
+            new=AsyncMock(return_value=CORE_AGG_RESULT),
+        ),
+        patch(
+            "uvo_api.routers.companies._market_cpv_agg",
+            new=AsyncMock(return_value=MARKET_AGG_RESULT),
         ),
     ):
-        response = client.get(f"/api/firma/{ICO}/cpv-profile")
+        response = client.get(f"/api/companies/{ICO}/cpv-profile")
 
     body = response.json()
     company_pct_sum = sum(r["percentage"] for r in body["for_company"])
@@ -315,12 +323,16 @@ def test_cpv_profile_percentages_sum_to_100(client):
 def test_cpv_profile_market_only_has_matching_codes(client):
     """market_baseline only contains CPV codes present in for_company."""
     with (
-        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
         patch(
-            "uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)
+            "uvo_api.routers.companies._company_core_agg",
+            new=AsyncMock(return_value=CORE_AGG_RESULT),
+        ),
+        patch(
+            "uvo_api.routers.companies._market_cpv_agg",
+            new=AsyncMock(return_value=MARKET_AGG_RESULT),
         ),
     ):
-        response = client.get(f"/api/firma/{ICO}/cpv-profile")
+        response = client.get(f"/api/companies/{ICO}/cpv-profile")
 
     body = response.json()
     company_codes = {r["code"] for r in body["for_company"]}
@@ -329,12 +341,12 @@ def test_cpv_profile_market_only_has_matching_codes(client):
 
 
 # ---------------------------------------------------------------------------
-# TASK-07: /api/firmy
+# TASK-07: /api/companies
 # ---------------------------------------------------------------------------
 
 
 @contextmanager
-def _firmy_patches(*, supplier, procurer):
+def _companies_patches(*, supplier, procurer):
     """Patch the two typed lookups; ``None`` means the role is filtered out and must not run."""
 
     def _mock(result):
@@ -343,15 +355,15 @@ def _firmy_patches(*, supplier, procurer):
         return AsyncMock(return_value=result)
 
     with (
-        patch("uvo_api.routers.firma.find_suppliers", new=_mock(supplier)),
-        patch("uvo_api.routers.firma.find_procurers", new=_mock(procurer)),
+        patch("uvo_api.routers.companies.find_suppliers", new=_mock(supplier)),
+        patch("uvo_api.routers.companies.find_procurers", new=_mock(procurer)),
     ):
         yield
 
 
-def test_firmy_returns_merged_list(client):
-    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
-        response = client.get("/api/firmy")
+def test_companies_returns_merged_list(client):
+    with _companies_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
+        response = client.get("/api/companies")
 
     assert response.status_code == 200
     body = response.json()
@@ -364,10 +376,10 @@ def test_firmy_returns_merged_list(client):
         assert field in item
 
 
-def test_firmy_merges_dual_role_ico(client):
+def test_companies_merges_dual_role_ico(client):
     """AAA00001 appears in both supplier and procurer results — must be merged."""
-    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
-        response = client.get("/api/firmy")
+    with _companies_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
+        response = client.get("/api/companies")
 
     body = response.json()
     merged = next((i for i in body["items"] if i["ico"] == "AAA00001"), None)
@@ -377,36 +389,36 @@ def test_firmy_merges_dual_role_ico(client):
     assert merged["contract_count"] == 13
 
 
-def test_firmy_role_filter_supplier_only(client):
-    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=None):
-        response = client.get("/api/firmy?role=supplier")
+def test_companies_role_filter_supplier_only(client):
+    with _companies_patches(supplier=SUPPLIER_FIND_RESULT, procurer=None):
+        response = client.get("/api/companies?role=supplier")
 
     body = response.json()
     for item in body["items"]:
         assert "supplier" in item["roles"]
 
 
-def test_firmy_role_filter_procurer_only(client):
-    with _firmy_patches(supplier=None, procurer=PROCURER_FIND_RESULT):
-        response = client.get("/api/firmy?role=procurer")
+def test_companies_role_filter_procurer_only(client):
+    with _companies_patches(supplier=None, procurer=PROCURER_FIND_RESULT):
+        response = client.get("/api/companies?role=procurer")
 
     body = response.json()
     for item in body["items"]:
         assert "procurer" in item["roles"]
 
 
-def test_firmy_sorted_by_contract_count_desc(client):
-    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
-        response = client.get("/api/firmy")
+def test_companies_sorted_by_contract_count_desc(client):
+    with _companies_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
+        response = client.get("/api/companies")
 
     body = response.json()
     counts = [i["contract_count"] for i in body["items"]]
     assert counts == sorted(counts, reverse=True)
 
 
-def test_firmy_pagination(client):
-    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
-        response = client.get("/api/firmy?limit=1&offset=0")
+def test_companies_pagination(client):
+    with _companies_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
+        response = client.get("/api/companies?limit=1&offset=0")
 
     assert response.status_code == 200
     body = response.json()

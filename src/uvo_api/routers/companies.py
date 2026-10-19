@@ -1,4 +1,4 @@
-# src/uvo_api/routers/firma.py
+# src/uvo_api/routers/companies.py
 """Unified company profile endpoint — handles any company regardless of role."""
 
 import asyncio
@@ -8,22 +8,22 @@ from fastapi import APIRouter, HTTPException, Query
 from uvo_api._schema import award_supplier, contract_date, contract_value, year_from_date
 from uvo_api.db import Db
 from uvo_api.models import (
+    CompanyCard,
+    CompanyListResponse,
+    CompanyProfile,
+    CompanyStats,
+    CompanyStatsBlock,
+    CompanyTopContract,
+    CompanyTopCpv,
     CpvProfileResponse,
     CpvProfileRow,
-    FirmaCard,
-    FirmaListResponse,
-    FirmaProfile,
-    FirmaStats,
-    FirmaStatsBlock,
-    FirmaTopContract,
-    FirmaTopCpv,
     PartnerListResponse,
     PartnerRow,
     SpendByYear,
 )
 from uvo_core.adapters.mongo.analytics import (
-    _firma_core_agg,
-    _firma_partners_agg,
+    _company_core_agg,
+    _company_partners_agg,
     _market_cpv_agg,
     top_contracts_by_value,
 )
@@ -33,8 +33,10 @@ from uvo_core.domain.cpv import cpv_prefix as _cpv_prefix
 from uvo_core.domain.cpv import load_cpv_labels as _load_cpv_labels
 from uvo_core.services.search import find_procurers, find_suppliers
 
-router = APIRouter(prefix="/api/firma", tags=["firma"])
-firmy_router = APIRouter(prefix="/api/firmy", tags=["firmy"])
+router = APIRouter(prefix="/api/companies", tags=["companies"])
+# Deprecated Slovak paths, kept for one release and hidden from OpenAPI. Registered at the
+# bottom of this module with the same handlers, so behaviour and models are shared.
+legacy_router = APIRouter(include_in_schema=False)
 
 _EMPTY: dict = {"items": []}
 
@@ -48,14 +50,14 @@ def _first_award(item: dict) -> dict:
     return awards[0] if awards else {}
 
 
-@router.get("/{ico}", response_model=FirmaProfile)
-async def get_firma_profile(ico: str, db: Db) -> FirmaProfile:
+@router.get("/{ico}", response_model=CompanyProfile)
+async def get_company_profile(ico: str, db: Db) -> CompanyProfile:
 
     # Identity (point lookups), aggregate stats and both top-contract lists are
     # independent, so run them concurrently; top lists are ignored for absent roles.
     entity, core, top_s_items, top_p_items = await asyncio.gather(
         get_entity_by_ico(db, ico),
-        _firma_core_agg(db, ico),
+        _company_core_agg(db, ico),
         top_contracts_by_value(db, ico, "supplier", 5),
         top_contracts_by_value(db, ico, "procurer", 5),
     )
@@ -64,7 +66,7 @@ async def get_firma_profile(ico: str, db: Db) -> FirmaProfile:
     procurer_items = [entity["procurer"]] if entity["procurer"] else []
 
     if not supplier_items and not procurer_items:
-        raise HTTPException(status_code=404, detail="Firma nenájdená")
+        raise HTTPException(status_code=404, detail="Company not found")
 
     supplier = supplier_items[0] if supplier_items else {}
     procurer = procurer_items[0] if procurer_items else {}
@@ -73,12 +75,12 @@ async def get_firma_profile(ico: str, db: Db) -> FirmaProfile:
     roles = entity_roles(entity)
 
     # Stats from aggregation
-    def _block(facet_key: str) -> FirmaStatsBlock | None:
+    def _block(facet_key: str) -> CompanyStatsBlock | None:
         rows = core.get(facet_key) or []
         if not rows:
             return None
         r = rows[0]
-        return FirmaStatsBlock(
+        return CompanyStatsBlock(
             contract_count=int(r.get("count") or 0),
             total_value=float(r.get("total") or 0.0),
             last_contract_at=r.get("last"),
@@ -98,11 +100,11 @@ async def get_firma_profile(ico: str, db: Db) -> FirmaProfile:
     top_s_result = {"items": top_s_items if supplier_items else []}
     top_p_result = {"items": top_p_items if procurer_items else []}
 
-    top_s_rows: list[FirmaTopContract] = []
+    top_s_rows: list[CompanyTopContract] = []
     for c in top_s_result.get("items", []):
         procurer_info = c.get("procurer") or {}
         top_s_rows.append(
-            FirmaTopContract(
+            CompanyTopContract(
                 id=str(c.get("_id") or c.get("id") or ""),
                 title=c.get("title") or "",
                 value=contract_value(c) or None,
@@ -113,11 +115,11 @@ async def get_firma_profile(ico: str, db: Db) -> FirmaProfile:
             )
         )
 
-    top_p_rows: list[FirmaTopContract] = []
+    top_p_rows: list[CompanyTopContract] = []
     for c in top_p_result.get("items", []):
         award_name, award_ico = award_supplier(_first_award(c))
         top_p_rows.append(
-            FirmaTopContract(
+            CompanyTopContract(
                 id=str(c.get("_id") or c.get("id") or ""),
                 title=c.get("title") or "",
                 value=contract_value(c) or None,
@@ -132,11 +134,11 @@ async def get_firma_profile(ico: str, db: Db) -> FirmaProfile:
 
     # CPV from aggregation
     labels = _load_cpv_labels()
-    top_cpvs: list[FirmaTopCpv] = []
+    top_cpvs: list[CompanyTopCpv] = []
     for r in core.get("cpv") or []:
         code = _cpv_prefix(r.get("_id"))
         top_cpvs.append(
-            FirmaTopCpv(
+            CompanyTopCpv(
                 code=code,
                 label=labels.get(code, {}).get("sk") or code,
                 contract_count=int(r.get("count") or 0),
@@ -155,20 +157,20 @@ async def get_firma_profile(ico: str, db: Db) -> FirmaProfile:
             continue
         spend_by_year.append(SpendByYear(year=year, total_value=float(r.get("total") or 0.0)))
 
-    return FirmaProfile(
+    return CompanyProfile(
         ico=ico,
         name=name,
         roles=roles,
         primary_role=primary,
-        stats=FirmaStats(as_supplier=as_supplier, as_procurer=as_procurer),
+        stats=CompanyStats(as_supplier=as_supplier, as_procurer=as_procurer),
         top_cpvs=top_cpvs,
         top_contracts=top_contracts,
         spend_by_year=spend_by_year,
     )
 
 
-@router.get("/{ico}/partneri", response_model=PartnerListResponse)
-async def get_firma_partneri(
+@router.get("/{ico}/partners", response_model=PartnerListResponse)
+async def get_company_partners(
     ico: str,
     db: Db,
     role: str = Query("all"),
@@ -176,7 +178,7 @@ async def get_firma_partneri(
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> PartnerListResponse:
-    result = await _firma_partners_agg(db, ico, role, sort, limit, offset)
+    result = await _company_partners_agg(db, ico, role, sort, limit, offset)
     return PartnerListResponse(
         total=result["total"],
         items=[PartnerRow(**p) for p in result["items"]],
@@ -184,9 +186,9 @@ async def get_firma_partneri(
 
 
 @router.get("/{ico}/cpv-profile", response_model=CpvProfileResponse)
-async def get_firma_cpv_profile(ico: str, db: Db) -> CpvProfileResponse:
+async def get_company_cpv_profile(ico: str, db: Db) -> CpvProfileResponse:
     core, market_rows = await asyncio.gather(
-        _firma_core_agg(db, ico),
+        _company_core_agg(db, ico),
         _market_cpv_agg(db, limit=20),
     )
 
@@ -230,14 +232,14 @@ async def get_firma_cpv_profile(ico: str, db: Db) -> CpvProfileResponse:
     return CpvProfileResponse(for_company=for_company, market_baseline=market_baseline)
 
 
-@firmy_router.get("", response_model=FirmaListResponse)
-async def list_firmy(
+@router.get("", response_model=CompanyListResponse)
+async def list_companies(
     db: Db,
     q: str | None = Query(None),
     role: str = Query("all"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
-) -> FirmaListResponse:
+) -> CompanyListResponse:
     name_query = q or None
 
     supplier_coro = (
@@ -263,7 +265,19 @@ async def list_firmy(
     total = len(items)
     page = items[offset : offset + limit]
 
-    return FirmaListResponse(
+    return CompanyListResponse(
         total=total,
-        items=[FirmaCard(**f) for f in page],
+        items=[CompanyCard(**f) for f in page],
     )
+
+
+# Old path -> (handler, response model). Remove together with the rollout notes in
+# docs/plans/2026-10-19-english-identifiers.md section 7.
+_LEGACY_ROUTES = (
+    ("/api/firmy", list_companies, CompanyListResponse),
+    ("/api/firma/{ico}", get_company_profile, CompanyProfile),
+    ("/api/firma/{ico}/partneri", get_company_partners, PartnerListResponse),
+    ("/api/firma/{ico}/cpv-profile", get_company_cpv_profile, CpvProfileResponse),
+)
+for _path, _endpoint, _model in _LEGACY_ROUTES:
+    legacy_router.add_api_route(_path, _endpoint, methods=["GET"], response_model=_model)

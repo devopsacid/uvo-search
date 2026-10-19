@@ -222,7 +222,7 @@ async def test_text_query_empty_count_result_means_zero():
 def test_list_projection_drops_heavy_fields_but_keeps_row_fields():
     assert NOTICE_LIST_PROJECTION["description"] == 0
     assert NOTICE_LIST_PROJECTION["attachments"] == 0
-    # Fields read by uvo_api._schema.map_contract_row / firma / unified search.
+    # Fields read by uvo_api._schema.map_contract_row / company / unified search.
     for keep in (
         "title",
         "procurer",

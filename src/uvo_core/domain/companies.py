@@ -1,6 +1,6 @@
 """Company merge-by-ICO and role resolution — pure domain functions.
 
-Shared by the /api firma + search routers and the /v1 companies router, all of
+Shared by the /api companies + search routers and the /v1 companies router, all of
 which combine supplier and procurer entity results into a single per-company
 view keyed by ICO. Inputs and outputs are plain dicts so callers keep ownership
 of their response models.

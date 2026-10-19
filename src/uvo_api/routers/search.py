@@ -37,14 +37,14 @@ class EntitySearchResponse(BaseModel):
     items: list[EntityHit]
 
 
-class FirmaHit(BaseModel):
+class CompanyHit(BaseModel):
     ico: str
     name: str
     roles: list[str]  # ["supplier"], ["procurer"], or ["supplier", "procurer"]
     contract_count: int
 
 
-class ZakazkaHit(BaseModel):
+class ContractHit(BaseModel):
     id: str
     title: str
     procurer_name: str | None
@@ -54,8 +54,8 @@ class ZakazkaHit(BaseModel):
 
 class UnifiedSearchResponse(BaseModel):
     q: str
-    firmy: list[FirmaHit]
-    zakazky: list[ZakazkaHit]
+    companies: list[CompanyHit]
+    contracts: list[ContractHit]
 
 
 async def _vector_hits(db, embedder, query: str, limit: int) -> dict:
@@ -76,8 +76,8 @@ def _as_hit(item: dict, kind: str) -> EntityHit:
     )
 
 
-def _to_firma_hit(row: dict) -> FirmaHit:
-    return FirmaHit(
+def _to_company_hit(row: dict) -> CompanyHit:
+    return CompanyHit(
         ico=row["ico"],
         name=row["name"],
         roles=row["roles"],
@@ -85,11 +85,11 @@ def _to_firma_hit(row: dict) -> FirmaHit:
     )
 
 
-def _contract_to_zakazka(item: dict) -> ZakazkaHit:
+def _to_contract_hit(item: dict) -> ContractHit:
     procurer = item.get("procurer") or {}
     raw_value = contract_value(item)
     year = year_from_date(contract_date(item))
-    return ZakazkaHit(
+    return ContractHit(
         id=str(item.get("_id") or item.get("id") or ""),
         title=item.get("title") or "",
         procurer_name=procurer.get("name") or None,
@@ -98,20 +98,20 @@ def _contract_to_zakazka(item: dict) -> ZakazkaHit:
     )
 
 
-def _merge_firmy(suppliers: list[dict], procurers: list[dict], limit: int) -> list[FirmaHit]:
+def _merge_companies(suppliers: list[dict], procurers: list[dict], limit: int) -> list[CompanyHit]:
     rows = merge_companies_by_ico(suppliers, procurers)
-    return [_to_firma_hit(r) for r in rows][:limit]
+    return [_to_company_hit(r) for r in rows][:limit]
 
 
-def _merge_firmy_with_vector(
+def _merge_companies_with_vector(
     suppliers: list[dict],
     procurers: list[dict],
     vector_items: list[dict],
     limit: int,
-) -> list[FirmaHit]:
+) -> list[CompanyHit]:
     """Merge text and vector hits; vector hits ranked first, then text hits fill remaining slots."""
     rows = merge_companies_by_ico(suppliers, procurers, vector=vector_items)
-    return [_to_firma_hit(r) for r in rows][:limit]
+    return [_to_company_hit(r) for r in rows][:limit]
 
 
 @router.get("/entities", response_model=EntitySearchResponse)
@@ -183,25 +183,25 @@ async def unified_search(
     q: str = Query("", description="Search query."),
     limit: int = Query(8, ge=1, le=20),
 ) -> UnifiedSearchResponse:
-    """Return companies (firmy) and contracts (zakazky) grouped in one response.
+    """Return companies and contracts grouped in one response.
 
-    8-digit numeric queries are treated as ICO lookups — only firmy is populated.
+    8-digit numeric queries are treated as ICO lookups — only companies is populated.
     Queries shorter than 2 characters return empty results immediately.
     """
     if len(q.strip()) < 2:
-        return UnifiedSearchResponse(q=q, firmy=[], zakazky=[])
+        return UnifiedSearchResponse(q=q, companies=[], contracts=[])
 
     if _ICO_RE.match(q.strip()):
         supp_result, proc_result = await asyncio.gather(
             find_suppliers(db, ico=q.strip(), limit=limit),
             find_procurers(db, ico=q.strip(), limit=limit),
         )
-        firmy = _merge_firmy(
+        companies = _merge_companies(
             supp_result.get("items", []),
             proc_result.get("items", []),
             limit,
         )
-        return UnifiedSearchResponse(q=q, firmy=firmy, zakazky=[])
+        return UnifiedSearchResponse(q=q, companies=companies, contracts=[])
 
     needle = q.strip()
     branches = {
@@ -229,12 +229,12 @@ async def unified_search(
     vec_result, contract_result = results["vector"], results["contracts"]
 
     vec_items = vec_result.get("items", [])
-    firmy = _merge_firmy_with_vector(
+    companies = _merge_companies_with_vector(
         supp_result.get("items", []),
         proc_result.get("items", []),
         vec_items,
         limit,
     )
-    zakazky = [_contract_to_zakazka(i) for i in contract_result.get("items", [])][:limit]
+    contracts = [_to_contract_hit(i) for i in contract_result.get("items", [])][:limit]
 
-    return UnifiedSearchResponse(q=q, firmy=firmy, zakazky=zakazky)
+    return UnifiedSearchResponse(q=q, companies=companies, contracts=contracts)

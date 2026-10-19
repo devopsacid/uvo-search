@@ -22,9 +22,9 @@ from uvo_api.errors import register_error_handlers
 from uvo_api.metrics import install_metrics, start_background
 from uvo_api.routers import (
     analytics,
+    companies,
     contracts,
     dashboard,
-    firma,
     graph,
     ingestion,
     ingestion_log,
@@ -33,7 +33,6 @@ from uvo_api.routers import (
     suppliers,
     worker_status,
 )
-from uvo_api.routers.firma import firmy_router
 from uvo_api.routers.v1 import create_v1_app
 from uvo_core.adapters.mongo.health import mongo_ready
 from uvo_core.adapters.mongo.search_indexes import (
@@ -172,8 +171,8 @@ def create_app() -> FastAPI:
     app.include_router(contracts.router)
     app.include_router(suppliers.router)
     app.include_router(procurers.router)
-    app.include_router(firma.router)
-    app.include_router(firmy_router)
+    app.include_router(companies.router)
+    app.include_router(companies.legacy_router)
     app.include_router(dashboard.router)
     app.include_router(analytics.router)
     app.include_router(ingestion.router)
