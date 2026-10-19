@@ -2,7 +2,7 @@
 
 ## Overview
 
-Seven long-lived microservices ingest Slovak public procurement data from five sources (UVO Vestník, CRZ, ITMS, TED, NKOD) into MongoDB and Neo4j via Redis Streams. Each service owns its extraction cadence, rate-limit budget, and failure domain. The legacy one-shot `pipeline` service is preserved for ad-hoc historical backfills.
+Six long-lived microservices ingest Slovak public procurement data from five sources (UVO Vestník, CRZ, ITMS, TED, NKOD) into MongoDB and Neo4j via Redis Streams. Each service owns its extraction cadence, rate-limit budget, and failure domain. The legacy one-shot `pipeline` service is preserved for ad-hoc historical backfills.
 
 **Status**: Microservices architecture (source-per-service) implemented as of 2026-04-27. See the detailed design spec at [docs/superpowers/specs/2026-04-27-source-microservices-design.md](superpowers/specs/2026-04-27-source-microservices-design.md).
 
@@ -57,20 +57,20 @@ Seven long-lived microservices ingest Slovak public procurement data from five s
            src/uvo_mcp/
 ```
 
-**New packages & modules** (`uvo_pipeline` shared lib + `uvo_workers` daemon entrypoints):
-- `src/uvo_pipeline/` (shared, no rename):
-  - `redis_client.py` — async Redis factory
-  - `streams.py` — XADD, XREADGROUP, XACK helpers
-  - `pubsub.py` — PUBLISH, SUBSCRIBE helpers
-  - `locks.py` — distributed lock CAS
-  - `cache/` (memory.py, redis.py) — ITMS cache backends
-  - `dedup.py` — cross-source dedup logic
-  - `extractors/` — unchanged (+ `cache_backend` param for ITMS)
-- `src/uvo_workers/` (new package):
-  - `runner.py` — daemon loop, signal handling, /health, lock acquisition
-  - `vestnik.py`, `crz.py`, `ted.py`, `itms.py` — per-source extractors
+**Where the code lives:**
+- `src/uvo_core/adapters/redis/` — `client.py` (Redis factory), `streams.py` (XADD, XREADGROUP, XAUTOCLAIM, XACK, XTRIM), `pubsub.py`, `locks.py`, `notice_stream.py`, `cache_invalidation.py`
+- `src/uvo_core/adapters/mongo/` — `loaders.py` (notice and entity upserts), `dedup.py` (cross-source dedup), `ingestion_log.py`, `checkpoint_store.py`, `search_indexes.py`
+- `src/uvo_core/adapters/neo4j/loader.py` — graph writes
+- `src/uvo_core/infra/clients.py` — client factories shared with the API and MCP
+- `src/uvo_pipeline/` — source extractors (`extractors/`) and transformers (`transformers/`), `utils/` (date validation, `fetch_with_retry`, rate limiter), `catalog/nkod.py` (Vestník discovery), `cache/` (ITMS cache backends), `health.py` (the `health` CLI), `orchestrator.py` (legacy one-shot backfill)
+- `src/uvo_workers/` — daemon entrypoints:
+  - `context.py`, `clients.py`, `settings.py` — `WorkerContext`, the worker's client handles, `WorkerSettings` / `ExtractorSettings`
+  - `extract.py` — `SourceSpec` and the generic `run_extract` loop used by the four extractors
+  - `runner.py` — daemon loop, signal handling, lock acquisition
+  - `vestnik.py`, `crz.py`, `ted.py`, `itms.py` — per-source extractor declarations
   - `ingestor.py` — streams consumer
-  - `dedup.py` — dedup subscriber
+  - `dedup.py` — dedup worker
+  - `metrics.py`, `health.py` — Prometheus metrics and the `/health`, `/readyz` server
 
 ---
 
@@ -83,7 +83,7 @@ Seven long-lived microservices ingest Slovak public procurement data from five s
 | Ekosystem CRZ | REST API | Optional token | Continuous | 2011–present |
 | ITMS | Open data / REST | None | Per ITMS publication schedule | EU structural funds |
 | TED EU API | REST API | None | Daily | All above-threshold |
-| NKOD catalog | CKAN / DCAT | None | On publisher update | Catalog metadata |
+| NKOD catalog | DCAT / SPARQL | None | On publisher update | Catalog metadata (discovers Vestník datasets) |
 
 ---
 
@@ -148,6 +148,7 @@ curl http://localhost:8096/health
 SUBSCRIBE notices:written
 # Debounce 5 seconds (DEDUP_DEBOUNCE_SECONDS)
 # Fallback poll every 1 hour (DEDUP_INTERVAL_SECONDS) if no events arrive
+# Each run takes the dedup:lock Redis lock (DEDUP_LOCK_TTL_SECONDS); a replica that loses the lock skips the run
 # Run cross_source_dedup filtered on canonical_id IS NULL + ingested_at >= now - 30 days
 ```
 
@@ -155,22 +156,22 @@ SUBSCRIBE notices:written
 
 ```bash
 # Historical backfill (full rebuild from 2014)
-docker compose run --rm pipeline run --mode historical
+docker compose --profile legacy run --rm pipeline run --mode historical
 
 # Recent backfill (last 365 days)
-docker compose run --rm pipeline run --mode recent
+docker compose --profile legacy run --rm pipeline run --mode recent
 
 # Dry run (validation only)
-docker compose run --rm pipeline run --mode recent --dry-run
+docker compose --profile legacy run --rm pipeline run --mode recent --dry-run
 ```
 
-The legacy `pipeline` service is kept in `docker-compose.yml` for backwards compatibility; new continuous ingestion runs via the 6 microservices above.
+The legacy `pipeline` service sits behind the `legacy` compose profile, so the `--profile legacy` flag is required. It is kept for ad-hoc backfills; continuous ingestion runs via the 6 microservices above.
 
 ---
 
 ## Common Data Schema
 
-All sources normalize to `CanonicalNotice` before any DB write. See `src/uvo_pipeline/models.py`.
+All sources normalize to `CanonicalNotice` before any DB write. See `src/uvo_core/domain/models.py`.
 
 **Deduplication keys per source:**
 
@@ -181,7 +182,7 @@ All sources normalize to `CanonicalNotice` before any DB write. See `src/uvo_pip
 | `itms` | `(source="itms", source_id=str(id))` | ITMS project/contract ID |
 | `ted` | `(source="ted", source_id=ND_OJ)` | TED official journal number |
 
-**Cross-source deduplication:** After each pipeline run, notices with matching `(procurer_ico, cpv_code)` from different sources are linked via a shared `canonical_id` field. Links are stored in the `cross_source_matches` collection.
+**Cross-source deduplication:** The `dedup-worker` links notices with matching `(procurer_ico, cpv_code)` from different sources via a shared `canonical_id` field. Links are stored in the `cross_source_matches` collection.
 
 ---
 
@@ -196,7 +197,6 @@ All sources normalize to `CanonicalNotice` before any DB write. See `src/uvo_pip
 | `suppliers` | `ico` unique (sparse) + `name_slug` unique | text on `name` |
 | `cross_source_matches` | `canonical_id` | `notice_ids` array |
 | `pipeline_state` | `source` unique | — |
-| `ckan_packages` | `package_id` unique | `last_modified desc` |
 
 ---
 
@@ -259,7 +259,7 @@ docker compose down
 
 ```bash
 # Build images
-docker compose build redis extractor-vestnik extractor-crz extractor-ted extractor-itms ingestor dedup-worker
+docker compose build extractor-vestnik extractor-crz extractor-ted extractor-itms ingestor dedup-worker
 
 # Start new stack (without legacy pipeline, for cutover):
 docker compose up -d redis extractor-vestnik extractor-crz extractor-ted extractor-itms ingestor dedup-worker
@@ -295,6 +295,15 @@ curl http://localhost:8094/health  # extractor-itms
 curl http://localhost:8095/health  # ingestor
 curl http://localhost:8096/health  # dedup-worker
 ```
+
+The `health` CLI prints a per-source report from MongoDB (counts, last ingestion, registry skips, cross-source matches):
+
+```bash
+uv run python -m uvo_pipeline health          # human-readable
+uv run python -m uvo_pipeline health --json   # machine-readable
+```
+
+It does not report the `notices:dead` stream. Check that stream with `XLEN notices:dead`, or with the `uvo_worker_dead_letter_length` metric.
 
 ### Storage inspection
 
@@ -404,6 +413,7 @@ RECENT_DAYS=365                   # used by `pipeline run --mode recent`
 | Dedup-worker never runs | No `notices:written` events (ingestor not publishing) | Check `docker compose logs ingestor` and `docker compose logs dedup-worker` |
 | Redis connection refused | Redis not running or wrong URI | Verify `REDIS_URL` in `.env`, run `docker compose up redis` |
 | ITMS extractor re-fetches everything on restart | Cache backend is `memory` (in-process only) | Set `ITMS_CACHE_BACKEND=redis` for persistent cache across restarts |
+| Entries accumulate in `notices:dead` | Notices failed `INGESTOR_MAX_DELIVERIES` deliveries and were dead-lettered | Inspect with `XRANGE notices:dead - + COUNT 10` and fix the underlying cause. Dead-lettered entries are not replayed automatically; decide case by case whether to re-run the source |
 | Neo4j OOM | Heap too small | Set `NEO4J_server_memory_heap_max__size: 2g` in `docker-compose.yml` |
 
 ---
@@ -412,8 +422,8 @@ RECENT_DAYS=365                   # used by `pipeline run --mode recent`
 
 1. Add extractor: `src/uvo_pipeline/extractors/<source>.py` — async generator yielding raw dicts
 2. Add transformer: `src/uvo_pipeline/transformers/<source>.py` — `transform_<entity>(raw) -> CanonicalNotice`
-3. For microservices: Create daemon entry in `src/uvo_workers/<source>.py` (inherits from `runner.py`)
-   - Implement extraction loop, stream publishing, checkpoint update
+3. For microservices: Declare a `SourceSpec` in `src/uvo_workers/<source>.py` and run it through `run_extract` (`uvo_workers/extract.py`)
+   - Provide the fetch and transform hooks; the shared loop handles stream publishing, backpressure, and checkpoint update
    - Expose via `uv run python -m uvo_workers.<source>`
    - Add to `docker-compose.yml` service block
 4. For legacy pipeline: Add extraction block to `src/uvo_pipeline/orchestrator.py::run()`

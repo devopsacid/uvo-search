@@ -6,6 +6,18 @@ Baseline: `main` @ `3428cd3`. Ruff clean, 582 unit tests green (85% coverage on 
 Finding IDs are prefixed by source review: **A** = architecture, **B** = backend, **P** = pipeline,
 **G** = GUI/CI.
 
+## Status
+
+Status as of 2026-10-19, after the refactor merges. The wave tables below keep the original plan text
+and file paths; where a path has since moved, the current location is in `CLAUDE.md` and `git log 3428cd3..main`.
+
+- **Wave 1 (W1–W6): done, merged to `main`.**
+- **Wave 2:**
+  - Done: A01 (`uvo_core.adapters`, import-linter contract in CI), A04/B19 (`run_query` removed; routers call `uvo_core.services`), A13, A14 (single owner for search-index and Neo4j constraint bootstrap; shared cache-invalidation subscriber), A18 (`SourceSpec` + `run_extract`, `WorkerSettings`).
+  - Done for API and MCP, partly done for workers: A09. Client factories live in `uvo_core.infra.clients` and are lifespan-owned in API and MCP. Workers build their handles in `uvo_workers/clients.py`. Switching workers to `uvo_core.infra.clients` is a remaining one-liner.
+- **Also done:** A20 (`/readyz` with bounded Mongo ping on API and MCP; `/health` stays liveness).
+- **Deferred:** the original items below are unchanged in intent. Items found during Wave 2 are added at the end of the table.
+
 ## Guardrails
 
 - Merging to `main` builds images but does **not** deploy — prod is pinned by `sha-<tag>` in `stubarag-infra`.
@@ -109,3 +121,9 @@ A03: delete `catalog/ckan.py`, `extractors/vestnik_xml.py`, `utils/zip_handler.p
 | A10 | Delete `deploy/` — harvest hardening into the `stubarag-infra` chart first |
 | A02 | Delete `orchestrator.py` / pipeline image — first add a one-shot backfill mode to the workers |
 | A17/A12 | Typed read-models; large function splits — after Wave 2 |
+| F2 | Two definitions of contract count and total value. Entity docs from `recompute_entity_stats` count all notice types and use `final_value` only. `entity_profile` counts `contract_award` only, with a final→estimated fallback. Needs a product decision on the definition, then a stats recompute on existing data |
+| — | Notices Atlas Search index rebuild on deploy. Text search returns nothing until the rebuilt index is READY. Measure rebuild time on prod-size data before rollout |
+| — | Ego-network benchmark at prod volume. B6 bounds the query, but it has not been timed on prod-size data |
+| — | CRZ extractor still retries only HTTP 429 (`uvo_pipeline/extractors/crz.py`). It does not use the shared `fetch_with_retry`, so 5xx and timeouts are not retried |
+| — | `cpv_network` (`uvo_core/adapters/neo4j/graph.py`) lacks the null-ICO filter. `procurement_network` has `s.ico IS NOT NULL` since `17c3b13`, so the CPV graph can still show null-ICO supplier nodes |
+| — | MCP Redis env in the Helm chart. MCP needs `REDIS_URL` and `REDIS_PASSWORD` in `stubarag-infra`; without them cache invalidation falls back to TTL with a warning. Local `docker-compose.yml` does not set them explicitly for `mcp-server` either; it relies on `.env` |
