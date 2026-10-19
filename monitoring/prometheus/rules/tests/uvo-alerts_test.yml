@@ -1,0 +1,466 @@
+# promtool unit tests for ../uvo-alerts.yml
+# Run: monitoring/scripts/validate.sh   (or see monitoring/README.md)
+# Every alert has at least one firing and one non-firing case.
+rule_files:
+  - ../uvo-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # --- availability ---------------------------------------------------------
+  - name: worker down fires only for the dead worker
+    interval: 1m
+    input_series:
+      - series: 'up{job="uvo-workers", component="extractor-crz"}'
+        values: "0x20"
+      - series: 'up{job="uvo-workers", component="extractor-vestnik"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: UvoWorkerDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: UvoWorkerDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: uvo-workers, component: extractor-crz}
+            exp_annotations: &worker_down_ann
+              summary: "Worker extractor-crz is not scrapable"
+              description: "Prometheus could not scrape extractor-crz for 5 minutes (threshold: 5m)."
+              runbook: "monitoring/README.md#uvoworkerdown"
+
+  - name: api and mcp down
+    interval: 1m
+    input_series:
+      - series: 'up{job="uvo-api"}'
+        values: "0x20"
+      - series: 'up{job="uvo-mcp"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: UvoApiDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: uvo-api}
+            exp_annotations:
+              summary: "uvo-api is not scrapable"
+              description: "The API /metrics endpoint has been unreachable for 5 minutes (threshold: 5m)."
+              runbook: "monitoring/README.md#uvoapidown"
+      - eval_time: 10m
+        alertname: UvoMcpDown
+        exp_alerts: []
+
+  - name: mcp down fires, api up stays quiet
+    interval: 1m
+    input_series:
+      - series: 'up{job="uvo-api"}'
+        values: "1x20"
+      - series: 'up{job="uvo-mcp"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: UvoMcpDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: uvo-mcp}
+            exp_annotations:
+              summary: "uvo-mcp is not scrapable"
+              description: "The MCP /metrics endpoint has been unreachable for 5 minutes (threshold: 5m)."
+              runbook: "monitoring/README.md#uvomcpdown"
+      - eval_time: 10m
+        alertname: UvoApiDown
+        exp_alerts: []
+
+  - name: readiness fires per service
+    interval: 1m
+    input_series:
+      - series: 'uvo_ready{service="uvo-api"}'
+        values: "0x20"
+      - series: 'uvo_ready{service="uvo-mcp"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: UvoApiNotReady
+        exp_alerts:
+          - exp_labels: {severity: critical, service: uvo-api}
+            exp_annotations:
+              summary: "uvo-api reports not ready"
+              description: "uvo_ready is 0 (Mongo ping or Atlas Search indexes failing) for 5 minutes (threshold: 5m)."
+              runbook: "monitoring/README.md#uvoapinotready"
+      - eval_time: 10m
+        alertname: UvoMcpNotReady
+        exp_alerts: []
+
+  - name: mcp not ready fires, api ready stays quiet
+    interval: 1m
+    input_series:
+      - series: 'uvo_ready{service="uvo-api"}'
+        values: "1x20"
+      - series: 'uvo_ready{service="uvo-mcp"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: UvoMcpNotReady
+        exp_alerts:
+          - exp_labels: {severity: critical, service: uvo-mcp}
+            exp_annotations:
+              summary: "uvo-mcp reports not ready"
+              description: "uvo_ready is 0 (Mongo ping or Atlas Search indexes failing) for 5 minutes (threshold: 5m)."
+              runbook: "monitoring/README.md#uvomcpnotready"
+      - eval_time: 10m
+        alertname: UvoApiNotReady
+        exp_alerts: []
+
+  # --- streams --------------------------------------------------------------
+  - name: stream lag over threshold fires, under threshold does not
+    interval: 1m
+    input_series:
+      - series: 'uvo_worker_stream_lag{component="ingestor", stream="notices:crz"}'
+        values: "20000x30"
+      - series: 'uvo_worker_stream_lag{component="ingestor", stream="notices:ted"}'
+        values: "9000x30"
+    alert_rule_test:
+      - eval_time: 10m   # above threshold but not yet 15m
+        alertname: UvoStreamLagHigh
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: UvoStreamLagHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, stream: "notices:crz"}
+            exp_annotations:
+              summary: "Stream notices:crz lag is 20k"
+              description: "Undelivered entries on notices:crz exceed 10000 for 15 minutes (threshold: 10000, 15m). The ingestor is not keeping up."
+              runbook: "monitoring/README.md#uvostreamlaghigh"
+
+  - name: stream pending stuck
+    interval: 1m
+    input_series:
+      - series: 'uvo_worker_stream_pending{component="ingestor", stream="notices:itms"}'
+        values: "600x60"
+      - series: 'uvo_worker_stream_pending{component="ingestor", stream="notices:vestnik"}'
+        values: "100x60"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UvoStreamPendingStuck
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: UvoStreamPendingStuck
+        exp_alerts:
+          - exp_labels: {severity: warning, stream: "notices:itms"}
+            exp_annotations:
+              summary: "Stream notices:itms has 600 pending entries"
+              description: "Delivered-but-unacked entries on notices:itms exceed 500 for 30 minutes (threshold: 500, 30m). Entries are failing to write to Mongo/Neo4j."
+              runbook: "monitoring/README.md#uvostreampendingstuck"
+
+  - name: dead letters growing slowly (warning) vs fast (critical) vs flat (quiet)
+    interval: 1m
+    input_series:
+      # +5 over the hour -> warning only
+      - series: 'uvo_worker_dead_letter_length{component="slow"}'
+        values: "0+0x30 5+0x60"
+      # +500 over the hour -> critical only
+      - series: 'uvo_worker_dead_letter_length{component="fast"}'
+        values: "0+0x30 500+0x60"
+      # flat -> nothing
+      - series: 'uvo_worker_dead_letter_length{component="flat"}'
+        values: "7+0x90"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: UvoDeadLettersGrowing
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: UvoDeadLettersGrowing
+        exp_alerts:
+          - exp_labels: {severity: warning, component: slow}
+            exp_annotations:
+              summary: "Dead letters grew on slow"
+              description: "notices:dead grew by 5 in the last hour (threshold: >0 warning, >100 critical)."
+              runbook: "monitoring/README.md#uvodeadlettersgrowing"
+      - eval_time: 45m
+        alertname: UvoDeadLettersGrowingFast
+        exp_alerts:
+          - exp_labels: {severity: critical, component: fast}
+            exp_annotations:
+              summary: "Dead letters surging on fast"
+              description: "notices:dead grew by 506 in the last hour (threshold: >100)."
+              runbook: "monitoring/README.md#uvodeadlettersgrowing"
+
+  # --- extractors -----------------------------------------------------------
+  # Evaluation time is shifted far from 0 so `time() - ts` is meaningful:
+  # the sample value is a unix timestamp, so tests use small absolute values
+  # and evaluate at known offsets (time() inside promtool starts at 0).
+  - name: extractor stalled uses per-source cadence (crz 3h, ted 18h)
+    interval: 1m
+    input_series:
+      # last success at t=1000s for both
+      - series: 'uvo_worker_last_success_timestamp_seconds{component="extractor-crz"}'
+        values: "1000x1300"
+      - series: 'uvo_worker_last_success_timestamp_seconds{component="extractor-ted"}'
+        values: "1000x1300"
+      # healthy: refreshes recently (stored value is constant, so use a late timestamp)
+      - series: 'uvo_worker_last_success_timestamp_seconds{component="extractor-itms"}'
+        values: "36000x1300"
+    alert_rule_test:
+      # t=2h: nothing stale
+      - eval_time: 2h
+        alertname: UvoExtractorStalled
+        exp_alerts: []
+      # t=4h: crz stale (>3h since 1000s), ted still within 18h, itms last at 10h in the future of t -> negative age
+      - eval_time: 4h
+        alertname: UvoExtractorStalled
+        exp_alerts:
+          - exp_labels: {severity: warning, component: extractor-crz}
+            exp_annotations:
+              summary: "Extractor extractor-crz has not succeeded recently"
+              description: "No successful cycle for over the threshold (3h for vestnik/crz/itms, 18h for ted)."
+              runbook: "monitoring/README.md#uvoextractorstalled"
+      # t=19h: ted stale too
+      - eval_time: 19h
+        alertname: UvoExtractorStalled
+        exp_alerts:
+          - exp_labels: {severity: warning, component: extractor-crz}
+            exp_annotations:
+              summary: "Extractor extractor-crz has not succeeded recently"
+              description: "No successful cycle for over the threshold (3h for vestnik/crz/itms, 18h for ted)."
+              runbook: "monitoring/README.md#uvoextractorstalled"
+          - exp_labels: {severity: warning, component: extractor-ted}
+            exp_annotations:
+              summary: "Extractor extractor-ted has not succeeded recently"
+              description: "No successful cycle for over the threshold (3h for vestnik/crz/itms, 18h for ted)."
+              runbook: "monitoring/README.md#uvoextractorstalled"
+          - exp_labels: {severity: warning, component: extractor-itms}
+            exp_annotations:
+              summary: "Extractor extractor-itms has not succeeded recently"
+              description: "No successful cycle for over the threshold (3h for vestnik/crz/itms, 18h for ted)."
+              runbook: "monitoring/README.md#uvoextractorstalled"
+
+  - name: stalled alert ignores extractors that never succeeded (timestamp 0)
+    interval: 1m
+    input_series:
+      - series: 'uvo_worker_last_success_timestamp_seconds{component="extractor-vestnik"}'
+        values: "0x1300"
+      - series: 'uvo_worker_start_timestamp_seconds{component="extractor-vestnik"}'
+        values: "0x1300"
+    alert_rule_test:
+      - eval_time: 5h
+        alertname: UvoExtractorStalled
+        exp_alerts: []
+
+  - name: never-succeeded guard waits 30 minutes after start
+    interval: 1m
+    input_series:
+      - series: 'uvo_worker_last_success_timestamp_seconds{component="extractor-itms"}'
+        values: "0x120"
+      - series: 'uvo_worker_start_timestamp_seconds{component="extractor-itms"}'
+        values: "0x120"
+      # a succeeded extractor must not fire
+      - series: 'uvo_worker_last_success_timestamp_seconds{component="extractor-crz"}'
+        values: "5000x120"
+      - series: 'uvo_worker_start_timestamp_seconds{component="extractor-crz"}'
+        values: "0x120"
+      # non-extractor with 0 must not fire
+      - series: 'uvo_worker_last_success_timestamp_seconds{component="dedup-worker"}'
+        values: "0x120"
+      - series: 'uvo_worker_start_timestamp_seconds{component="dedup-worker"}'
+        values: "0x120"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UvoExtractorNeverSucceeded
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: UvoExtractorNeverSucceeded
+        exp_alerts:
+          - exp_labels: {severity: warning, component: extractor-itms}
+            exp_annotations:
+              summary: "Extractor extractor-itms has never succeeded since start"
+              description: "Process is older than 30 minutes and has no successful cycle (threshold: 30m since start)."
+              runbook: "monitoring/README.md#uvoextractorneversucceeded"
+
+  # --- worker health --------------------------------------------------------
+  - name: persistent worker error
+    interval: 1m
+    input_series:
+      - series: 'uvo_worker_last_error{component="extractor-crz"}'
+        values: "1x60"
+      - series: 'uvo_worker_last_error{component="extractor-ted"}'
+        values: "0x60"
+      # transient error that clears -> never reaches 30m
+      - series: 'uvo_worker_last_error{component="ingestor"}'
+        values: "1x10 0x50"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UvoWorkerErrorPersisting
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: UvoWorkerErrorPersisting
+        exp_alerts:
+          - exp_labels: {severity: warning, component: extractor-crz}
+            exp_annotations:
+              summary: "Worker extractor-crz has reported an error for 30 minutes"
+              description: "uvo_worker_last_error has been 1 for 30 minutes (threshold: 30m)."
+              runbook: "monitoring/README.md#uvoworkererrorpersisting"
+
+  - name: redis disconnected
+    interval: 1m
+    input_series:
+      - series: 'uvo_worker_redis_connected{component="ingestor"}'
+        values: "0x20"
+      - series: 'uvo_worker_redis_connected{component="dedup-worker"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: UvoWorkerRedisDisconnected
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: UvoWorkerRedisDisconnected
+        exp_alerts:
+          - exp_labels: {severity: critical, component: ingestor}
+            exp_annotations:
+              summary: "Worker ingestor lost its Redis connection"
+              description: "uvo_worker_redis_connected is 0 for 5 minutes (threshold: 5m)."
+              runbook: "monitoring/README.md#uvoworkerredisdisconnected"
+
+  # --- data freshness -------------------------------------------------------
+  - name: source stale excludes the legacy uvo source
+    interval: 1m
+    input_series:
+      # last ingestion at t=0 for both; evaluated at 49h -> stale
+      - series: 'uvo_source_last_ingested_timestamp_seconds{source="crz"}'
+        values: "0x3000"
+      - series: 'uvo_source_last_ingested_timestamp_seconds{source="uvo"}'
+        values: "0x3000"
+      # fresh: ingested at 48h (172800s)
+      - series: 'uvo_source_last_ingested_timestamp_seconds{source="ted"}'
+        values: "172800x3000"
+    alert_rule_test:
+      - eval_time: 47h
+        alertname: UvoSourceStale
+        exp_alerts: []
+      - eval_time: 49h
+        alertname: UvoSourceStale
+        exp_alerts:
+          - exp_labels: {severity: warning, source: crz}
+            exp_annotations:
+              summary: "Source crz has no new data for over 48h"
+              description: "Last ingestion was 2d 1h 0m 0s ago (threshold: 48h). A source that never ingested reports timestamp 0 and fires too. The legacy source uvo is excluded."
+              runbook: "monitoring/README.md#uvosourcestale"
+
+  # --- API ------------------------------------------------------------------
+  - name: api error rate fires above 5% with traffic, not below, not without traffic
+    interval: 1m
+    input_series:
+      # 1 req/s total, 10% errors
+      - series: 'uvo_api_http_requests_total{method="GET", route="/api/x", status="200"}'
+        values: "0+54x40"
+      - series: 'uvo_api_http_requests_total{method="GET", route="/api/x", status="500"}'
+        values: "0+6x40"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UvoApiErrorRate
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: UvoApiErrorRate
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "API 5xx ratio is 10%"
+              description: "More than 5% of API requests failed for 10 minutes (threshold: 5%, only evaluated above 0.1 req/s)."
+              runbook: "monitoring/README.md#uvoapierrorrate"
+
+  - name: api error rate below 5% stays quiet
+    interval: 1m
+    input_series:
+      - series: 'uvo_api_http_requests_total{method="GET", route="/api/x", status="200"}'
+        values: "0+59x40"
+      - series: 'uvo_api_http_requests_total{method="GET", route="/api/x", status="500"}'
+        values: "0+1x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: UvoApiErrorRate
+        exp_alerts: []
+
+  - name: api error rate traffic guard (100% errors but 0.02 req/s)
+    interval: 1m
+    input_series:
+      - series: 'uvo_api_http_requests_total{method="GET", route="/api/x", status="500"}'
+        values: "0+1x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: UvoApiErrorRate
+        exp_alerts: []
+
+  - name: api slow fires on p95 above 2s for watched routes only
+    interval: 1m
+    input_series:
+      # all requests land in the le=5 bucket -> p95 well above 2s
+      - series: 'uvo_api_http_request_duration_seconds_bucket{route="/api/analytics/top", le="1"}'
+        values: "0+0x40"
+      - series: 'uvo_api_http_request_duration_seconds_bucket{route="/api/analytics/top", le="5"}'
+        values: "0+60x40"
+      - series: 'uvo_api_http_request_duration_seconds_bucket{route="/api/analytics/top", le="+Inf"}'
+        values: "0+60x40"
+      # fast route that is not watched
+      - series: 'uvo_api_http_request_duration_seconds_bucket{route="/api/health", le="1"}'
+        values: "0+600x40"
+      - series: 'uvo_api_http_request_duration_seconds_bucket{route="/api/health", le="5"}'
+        values: "0+600x40"
+      - series: 'uvo_api_http_request_duration_seconds_bucket{route="/api/health", le="+Inf"}'
+        values: "0+600x40"
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: UvoApiSlow
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: UvoApiSlow
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "API p95 latency is 4.8s"
+              description: "p95 over analytics/contracts/search routes exceeds 2s for 10 minutes (threshold: 2s)."
+              runbook: "monitoring/README.md#uvoapislow"
+
+  - name: api fast routes do not trip the slow alert
+    interval: 1m
+    input_series:
+      - series: 'uvo_api_http_request_duration_seconds_bucket{route="/api/search", le="0.5"}'
+        values: "0+60x40"
+      - series: 'uvo_api_http_request_duration_seconds_bucket{route="/api/search", le="+Inf"}'
+        values: "0+60x40"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: UvoApiSlow
+        exp_alerts: []
+
+  - name: cache hit rate low needs traffic and sustained low ratio
+    interval: 1m
+    input_series:
+      # 10% hit ratio at ~1 lookup/s
+      - series: 'uvo_cache_requests_total{cache="a", result="hit"}'
+        values: "0+6x120"
+      - series: 'uvo_cache_requests_total{cache="a", result="miss"}'
+        values: "0+54x120"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: UvoCacheHitRateLow
+        exp_alerts: []
+      - eval_time: 90m
+        alertname: UvoCacheHitRateLow
+        exp_alerts:
+          - exp_labels: {severity: info}
+            exp_annotations:
+              summary: "Cache hit ratio is 10%"
+              description: "Hit ratio below 50% for 30 minutes (threshold: 50%, only evaluated above 0.05 lookups/s)."
+              runbook: "monitoring/README.md#uvocachehitratelow"
+
+  - name: cache hit rate healthy or idle stays quiet
+    interval: 1m
+    input_series:
+      # healthy 90% hit ratio
+      - series: 'uvo_cache_requests_total{cache="a", result="hit"}'
+        values: "0+54x120"
+      - series: 'uvo_cache_requests_total{cache="a", result="miss"}'
+        values: "0+6x120"
+      # idle cache with terrible ratio but negligible traffic
+      - series: 'uvo_cache_requests_total{cache="idle", result="miss"}'
+        values: "0+0x120"
+    alert_rule_test:
+      - eval_time: 90m
+        alertname: UvoCacheHitRateLow
+        exp_alerts: []

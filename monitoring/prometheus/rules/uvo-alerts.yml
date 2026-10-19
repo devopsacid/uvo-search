@@ -1,0 +1,184 @@
+# Alert rules for the UVO stack (spec 2026-10-19-analytics-dashboards section 8.3).
+# Thresholds are starting points; tune after a week of data. Each runbook
+# annotation points at a section of monitoring/README.md.
+groups:
+  - name: uvo-availability
+    rules:
+      - alert: UvoWorkerDown
+        expr: up{job="uvo-workers"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Worker {{ $labels.component }} is not scrapable"
+          description: "Prometheus could not scrape {{ $labels.component }} for 5 minutes (threshold: 5m)."
+          runbook: "monitoring/README.md#uvoworkerdown"
+
+      - alert: UvoApiDown
+        expr: up{job="uvo-api"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "uvo-api is not scrapable"
+          description: "The API /metrics endpoint has been unreachable for 5 minutes (threshold: 5m)."
+          runbook: "monitoring/README.md#uvoapidown"
+
+      - alert: UvoMcpDown
+        expr: up{job="uvo-mcp"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "uvo-mcp is not scrapable"
+          description: "The MCP /metrics endpoint has been unreachable for 5 minutes (threshold: 5m)."
+          runbook: "monitoring/README.md#uvomcpdown"
+
+      - alert: UvoApiNotReady
+        expr: uvo_ready{service="uvo-api"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "uvo-api reports not ready"
+          description: "uvo_ready is 0 (Mongo ping or Atlas Search indexes failing) for 5 minutes (threshold: 5m)."
+          runbook: "monitoring/README.md#uvoapinotready"
+
+      - alert: UvoMcpNotReady
+        expr: uvo_ready{service="uvo-mcp"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "uvo-mcp reports not ready"
+          description: "uvo_ready is 0 (Mongo ping or Atlas Search indexes failing) for 5 minutes (threshold: 5m)."
+          runbook: "monitoring/README.md#uvomcpnotready"
+
+  - name: uvo-pipeline
+    rules:
+      - alert: UvoStreamLagHigh
+        expr: max by (stream) (uvo_worker_stream_lag) > 10000
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Stream {{ $labels.stream }} lag is {{ $value | humanize }}"
+          description: "Undelivered entries on {{ $labels.stream }} exceed 10000 for 15 minutes (threshold: 10000, 15m). The ingestor is not keeping up."
+          runbook: "monitoring/README.md#uvostreamlaghigh"
+
+      - alert: UvoStreamPendingStuck
+        expr: max by (stream) (uvo_worker_stream_pending) > 500
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "Stream {{ $labels.stream }} has {{ $value | humanize }} pending entries"
+          description: "Delivered-but-unacked entries on {{ $labels.stream }} exceed 500 for 30 minutes (threshold: 500, 30m). Entries are failing to write to Mongo/Neo4j."
+          runbook: "monitoring/README.md#uvostreampendingstuck"
+
+      - alert: UvoDeadLettersGrowing
+        # delta() rather than increase(): the dead-letter length is a gauge
+        # and increase() would treat every decrease as a counter reset.
+        expr: delta(uvo_worker_dead_letter_length[1h]) > 0 and delta(uvo_worker_dead_letter_length[1h]) <= 100
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: "Dead letters grew on {{ $labels.component }}"
+          description: 'notices:dead grew by {{ $value | printf "%.0f" }} in the last hour (threshold: >0 warning, >100 critical).'
+          runbook: "monitoring/README.md#uvodeadlettersgrowing"
+
+      - alert: UvoDeadLettersGrowingFast
+        expr: delta(uvo_worker_dead_letter_length[1h]) > 100
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: "Dead letters surging on {{ $labels.component }}"
+          description: 'notices:dead grew by {{ $value | printf "%.0f" }} in the last hour (threshold: >100).'
+          runbook: "monitoring/README.md#uvodeadlettersgrowing"
+
+      - alert: UvoExtractorStalled
+        expr: |
+          (
+            time() - uvo_worker_last_success_timestamp_seconds{component=~"extractor-(vestnik|crz|itms)"} > 3 * 3600
+            or
+            time() - uvo_worker_last_success_timestamp_seconds{component="extractor-ted"} > 3 * 21600
+          )
+          and uvo_worker_last_success_timestamp_seconds > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Extractor {{ $labels.component }} has not succeeded recently"
+          description: "No successful cycle for over the threshold (3h for vestnik/crz/itms, 18h for ted)."
+          runbook: "monitoring/README.md#uvoextractorstalled"
+
+      - alert: UvoExtractorNeverSucceeded
+        expr: |
+          uvo_worker_last_success_timestamp_seconds{component=~"extractor-.*"} == 0
+          and on (component)
+          (time() - uvo_worker_start_timestamp_seconds > 1800)
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: "Extractor {{ $labels.component }} has never succeeded since start"
+          description: "Process is older than 30 minutes and has no successful cycle (threshold: 30m since start)."
+          runbook: "monitoring/README.md#uvoextractorneversucceeded"
+
+      - alert: UvoWorkerErrorPersisting
+        expr: uvo_worker_last_error == 1
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "Worker {{ $labels.component }} has reported an error for 30 minutes"
+          description: "uvo_worker_last_error has been 1 for 30 minutes (threshold: 30m)."
+          runbook: "monitoring/README.md#uvoworkererrorpersisting"
+
+      - alert: UvoWorkerRedisDisconnected
+        expr: uvo_worker_redis_connected == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Worker {{ $labels.component }} lost its Redis connection"
+          description: "uvo_worker_redis_connected is 0 for 5 minutes (threshold: 5m)."
+          runbook: "monitoring/README.md#uvoworkerredisdisconnected"
+
+  - name: uvo-data
+    rules:
+      - alert: UvoSourceStale
+        expr: time() - uvo_source_last_ingested_timestamp_seconds{source!="uvo"} > 172800
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: "Source {{ $labels.source }} has no new data for over 48h"
+          description: "Last ingestion was {{ $value | humanizeDuration }} ago (threshold: 48h). A source that never ingested reports timestamp 0 and fires too. The legacy source uvo is excluded."
+          runbook: "monitoring/README.md#uvosourcestale"
+
+  - name: uvo-api
+    rules:
+      - alert: UvoApiErrorRate
+        expr: |
+          sum(rate(uvo_api_http_requests_total{status=~"5.."}[10m]))
+            / sum(rate(uvo_api_http_requests_total[10m])) > 0.05
+          and sum(rate(uvo_api_http_requests_total[10m])) > 0.1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "API 5xx ratio is {{ $value | humanizePercentage }}"
+          description: "More than 5% of API requests failed for 10 minutes (threshold: 5%, only evaluated above 0.1 req/s)."
+          runbook: "monitoring/README.md#uvoapierrorrate"
+
+      - alert: UvoApiSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(uvo_api_http_request_duration_seconds_bucket{route=~"/api/(analytics|contracts|search).*"}[10m]))
+          ) > 2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "API p95 latency is {{ $value | humanizeDuration }}"
+          description: "p95 over analytics/contracts/search routes exceeds 2s for 10 minutes (threshold: 2s)."
+          runbook: "monitoring/README.md#uvoapislow"
+
+      - alert: UvoCacheHitRateLow
+        expr: |
+          sum(rate(uvo_cache_requests_total{result="hit"}[30m]))
+            / sum(rate(uvo_cache_requests_total[30m])) < 0.5
+          and sum(rate(uvo_cache_requests_total[30m])) > 0.05
+        for: 30m
+        labels: {severity: info}
+        annotations:
+          summary: "Cache hit ratio is {{ $value | humanizePercentage }}"
+          description: "Hit ratio below 50% for 30 minutes (threshold: 50%, only evaluated above 0.05 lookups/s)."
+          runbook: "monitoring/README.md#uvocachehitratelow"

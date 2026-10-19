@@ -1,0 +1,21 @@
+# NOT APPLIED ANYWHERE. Rendering input for stubarag-infra; see README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: uvo-grafana-dashboards
+    files:
+      - ../grafana/dashboards/uvo-pipeline-health.json
+      - ../grafana/dashboards/uvo-api-performance.json
+      - ../grafana/dashboards/uvo-data-freshness.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+        app.kubernetes.io/part-of: uvo-search
+  - name: uvo-prometheus-rules
+    files:
+      - ../prometheus/rules/uvo-alerts.yml
+    options:
+      labels:
+        app.kubernetes.io/part-of: uvo-search

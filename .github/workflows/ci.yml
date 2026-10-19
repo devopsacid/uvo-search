@@ -205,6 +205,43 @@ jobs:
             exit 1
           fi
 
+  monitoring:
+    name: Validate monitoring stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: promtool and dashboard checks
+        run: monitoring/scripts/validate.sh
+
+      - name: Grafana provisioning smoke test (no app stack)
+        run: |
+          # compose requires .env to exist; secrets are generated per run.
+          cp .env.example .env
+          GRAFANA_PW="$(openssl rand -hex 16)"
+          {
+            echo "MONGO_PASSWORD=$(openssl rand -hex 16)"
+            echo "NEO4J_PASSWORD=$(openssl rand -hex 16)"
+            echo "GRAFANA_ADMIN_PASSWORD=${GRAFANA_PW}"
+          } >> .env
+          # curl reads the credentials from a 0600 file, not the command line.
+          umask 077
+          printf 'user = "admin:%s"\n' "${GRAFANA_PW}" > "${RUNNER_TEMP}/curl-auth"
+          docker compose --profile monitoring up -d --wait prometheus grafana
+          for i in $(seq 1 30); do
+            n=$(curl -sf -K "${RUNNER_TEMP}/curl-auth" 'http://127.0.0.1:3000/api/search?type=dash-db&query=UVO' | jq 'length' || echo 0)
+            [ "${n}" = "3" ] && break
+            sleep 2
+          done
+          [ "${n}" = "3" ] || { echo "::error::expected 3 provisioned dashboards, found ${n}"; docker compose logs grafana | tail -50; exit 1; }
+          curl -sf http://127.0.0.1:9090/api/v1/rules | jq -e '[.data.groups[].rules | length] | add > 0'
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose --profile monitoring down -v
+          rm -f .env "${RUNNER_TEMP}/curl-auth"
+
   docker-compose:
     name: Docker Compose Build & E2E
     runs-on: ubuntu-latest
