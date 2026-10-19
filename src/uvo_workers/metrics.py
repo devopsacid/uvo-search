@@ -23,8 +23,12 @@ class WorkerMetricsCollector:
     worker process) and would just be another layer to reach through.
     """
 
-    def __init__(self, component: str) -> None:
+    def __init__(
+        self, component: str, *, source: str | None = None, instance_id: str | None = None
+    ) -> None:
         self.component = component
+        self.source = source or ""
+        self.instance_id = instance_id or ""
         self.snapshot: dict = {}
 
     def collect(self):
@@ -84,8 +88,63 @@ class WorkerMetricsCollector:
         redis_gauge.add_metric([], 1 if self.snapshot.get("redis_connected") else 0)
         yield redis_gauge
 
+        # Counters below are only emitted when the worker tracks them, so e.g. an
+        # extractor never reports dedup_runs.
+        for family, help_text, key in (
+            (
+                "uvo_worker_cycles_completed",
+                "Extraction/processing cycles completed since start",
+                "cycles_completed",
+            ),
+            (
+                "uvo_worker_cycles_skipped_locked",
+                "Cycles skipped because another instance held the lock",
+                "cycles_skipped_locked",
+            ),
+            ("uvo_worker_dedup_runs", "Dedup passes run since start", "dedup_runs"),
+        ):
+            if key in self.snapshot:
+                counter = CounterMetricFamily(family, help_text, labels=["component"])
+                counter.add_metric([self.component], self.snapshot.get(key) or 0)
+                yield counter
 
-def build_registry(component: str) -> WorkerMetricsCollector:
+        if "last_error" in self.snapshot:
+            err = GaugeMetricFamily(
+                "uvo_worker_last_error",
+                "1 when the most recent cycle ended in an error",
+                labels=["component"],
+            )
+            err.add_metric([self.component], 0 if self.snapshot["last_error"] is None else 1)
+            yield err
+
+        if self.snapshot.get("started_at_ts") is not None:
+            started = GaugeMetricFamily(
+                "uvo_worker_start_timestamp_seconds",
+                "Unix time the worker process started",
+                labels=["component"],
+            )
+            started.add_metric([self.component], self.snapshot["started_at_ts"])
+            yield started
+
+        info = GaugeMetricFamily(
+            "uvo_worker_info",
+            "Constant 1; labels identify the worker instance",
+            labels=["component", "source", "instance_id"],
+        )
+        info.add_metric(
+            [
+                self.component,
+                self.source,
+                self.instance_id or str(self.snapshot.get("instance_id") or ""),
+            ],
+            1,
+        )
+        yield info
+
+
+def build_registry(
+    component: str, *, source: str | None = None, instance_id: str | None = None
+) -> WorkerMetricsCollector:
     """Create the per-process metrics collector for `component`.
 
     Name kept as `build_registry` for call-site continuity; it returns a
@@ -93,7 +152,7 @@ def build_registry(component: str) -> WorkerMetricsCollector:
     a fresh instance per process keeps workers independent, same intent as
     the CollectorRegistry-per-process approach this replaced.
     """
-    return WorkerMetricsCollector(component)
+    return WorkerMetricsCollector(component, source=source, instance_id=instance_id)
 
 
 def render_metrics(collector: WorkerMetricsCollector, snapshot: dict) -> bytes:
