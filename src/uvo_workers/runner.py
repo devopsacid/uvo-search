@@ -2,23 +2,20 @@
 
 import asyncio
 import logging
-import signal
 import time
-import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import redis.asyncio
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
 from uvo_core.adapters.mongo.ingestion_log import log_event
-from uvo_core.adapters.redis.client import RedisSettings, close_redis, get_redis
+from uvo_core.adapters.redis.client import RedisSettings
 from uvo_core.adapters.redis.locks import lock
-from uvo_pipeline.config import get_pipeline_settings
+from uvo_workers.clients import WorkerClients
+from uvo_workers.context import WorkerContext
 from uvo_workers.errors import redact_exception
-from uvo_workers.health import serve_health
-from uvo_workers.metrics import build_registry
 
 logger = logging.getLogger(__name__)
 
@@ -59,101 +56,51 @@ async def run_extractor_loop(
     source: str,
     interval_seconds: int,
     extract: Callable[[redis.asyncio.Redis, dict], Awaitable[int]],
-    redis_settings: RedisSettings,
+    redis_settings: RedisSettings | None = None,
     health_port: int = 8090,
     instance_id: str | None = None,
+    clients: WorkerClients | None = None,
 ) -> None:
-    instance_id = instance_id or uuid.uuid4().hex
-    pipeline_settings = get_pipeline_settings()
-    mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
-    db = mongo_client[pipeline_settings.mongodb_database]
-    started_at = datetime.now(UTC).isoformat()
-
     metrics: dict = {
         "source": source,
-        "instance_id": instance_id,
-        "started_at": started_at,
+        "started_at": datetime.now(UTC).isoformat(),
         "cycles_completed": 0,
         "cycles_skipped_locked": 0,
         "last_error": None,
         "last_success_at": None,
-        "redis_connected": False,
     }
-
-    try:
-        redis_client = await get_redis(
-            url=redis_settings.redis_url,
-            password=redis_settings.redis_password or None,
-        )
-        await redis_client.ping()
-        metrics["redis_connected"] = True
-    except Exception as exc:
-        logger.critical("Redis connection failed for %s: %s", source, exc)
-        try:
-            await log_event(
-                db,
-                level="critical",
-                event="redis_connect_failed",
-                component=f"extractor:{source}",
-                source=source,
-                instance_id=instance_id,
-                message=redact_exception(exc),
-            )
-        except Exception:
-            pass
-        mongo_client.close()
-        raise SystemExit(1) from exc
-
-    await log_event(
-        db,
-        level="info",
-        event="worker_started",
+    async with WorkerContext(
+        name=source,
         component=f"extractor:{source}",
         source=source,
+        registry_name=f"extractor-{source}",
+        health_port=health_port,
+        metrics=metrics,
+        redis_settings=redis_settings,
+        clients=clients,
         instance_id=instance_id,
-        message=f"{source} extractor up",
-        details={"interval_seconds": interval_seconds},
-    )
+        start_message=f"{source} extractor up",
+        start_details={"interval_seconds": interval_seconds},
+        stop_message=f"{source}: worker stopped",
+        stop_details=lambda: {
+            "cycles_completed": metrics["cycles_completed"],
+            "cycles_skipped_locked": metrics["cycles_skipped_locked"],
+        },
+    ) as ctx:
+        # Hand the context's long-lived db handle to the extract callable via
+        # state. The leading underscore marks loop-owned plumbing, distinct
+        # from a worker's own state (e.g. ITMS's itms_min_id).
+        state: dict = {"_checkpoint_store": MongoCheckpointStore(ctx.db)}
+        lock_key = f"extractor:lock:{source}"
+        lock_ttl = max(2 * interval_seconds, 10)
 
-    stop_event = asyncio.Event()
-
-    def _signal_handler() -> None:
-        logger.info("Shutdown signal received for %s", source)
-        stop_event.set()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(sig, _signal_handler)
-        except (NotImplementedError, RuntimeError):
-            pass
-
-    health_task: asyncio.Task | None = None
-    if health_port:
-        metrics_registry = build_registry(f"extractor-{source}")
-        health_task = asyncio.create_task(
-            serve_health(health_port, lambda: dict(metrics), registry=metrics_registry),
-            name=f"health-{source}",
-        )
-
-    # Share this loop's already-long-lived `db` handle with the extract
-    # callable via state, instead of each worker opening its own per-cycle
-    # Motor client (plan §1.3.5). Keyed with a leading underscore so it reads
-    # as loop-owned plumbing, distinct from a worker's own state (e.g. ITMS's
-    # itms_min_id). Workers that call _extract directly (unit tests) get
-    # state.get("_checkpoint_store") is None and fall back to their own client.
-    state: dict = {"_checkpoint_store": MongoCheckpointStore(db)}
-    lock_key = f"extractor:lock:{source}"
-    lock_ttl = max(2 * interval_seconds, 10)
-
-    try:
-        while not stop_event.is_set():
-            async with lock(redis_client, lock_key, instance_id, ttl_seconds=lock_ttl) as acquired:
+        while not ctx.stop_event.is_set():
+            async with lock(ctx.redis, lock_key, ctx.instance_id, ttl_seconds=lock_ttl) as acquired:
                 if acquired:
                     error: str | None = None
                     count = 0
                     try:
-                        count = await extract(redis_client, state)
+                        count = await extract(ctx.redis, state)
                         metrics["cycles_completed"] += 1
                         # last_error must describe the *latest* cycle: a single
                         # transient failure would otherwise keep /readyz
@@ -166,9 +113,9 @@ async def run_extractor_loop(
                         error = redact_exception(exc)
                         metrics["last_error"] = error
                     await _log_cycle_result(
-                        db,
+                        ctx.db,
                         source=source,
-                        instance_id=instance_id,
+                        instance_id=ctx.instance_id,
                         count=count,
                         error=error,
                     )
@@ -177,32 +124,6 @@ async def run_extractor_loop(
                     logger.debug("%s: lock held by other instance, skipping cycle", source)
 
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+                await asyncio.wait_for(ctx.stop_event.wait(), timeout=interval_seconds)
             except TimeoutError:
                 pass
-    finally:
-        if health_task is not None:
-            health_task.cancel()
-            try:
-                await health_task
-            except (asyncio.CancelledError, Exception):
-                pass
-        try:
-            await log_event(
-                db,
-                level="info",
-                event="worker_stopped",
-                component=f"extractor:{source}",
-                source=source,
-                instance_id=instance_id,
-                message=f"{source}: worker stopped",
-                details={
-                    "cycles_completed": metrics["cycles_completed"],
-                    "cycles_skipped_locked": metrics["cycles_skipped_locked"],
-                },
-            )
-        except Exception:
-            pass
-        mongo_client.close()
-        await close_redis(redis_client)
-        logger.info("%s: worker stopped", source)
