@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUnifiedSearch } from '@/api/queries/unifiedSearch'
 import type { FirmaHit, ZakazkaHit } from '@/api/queries/unifiedSearch'
@@ -21,12 +21,15 @@ export function GlobalSearch() {
 
   const { data, isFetching } = useUnifiedSearch(inputValue)
 
-  const firmy = data?.firmy ?? []
-  const zakazky = data?.zakazky ?? []
-  const items: FlatItem[] = [
-    ...firmy.map((hit): FlatItem => ({ kind: 'firma', hit })),
-    ...zakazky.map((hit): FlatItem => ({ kind: 'zakazka', hit })),
-  ]
+  const firmy = useMemo(() => data?.firmy ?? [], [data])
+  const zakazky = useMemo(() => data?.zakazky ?? [], [data])
+  const items: FlatItem[] = useMemo(
+    () => [
+      ...firmy.map((hit): FlatItem => ({ kind: 'firma', hit })),
+      ...zakazky.map((hit): FlatItem => ({ kind: 'zakazka', hit })),
+    ],
+    [firmy, zakazky],
+  )
   const hasResults = items.length > 0
 
   useEffect(() => {

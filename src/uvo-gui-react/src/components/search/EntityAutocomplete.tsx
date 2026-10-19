@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEntityAutocomplete } from '@/api/queries/search'
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '@/hooks/useDebouncedValue'
@@ -27,7 +27,7 @@ export function EntityAutocomplete({
 
   const debouncedQuery = useDebouncedValue(inputValue, SEARCH_DEBOUNCE_MS)
   const { data, isFetching } = useEntityAutocomplete(debouncedQuery)
-  const hits = data?.items ?? []
+  const hits = useMemo(() => data?.items ?? [], [data])
 
   // '/' focuses the search input globally
   useKeyboardShortcut('/', () => {
