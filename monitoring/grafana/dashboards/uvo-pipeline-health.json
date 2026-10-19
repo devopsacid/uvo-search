@@ -1,0 +1,1599 @@
+{
+  "uid": "uvo-pipeline-health",
+  "title": "UVO \u00b7 Pipeline health",
+  "description": "Is ingestion running and keeping up? Streams, workers, dead letters, firing alerts.",
+  "tags": [
+    "uvo",
+    "pipeline"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "30s",
+      "1m",
+      "5m",
+      "15m"
+    ]
+  },
+  "links": [
+    {
+      "title": "UVO dashboards",
+      "type": "dashboards",
+      "tags": [
+        "uvo"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "Alert runbook",
+      "type": "link",
+      "url": "https://github.com/devopsacid/uvo-search/blob/main/monitoring/README.md#alerts",
+      "targetBlank": true,
+      "icon": "doc"
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "component",
+        "label": "Worker",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(up{job=\"uvo-workers\"}, component)",
+          "refId": "var-component",
+          "qryType": 1
+        },
+        "definition": "label_values(up{job=\"uvo-workers\"}, component)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "regex": ""
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "1 \u00b7 Is anything broken right now?",
+      "id": 1,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Workers up",
+      "description": "Workers currently scrapable by Prometheus. Red when any worker is down (alert UvoWorkerDown).",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(up{job=\"uvo-workers\", component=~\"$component\"}) or vector(0)",
+          "legendFormat": "up",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 6
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Firing alerts",
+      "description": "Number of UVO alerts currently firing. Open the Alerts row below for names and the runbook.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(ALERTS{alertname=~\"Uvo.*\", alertstate=\"firing\"}) or vector(0)",
+          "legendFormat": "firing",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 3,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Dead letters",
+      "description": "Entries parked in notices:dead (failed repeatedly, need a human). Should be 0.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(uvo_worker_dead_letter_length) or vector(0)",
+          "legendFormat": "dead",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Max stream lag",
+      "description": "Largest backlog of undelivered entries across notices:* streams. Alert threshold is 10 000.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(uvo_worker_stream_lag) or vector(0)",
+          "legendFormat": "lag",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 10000
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 5,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Redis connections",
+      "description": "Minimum Redis-connected flag across workers. DOWN means at least one worker lost Redis.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "min(uvo_worker_redis_connected{component=~\"$component\"}) or vector(0)",
+          "legendFormat": "redis",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Notices written / h",
+      "description": "Notices written to Mongo/Neo4j in the last hour by the selected workers.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(uvo_worker_notices_written_total{component=~\"$component\"}[1h]))",
+          "legendFormat": "written",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      }
+    },
+    {
+      "type": "row",
+      "title": "2 \u00b7 Are streams keeping up?",
+      "id": 8,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Stream lag",
+      "description": "Entries not yet delivered to the ingestor, per stream. A rising line means the ingestor is slower than the extractors. Red line = alert threshold (10 000).",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (stream) (uvo_worker_stream_lag)",
+          "legendFormat": "{{stream}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 10000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 9,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Stream pending (unacked)",
+      "description": "Delivered but not acknowledged entries. Stuck high = writes to Mongo/Neo4j are failing. Red line = alert threshold (500).",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (stream) (uvo_worker_stream_pending)",
+          "legendFormat": "{{stream}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 10,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Dead letters over time",
+      "description": "Length of notices:dead. Any upward step means entries failed permanently; inspect them with XRANGE notices:dead.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (component) (uvo_worker_dead_letter_length)",
+          "legendFormat": "{{component}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 11,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Notices written per second",
+      "description": "Throughput of each worker that writes notices (5m rate). A flat zero on the ingestor while lag grows means it is stuck.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (component) (rate(uvo_worker_notices_written_total{component=~\"$component\"}[5m]))",
+          "legendFormat": "{{component}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      }
+    },
+    {
+      "type": "row",
+      "title": "3 \u00b7 Are workers alive and succeeding?",
+      "id": 13,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Workers",
+      "description": "One row per worker. Red cells need attention: DOWN, no success within 3 h, ERROR flag, or Redis lost.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"uvo-workers\", component=~\"$component\"}",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "time() - uvo_worker_last_success_timestamp_seconds{component=~\"$component\"}",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "uvo_worker_last_error{component=~\"$component\"}",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "expr": "sum by (component) (increase(uvo_worker_cycles_completed_total{component=~\"$component\"}[24h]))",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "expr": "sum by (component) (increase(uvo_worker_cycles_skipped_locked_total{component=~\"$component\"}[24h]))",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "expr": "uvo_worker_redis_connected{component=~\"$component\"}",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "component",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Time 5": true,
+              "Time 6": true,
+              "job": true,
+              "job 1": true,
+              "instance": true,
+              "instance 1": true,
+              "instance 2": true,
+              "instance 3": true,
+              "__name__": true,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "__name__ 3": true,
+              "job 2": true,
+              "job 3": true,
+              "component 1": true,
+              "component 2": true,
+              "component 3": true,
+              "component 4": true,
+              "component 5": true
+            },
+            "renameByName": {
+              "component": "Worker",
+              "Value #A": "Status",
+              "Value #B": "Last success ago",
+              "Value #C": "Last error",
+              "Value #D": "Cycles (24h)",
+              "Value #E": "Skipped, locked (24h)",
+              "Value #F": "Redis"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "DOWN",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "UP",
+                        "color": "green",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last success ago"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 10800
+                    },
+                    {
+                      "color": "red",
+                      "value": 86400
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last error"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "ok",
+                        "color": "green",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "ERROR",
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cycles (24h)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Skipped, locked (24h)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Redis"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 1
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "DOWN",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "UP",
+                        "color": "green",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Worker",
+            "desc": false
+          }
+        ]
+      },
+      "id": 14,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Last success age",
+      "description": "Seconds since each worker last completed a batch/cycle successfully. Extractors poll hourly (TED every 6 h), so staying under ~3 h (TED 18 h) is healthy.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - (uvo_worker_last_success_timestamp_seconds{component=~\"$component\"} > 0)",
+          "legendFormat": "{{component}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 10800
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 15,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Batches processed per second",
+      "description": "Batches handled by each worker (5m rate). Cadence differs by worker; compare against its own baseline.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (component) (rate(uvo_worker_batches_processed_total{component=~\"$component\"}[5m]))",
+          "legendFormat": "{{component}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 16,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 31
+      }
+    },
+    {
+      "type": "row",
+      "title": "4 \u00b7 Alerts",
+      "id": 17,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Firing UVO alerts",
+      "description": "Alerts currently firing, from Prometheus ALERTS series. Alert names link to runbook sections in monitoring/README.md (annotation runbook).",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ALERTS{alertname=~\"Uvo.*\", alertstate=\"firing\"}",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "alertname",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "alertstate": true,
+              "__name__": true,
+              "instance": true,
+              "job": true
+            },
+            "renameByName": {
+              "alertname": "Alert",
+              "severity": "Severity",
+              "component": "Component",
+              "stream": "Stream",
+              "source": "Source"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Alert"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Runbook",
+                    "targetBlank": true,
+                    "url": "https://github.com/devopsacid/uvo-search/blob/main/monitoring/README.md#${__value.text}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "orange",
+                      "value": null
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "text": "critical",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "text": "warning",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "text": "info",
+                        "color": "blue",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": []
+      },
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      }
+    },
+    {
+      "type": "alertlist",
+      "title": "Prometheus alert rules (all states)",
+      "description": "Live state (firing / pending / normal) of all UVO rules, read from Prometheus.",
+      "options": {
+        "alertName": "Uvo",
+        "dashboardAlerts": false,
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 30,
+        "sortOrder": 1,
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": false,
+          "normal": true,
+          "error": true
+        },
+        "viewMode": "list",
+        "datasource": "prometheus"
+      },
+      "id": 19,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      }
+    }
+  ]
+}
