@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -22,6 +22,8 @@ from uvo_pipeline.redis_client import get_redis_settings
 from uvo_pipeline.transformers.vestnik_nkod import transform_notice as transform_vestnik_notice
 from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
+from uvo_workers.checkpoints import resolve_since
+from uvo_workers.flush import flush_notices
 from uvo_workers.runner import run_extractor_loop
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,11 @@ FLUSH_BATCH = 500
 class VestnikSettings(BaseSettings):
     vestnik_interval_seconds: int = 3600
     vestnik_mode: Literal["recent", "historical"] = "recent"
-    stream_maxlen_approx: int = 100_000
+    # MAXLEN is only a memory safety net; backpressure (stream_high_water)
+    # keeps the consumer-group backlog far below it so unread entries are
+    # never trimmed.
+    stream_maxlen_approx: int = 1_000_000
+    stream_high_water: int = 50_000
     health_port: int = 8091
 
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
@@ -66,17 +72,14 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
 
         if settings.vestnik_mode == "historical":
             vestnik_since = None
-        elif vestnik_checkpoint:
-            try:
-                vestnik_since = datetime.fromisoformat(str(vestnik_checkpoint)).date()
-            except (ValueError, TypeError):
-                vestnik_since = (
-                    datetime.utcnow() - timedelta(days=pipeline_settings.recent_days)
-                ).date()
         else:
-            vestnik_since = (
-                datetime.utcnow() - timedelta(days=pipeline_settings.recent_days)
-            ).date()
+            # Checkpoint is the newest dataset `modified` seen (a source-side
+            # timestamp, not wall clock), so no overlap is needed here.
+            vestnik_since = resolve_since(
+                vestnik_checkpoint,
+                recent_days=pipeline_settings.recent_days,
+                now=datetime.now(UTC),
+            )
 
         logger.info("vestnik: extracting since=%s", vestnik_since)
 
@@ -118,14 +121,12 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
                             )
 
                         if len(buffer) >= FLUSH_BATCH:
-                            for n in buffer:
-                                await notice_stream.xadd_notice(n.model_dump(mode="json"))
-                                count += 1
+                            count += await flush_notices(
+                                notice_stream, buffer, high_water=settings.stream_high_water
+                            )
                             buffer.clear()
 
-        for n in buffer:
-            await notice_stream.xadd_notice(n.model_dump(mode="json"))
-            count += 1
+        count += await flush_notices(notice_stream, buffer, high_water=settings.stream_high_water)
         buffer.clear()
 
         checkpoint_state: dict = {}

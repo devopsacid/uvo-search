@@ -20,6 +20,7 @@ from uvo_pipeline.redis_client import get_redis_settings
 from uvo_pipeline.transformers.itms import transform_procurement as transform_itms
 from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
+from uvo_workers.flush import flush_notices
 from uvo_workers.runner import run_extractor_loop
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,11 @@ class ItmsSettings(BaseSettings):
     itms_interval_seconds: int = 3600
     itms_cache_backend: Literal["redis", "memory"] = "redis"
     itms_cache_ttl_seconds: int = 86400
-    stream_maxlen_approx: int = 100_000
+    # MAXLEN is only a memory safety net; backpressure (stream_high_water)
+    # keeps the consumer-group backlog far below it so unread entries are
+    # never trimmed.
+    stream_maxlen_approx: int = 1_000_000
+    stream_high_water: int = 50_000
     health_port: int = 8094
 
     model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
@@ -95,18 +100,16 @@ async def _extract(redis_client: redis.asyncio.Redis, state: dict) -> int:
                     logger.warning("itms transform error: %s", exc)
 
                 if len(buffer) >= FLUSH_BATCH:
-                    for n in buffer:
-                        await notice_stream.xadd_notice(n.model_dump(mode="json"))
-                        count += 1
+                    count += await flush_notices(
+                        notice_stream, buffer, high_water=settings.stream_high_water
+                    )
                     buffer.clear()
                     # Checkpoint after each flush so a crash only loses the partial buffer
                     new_min_id = str(itms_max_seen + 1)
                     await checkpoint_store.save("itms", {"itms_min_id": new_min_id})
                     state["itms_min_id"] = new_min_id
 
-        for n in buffer:
-            await notice_stream.xadd_notice(n.model_dump(mode="json"))
-            count += 1
+        count += await flush_notices(notice_stream, buffer, high_water=settings.stream_high_water)
         buffer.clear()
 
         new_min_id = str(itms_max_seen + 1)
