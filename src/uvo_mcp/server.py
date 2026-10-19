@@ -32,14 +32,22 @@ class AppContext:
     embedding_model: Any | None = field(default=None)  # fastembed TextEmbedding when loaded
 
 
-async def _bootstrap_search_indexes(mongo_db) -> None:
-    """Idempotently provision Atlas Search indexes; failure is logged at ERROR, never fatal."""
-    from uvo_core.adapters.mongo.search_indexes import ensure_indexes
+async def _bootstrap_search_indexes(mongo_db) -> asyncio.Task | None:
+    """Idempotently provision Atlas Search indexes; failure is logged at ERROR, never fatal.
 
+    Returns a background retry task when the first attempt did not fully succeed
+    (fresh DB: collections or mongot not there yet), else ``None``.
+    """
+    from uvo_core.adapters.mongo import search_indexes
+
+    ok = False
     try:
-        await ensure_indexes(mongo_db)
+        ok = await search_indexes.ensure_indexes(mongo_db) is not False
     except Exception:  # noqa: BLE001 - serve what we can; /readyz reports missing indexes
         logger.error("ensure_indexes failed; search may be degraded", exc_info=True)
+    if ok:
+        return None
+    return asyncio.create_task(search_indexes.retry_ensure_indexes(mongo_db), name="index-retry")
 
 
 async def _stop_task(task: asyncio.Task | None) -> None:
@@ -91,6 +99,7 @@ async def _open_runtime() -> AsyncIterator[AppContext]:
 
     mongo_db = None
     mongo_client = None
+    index_retry: asyncio.Task | None = None
     if settings.mongodb_uri:
         mongo_client = make_mongo_client(
             settings.mongodb_uri,
@@ -100,7 +109,7 @@ async def _open_runtime() -> AsyncIterator[AppContext]:
         )
         mongo_db = mongo_client[settings.mongodb_database]
         logger.info("MongoDB connected: %s", settings.mongodb_database)
-        await _bootstrap_search_indexes(mongo_db)
+        index_retry = await _bootstrap_search_indexes(mongo_db)
 
     neo4j_driver = None
     if settings.neo4j_uri and settings.neo4j_password:
@@ -148,6 +157,7 @@ async def _open_runtime() -> AsyncIterator[AppContext]:
                 _runtime["index_probe"] = None
     finally:
         await _stop_task(ready_refresher)
+        await _stop_task(index_retry)
         await _stop_task(invalidator)
         await close_quietly("redis", redis_client.aclose)
         if mongo_client is not None:

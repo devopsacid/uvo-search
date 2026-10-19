@@ -273,3 +273,78 @@ async def test_ensure_indexes_logs_error_on_failure(caplog):
     with caplog.at_level(logging.ERROR):
         await ensure_indexes(_Boom())
     assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+
+# --- fresh-DB provisioning retry (QA bug: readiness never recovered) --------
+
+
+class _FailingCollection(_FakeCollection):
+    def __init__(self, failures):
+        super().__init__([])
+        self._failures = failures
+
+    async def create_search_index(self, spec):
+        if self._failures > 0:
+            self._failures -= 1
+            raise RuntimeError("Collection 'uvo_search.notices' does not exist")
+        await super().create_search_index(spec)
+
+
+@pytest.mark.asyncio
+async def test_ensure_indexes_reports_failure_and_success():
+    from uvo_core.adapters.mongo import search_indexes
+
+    colls = {c: _FakeCollection([]) for c in INDEX_DEFINITIONS}
+    assert await search_indexes.ensure_indexes(_FakeDB(colls)) is True
+
+    colls["notices"] = _FailingCollection(failures=1)
+    assert await search_indexes.ensure_indexes(_FakeDB(colls)) is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_indexes_creates_missing_collections_first():
+    class _DB(_FakeDB):
+        def __init__(self, per_coll, existing):
+            super().__init__(per_coll)
+            self.existing = list(existing)
+            self.created_collections = []
+
+        async def list_collection_names(self):
+            return list(self.existing)
+
+        async def create_collection(self, name):
+            self.created_collections.append(name)
+
+    colls = {c: _FakeCollection([]) for c in INDEX_DEFINITIONS}
+    db = _DB(colls, existing=["procurers"])
+    await ensure_indexes(db)
+    assert sorted(db.created_collections) == ["notices", "suppliers"]
+
+
+@pytest.mark.asyncio
+async def test_retry_ensure_indexes_retries_with_backoff_until_success(caplog):
+    from uvo_core.adapters.mongo.search_indexes import retry_ensure_indexes
+
+    results = iter([False, RuntimeError("boom"), False, True])
+    calls = []
+
+    async def ensure(db):
+        calls.append(db)
+        outcome = next(results)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    sleeps = []
+
+    async def fake_sleep(delay):
+        sleeps.append(delay)
+
+    with caplog.at_level("WARNING"):
+        await retry_ensure_indexes(
+            object(), ensure=ensure, interval=30.0, max_interval=100.0, sleep=fake_sleep
+        )
+
+    assert len(calls) == 4
+    assert sleeps == [30.0, 60.0, 100.0, 100.0]  # sleep-then-try, exponential, capped
+    assert sum(r.levelname == "WARNING" for r in caplog.records) == 3

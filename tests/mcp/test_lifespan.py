@@ -144,3 +144,15 @@ def test_readyz_is_200_without_any_mcp_session(wired, monkeypatch):
 
     assert server._runtime["mongo_db"] is None
     wired.mongo_client.close.assert_called_once()
+
+
+async def test_failed_index_bootstrap_schedules_background_retry(wired, monkeypatch):
+    wired.ensure.return_value = False
+    retried = asyncio.Event()
+
+    async def fake_retry(db, *, ensure=None):
+        retried.set()
+
+    monkeypatch.setattr("uvo_core.adapters.mongo.search_indexes.retry_ensure_indexes", fake_retry)
+    async with server.app_lifespan(server.mcp):
+        await asyncio.wait_for(retried.wait(), 1)

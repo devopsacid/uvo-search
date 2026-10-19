@@ -101,3 +101,28 @@ def test_get_resources_falls_back_without_lifespan(monkeypatch):
     client.get("/readyz")
     client.get("/readyz")
     assert built == [1]  # built once, then reused from app.state
+
+
+def test_failed_index_bootstrap_schedules_background_retry(wired, monkeypatch):
+    """A fresh DB has no collections yet: the first attempt fails, a retry task takes over."""
+    resources, _, ensure = wired
+    ensure.return_value = False
+    attempts = []
+
+    async def fake_retry(db, *, ensure):
+        attempts.append(db)
+
+    monkeypatch.setattr(app_module, "retry_ensure_indexes", fake_retry)
+    with TestClient(app_module.create_app()):
+        pass
+    assert attempts == [resources.db]
+
+
+def test_successful_index_bootstrap_does_not_retry(wired, monkeypatch):
+    _, _, ensure = wired
+    ensure.return_value = True
+    retry = AsyncMock()
+    monkeypatch.setattr(app_module, "retry_ensure_indexes", retry)
+    with TestClient(app_module.create_app()):
+        pass
+    retry.assert_not_called()

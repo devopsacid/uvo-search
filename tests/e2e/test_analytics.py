@@ -208,11 +208,6 @@ class TestReadiness:
         assert resp.status_code == 200
         assert resp.json()["status"] == "ready"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="DEFECT: API search-index provisioning is not retried after collections "
-        "appear on a fresh DB; /readyz stays 503 until the API restarts.",
-    )
     def test_api_readyz_recovers_without_restart(self, analytics_ready):
         if not analytics_ready["seed"].startswith("seeded") or analytics_ready["ready_before_seed"]:
             pytest.skip("API was not in a cold-start state (no fresh DB); nothing to recover from")

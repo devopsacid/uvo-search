@@ -36,7 +36,11 @@ from uvo_api.routers import (
 from uvo_api.routers.firma import firmy_router
 from uvo_api.routers.v1 import create_v1_app
 from uvo_core.adapters.mongo.health import mongo_ready
-from uvo_core.adapters.mongo.search_indexes import SearchIndexProbe, ensure_indexes
+from uvo_core.adapters.mongo.search_indexes import (
+    SearchIndexProbe,
+    ensure_indexes,
+    retry_ensure_indexes,
+)
 from uvo_core.adapters.redis.cache_invalidation import run_cache_invalidator
 from uvo_core.infra.clients import close_quietly, make_redis
 from uvo_core.services.analytics import warm_default_dashboards
@@ -78,10 +82,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     resources = build_resources(settings)
     install_resources(app, resources)
 
+    indexes_ok = False
     try:
-        await ensure_indexes(resources.db)
+        indexes_ok = await ensure_indexes(resources.db) is not False
     except Exception:  # noqa: BLE001 - serve what we can; /readyz reports missing indexes
         logger.error("ensure_indexes failed; search may be degraded", exc_info=True)
+    # A fresh DB (no collections yet, mongot still starting) fails the first attempt;
+    # keep trying in the background so /readyz recovers without a restart.
+    index_retry = (
+        None
+        if indexes_ok
+        else asyncio.create_task(
+            retry_ensure_indexes(resources.db, ensure=ensure_indexes), name="index-retry"
+        )
+    )
 
     # Dedicated subscriber connection: an idle pub/sub read must not hit a socket timeout.
     subscriber_redis = make_redis(
@@ -107,6 +121,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         for task in metrics_tasks:
             await _stop_task(task)
         await _stop_task(warmup)
+        if index_retry is not None:
+            await _stop_task(index_retry)
         await _stop_task(invalidator)
         await close_quietly("subscriber redis", subscriber_redis.aclose)
         await close_resources(resources)
