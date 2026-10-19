@@ -1,648 +1,211 @@
 # Backend Documentation
 
-Two Python services comprise the UVO Search backend:
+The backend is one shared core, two delivery adapters, and the ingestion workers:
 
-## 1. MCP Server (port 8000)
+- **`uvo_core`** — query services, domain models, and infrastructure adapters. Shared by everything else.
+- **`uvo_api`** — FastAPI delivery adapter for the React SPA and the public `/v1` API (port 8001)
+- **`uvo_mcp`** — FastMCP delivery adapter for LLM clients (port 8000)
+- **`uvo_workers`** — long-lived ingestion services. See [data-pipeline.md](data-pipeline.md).
 
-The **FastMCP server** (Anthropic's Model Context Protocol) provides tools for searching and retrieving Slovak government procurement data from MongoDB (Atlas Search) and Neo4j, which are populated by the `uvo_pipeline` from UVO Vestník, CRZ, ITMS, TED and NKOD.
+Both delivery adapters call the same functions in `uvo_core.services`. The API never calls the MCP server over HTTP.
 
-**Key Files**:
-- `src/uvo_mcp/__main__.py` — Entry point
-- `src/uvo_mcp/server.py` — FastMCP server setup with httpx lifespan
-- `src/uvo_mcp/config.py` — Settings (environment variables)
-- `src/uvo_mcp/models.py` — Pydantic response models
-- `src/uvo_mcp/tools/procurements.py` — Search and detail lookup tools
-- `src/uvo_mcp/tools/subjects.py` — Procurer and supplier lookup tools
-- `src/uvo_mcp/tools/graph.py` — Graph tools (ego networks, CPV networks)
+## Key Files
 
-## 2. API Bridge (port 8001)
+### uvo_core (shared)
 
-The **FastAPI server** wraps MCP tools with HTTP endpoints for browser clients (React SPA, Vue dashboard).
+- `src/uvo_core/services/search.py` — procurement search, procurement detail, entity search, page clamping
+- `src/uvo_core/services/graph.py`, `src/uvo_core/services/risk.py` — graph and company-risk services
+- `src/uvo_core/adapters/mongo/` — notices, entities, analytics, ingestion log, Atlas Search indexes, health
+- `src/uvo_core/adapters/neo4j/graph.py` — Cypher for ego networks, CPV networks, concentration
+- `src/uvo_core/adapters/redis/` — streams, locks, pub/sub, cache invalidation
+- `src/uvo_core/infra/clients.py` — Mongo, Neo4j, and Redis client factories with explicit timeouts and pool sizes
+- `src/uvo_core/errors.py` — `BackendUnavailable`
+- `src/uvo_core/cache.py` — async TTL cache decorator
+- `src/uvo_core/testing.py` — helpers for tests
 
-**Key Files**:
-- `src/uvo_api/__main__.py` — Entry point
-- `src/uvo_api/main.py` — FastAPI app setup
-- `src/uvo_api/config.py` — Settings
-- `src/uvo_api/mcp_client.py` — HTTP client for MCP server
-- `src/uvo_api/routers/contracts.py` — Contract endpoints
-- `src/uvo_api/routers/dashboard.py` — Dashboard aggregation
-- `src/uvo_api/routers/procurers.py` — Procurer endpoints
-- `src/uvo_api/routers/suppliers.py` — Supplier endpoints
-- `src/uvo_api/routers/graph.py` — Graph wrapper endpoints
+### uvo_mcp
 
-## 3. Data Pipeline (Microservices)
+- `src/uvo_mcp/__main__.py` — entry point; `stdio` argument selects the stdio transport
+- `src/uvo_mcp/server.py` — FastMCP instance, `app_lifespan`, `/health`, `/readyz`
+- `src/uvo_mcp/config.py` — `Settings` (environment variables)
+- `src/uvo_mcp/tools/` — tool definitions (`procurements.py`, `subjects.py`, `graph.py`, `risk.py`, `autocomplete.py`, `vector_search.py`)
 
-Seven long-lived services handle continuous data ingestion via Redis Streams. See [data-pipeline.md](data-pipeline.md) and the detailed spec at [docs/superpowers/specs/2026-04-27-source-microservices-design.md](superpowers/specs/2026-04-27-source-microservices-design.md).
+### uvo_api
 
-**Services & Health Endpoints**:
-- `extractor-vestnik` (port 8091) — UVO Vestník XML extraction
-- `extractor-crz` (port 8092) — Ekosystem CRZ contract extraction
-- `extractor-ted` (port 8093) — TED EU API extraction
-- `extractor-itms` (port 8094) — ITMS fund extraction (Redis-cached subjects/suppliers)
-- `ingestor` (port 8095) — Streams consumer; upserts Mongo+Neo4j
-- `dedup-worker` (port 8096) — Cross-source deduplication (event-driven + fallback poll)
-
-**Health Check Format**:
-```bash
-curl http://localhost:8091/health  # Returns JSON snapshot: {"status": "ok", "service": "...", "..."}
-```
-
-**Key Files**:
-- `src/uvo_core/adapters/redis/client.py` — Async Redis factory
-- `src/uvo_core/adapters/redis/streams.py` — XADD, XREADGROUP, XACK helpers
-- `src/uvo_core/adapters/redis/pubsub.py` — PUBLISH, SUBSCRIBE helpers
-- `src/uvo_core/adapters/redis/locks.py` — Distributed lock helpers
-- `src/uvo_pipeline/cache/` — ITMS cache (memory + Redis backends)
-- `src/uvo_core/adapters/mongo/dedup.py` — Cross-source dedup logic
-- `src/uvo_workers/` — Daemon entrypoints (runner.py, vestnik.py, crz.py, ted.py, itms.py, ingestor.py, dedup.py)
+- `src/uvo_api/app.py` — `create_app`, lifespan, `/health`, `/readyz`, router registration
+- `src/uvo_api/__main__.py` — entry point (`uvicorn`, factory `create_app`)
+- `src/uvo_api/config.py` — `ApiSettings` (`API_*` environment variables)
+- `src/uvo_api/routers/` — `/api/*` routers; `routers/v1/` — public `/v1` API
+- `src/uvo_api/_schema.py`, `models.py` — response models
+- `src/uvo_api/auth.py`, `ratelimit.py` — ops-token guard and `/v1` rate limiting
+- `src/uvo_api/errors.py`, `v1_errors.py` — exception handlers and the `/v1` error envelope
 
 ## Starting the Servers
 
-**MCP Server** (port 8000):
-
 ```bash
-# HTTP mode (default, for API bridge)
+# MCP server, streamable-http transport (default), port 8000
 uv run python -m uvo_mcp
 
-# Stdio mode (for Claude Desktop/Code)
+# MCP server, stdio transport (Claude Desktop / Claude Code)
 uv run python -m uvo_mcp stdio
-```
 
-**API Bridge** (port 8001):
-
-```bash
+# API, port 8001
 uv run python -m uvo_api
 ```
 
-Both listen on `0.0.0.0` by default.
+Both HTTP services bind `0.0.0.0`. The MCP bind address is hard-coded in `server.py`. The API reads `API_HOST` and `API_PORT`.
 
-## MCP Server Setup
+## MCP Server
 
-**File**: `src/uvo_mcp/server.py`
+### Lifespan
 
-```python
-from mcp.server.fastmcp import FastMCP
+`app_lifespan` in `src/uvo_mcp/server.py` runs once per process:
 
-mcp = FastMCP(
-    "UVO Search",
-    instructions="Search Slovak government procurement data...",
-    lifespan=app_lifespan,
-    json_response=True,
-    host="0.0.0.0",
-    port=8000,
-)
-```
+1. Creates the Mongo, Neo4j, and Redis handles through `uvo_core.infra.clients`.
+2. Bootstraps the Atlas Search indexes. A failure is logged at ERROR and is not fatal; `/readyz` reports the gap.
+3. Starts background tasks, including the `notices:written` cache-invalidation subscriber.
+4. Yields an `AppContext` (Mongo database, Neo4j driver, settings, embedding model when loaded). Tools read it from `ctx.request_context.lifespan_context`.
+5. On shutdown, cancels the background tasks and closes the clients.
 
-**Features**:
-- **Lifespan Context** — Shared httpx AsyncClient for all requests
-- **JSON Responses** — All tools return JSON
-- **Two Transports** — HTTP (for GUI) and stdio (for Claude)
-- **Health Endpoint** — `GET /health` for monitoring
+### Tools
 
-### Lifespan Management
+Every tool is a thin wrapper over `uvo_core.services`. Tool names are the Python function names.
 
-```python
-@asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
-    settings = Settings()
-    mongo_client = AsyncMongoClient(settings.mongodb_uri)
-    neo4j_driver = AsyncGraphDatabase.driver(
-        settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password)
-    )
-    # Atlas Search indexes are ensured on startup
-    yield AppContext(mongo=mongo_client, neo4j=neo4j_driver, settings=settings)
-    await mongo_client.close()
-    await neo4j_driver.close()
-```
+| Tool | Module | Parameters | Purpose |
+|------|--------|------------|---------|
+| `search_completed_procurements` | `tools/procurements.py` | `text_query`, `cpv_codes`, `procurer_id`, `supplier_ico`, `date_from`, `date_to`, `limit` (max 100), `offset` | Search completed government procurements |
+| `get_procurement_detail` | `tools/procurements.py` | `procurement_id` | Full record for one procurement |
+| `find_procurer` | `tools/subjects.py` | `name_query`, `ico`, `sort_by`, `limit`, `offset` | Search contracting authorities |
+| `find_supplier` | `tools/subjects.py` | `name_query`, `ico`, `sort_by`, `limit`, `offset` | Search suppliers |
+| `search_autocomplete` | `tools/autocomplete.py` | `query`, `types`, `limit` | Live suggestions per entity type |
+| `search_companies_vector` | `tools/vector_search.py` | `query`, `limit`, `role` | Semantic search over company names (FastEmbed) |
+| `company_risk_profile_tool` | `tools/risk.py` | `ico` | 0–100 red-flag score with per-flag evidence |
+| `find_supplier_concentration` | `tools/graph.py` | `procurer_ico`, `top_n` | Top suppliers of one authority, by awarded value |
+| `find_related_organisations` | `tools/graph.py` | `ico`, `max_hops` | Organisations connected through shared contracts |
+| `get_procurement_network` | `tools/graph.py` | `cpv_code`, `year` | Procurer–supplier network for a CPV code and year |
+| `graph_ego_network` | `tools/graph.py` | `ico`, `max_hops` | Ego network around one company (Cytoscape-style nodes and edges) |
+| `graph_cpv_network` | `tools/graph.py` | `cpv_code`, `year` | CPV network (Cytoscape-style nodes and edges) |
 
-**What it does**:
-1. On startup: Connect to MongoDB Atlas Local and Neo4j; ensure Atlas Search indexes
-2. Yield context to server (available to all tools)
-3. On shutdown: Close both clients
+`limit` is clamped by `clamp_page` to `max_page_size` (100), and `offset` to a fixed maximum. Graph tools bound their hops and result sizes in Cypher.
 
-**Why?** Single client instance per store avoids creating new connections on each request.
+### Errors
 
-## Configuration
+- If MongoDB is not configured, the tool returns `{"error": "MongoDB not configured", "status_code": 503}` instead of raising.
+- Backend exceptions are not caught inside the tools. FastMCP reports them as tool errors.
 
-**File**: `src/uvo_mcp/config.py`
+### Adding a Tool
 
-```python
-class Settings(BaseSettings):
-    ekosystem_base_url: str = "https://datahub.ekosystem.slovensko.digital"
-    ekosystem_api_token: str = ""
-    ted_base_url: str = "https://api.ted.europa.eu"
-    cache_ttl_search: int = 300
-    cache_ttl_entity: int = 3600
-    cache_ttl_detail: int = 1800
-    request_timeout: float = 30.0
-    max_page_size: int = 100
+1. Put the query in `uvo_core.services` (or reuse an existing function). The API can then use it too.
+2. Add a thin wrapper in `src/uvo_mcp/tools/`:
 
-    mongodb_uri: str | None = None
-    mongodb_database: str = "uvo_search"
-    neo4j_uri: str | None = None
-    neo4j_user: str = "neo4j"
-    neo4j_password: str | None = None
-```
-
-All settings come from environment variables (via `.env`). Pipeline-side sources (CRZ, ITMS, TED, NKOD) use the pipeline's own configuration; the MCP server reads from MongoDB and Neo4j.
-
-## API Schema & Response Models
-
-**File**: `src/uvo_api/_schema.py`
-
-Mapping helpers normalize API responses to MCP schema (contracts list returns `items` not `data`, standardizes field names across sources):
-
-```python
-def map_contract_row(item: dict) -> ContractRow:
-    """Convert API response item → MCP ContractRow."""
-    return ContractRow(
-        id=item.get("_id") or item.get("id"),
-        title=item.get("title"),
-        procurer_name=item.get("procurer", {}).get("name"),
-        procurer_ico=item.get("procurer", {}).get("ico"),
-        supplier_name=...,  # From first award
-        value=...,          # final_value or estimated_value
-        cpv_code=item.get("cpv_code"),
-        year=extract from date,
-        status=active|closed,
-    )
-```
-
-Handles field name variations across CRZ, ITMS, TED and Vestník documents stored in MongoDB. All routers (`contracts`, `dashboard`, `procurers`, `suppliers`) use these helpers.
-
-## Data Models
-
-**File**: `src/uvo_mcp/models.py`
-
-Currently defined but not used in MVP (placeholder for future use):
-
-### PaginationSummary
-```python
-class PaginationSummary(BaseModel):
-    total: int                  # Total number of matching records
-    page: int                   # Current page number (1-based)
-    page_size: int             # Records per page
-    total_pages: int           # Total pages
-```
-
-### PaginatedResponse[T]
-```python
-class PaginatedResponse(BaseModel, Generic[T]):
-    items: list[T]             # Records on this page
-    pagination: PaginationSummary
-```
-
-### SupplierSummary
-```python
-class SupplierSummary(BaseModel):
-    id: str                    # Unique ID
-    name: str                  # Supplier name
-    ico: str | None            # Company registration number
-```
-
-### Procurement
-```python
-class Procurement(BaseModel):
-    id: str                    # Unique ID
-    name: str                  # Title
-    value: float | None        # Contract value
-    currency: str = "EUR"
-    year: int | None
-    cpv_code: str | None       # EU product category code
-    contracting_authority: str | None
-    suppliers: list[SupplierSummary] = []
-```
-
-### Subject
-```python
-class Subject(BaseModel):
-    id: str
-    name: str
-    ico: str | None
-    total_contracts: int | None
-    total_value: float | None
-```
-
-**Note**: These models are defined for type clarity but current tools return raw MongoDB documents (dicts). Future versions will use these models for validation and documentation.
-
-## API Bridge (uvo_api)
-
-The API Bridge wraps MCP tools with HTTP endpoints for browser clients. New endpoints added in the React redesign:
-
-**File**: `src/uvo_api/routers/`
-
-### Dashboard Endpoints
-
-- `GET /dashboard/summary` — KPI snapshot (total procurements, spend, suppliers, procurers)
-- `GET /dashboard/by-month?year=YYYY` — Monthly aggregation (count, spend) for specified year
-- `GET /dashboard/by-cpv?year_from=Y&year_to=Y` — CPV code breakdown by year range (backward compatible)
-
-### Graph Endpoints
-
-**File**: `src/uvo_api/routers/graph.py`
-
-- `GET /graph/ego/{ico}?hops=N` — Wraps MCP `graph_ego_network`; returns Cytoscape-format JSON
-  - `ico` (path) — Entity ICO (procurer or supplier)
-  - `hops` (query, default 2) — Relationship depth (1-3)
-  - Returns: Cytoscape nodes + edges with metadata
-
-- `GET /graph/cpv/{cpv}?year=YYYY` — Wraps MCP `graph_cpv_network`; returns Cytoscape-format JSON
-  - `cpv` (path) — CPV code (e.g., `30100000`)
-  - `year` (query, required) — Single year to analyze
-  - Returns: Cytoscape nodes + edges for procurer–supplier–notice relationships
-
-### Procurer Endpoints
-
-- `GET /procurers/{ico}/concentration?top_n=N` — Supplier concentration analysis
-  - `ico` (path) — Procurer ICO
-  - `top_n` (query, default 10) — Top N suppliers to include
-  - Returns: List of suppliers with contract counts, values, and HHI index
-
-### Contract Endpoints
-
-- `GET /contracts?procurer_ico=ICO&...` — Enhanced to support new `procurer_ico` filter param (backward compatible)
-
-## MCP Tools
-
-### 1. search_completed_procurements
-
-Search awarded government contracts from the MongoDB `notices` collection (Atlas Search).
-
-**Tool Name**: `search_completed_procurements`
-
-**Parameters**:
-| Name | Type | Optional | Description |
-|------|------|----------|-------------|
-| `text_query` | string | Yes | Full-text search (title, description) |
-| `cpv_codes` | list[string] | Yes | EU product classification codes |
-| `procurer_id` | string | Yes | Filter by contracting authority ID |
-| `supplier_ico` | string | Yes | Filter by supplier company number (IČO) |
-| `date_from` | string (YYYY-MM-DD) | Yes | Start date filter |
-| `date_to` | string (YYYY-MM-DD) | Yes | End date filter |
-| `limit` | int | No, default 20 | Page size (max 100) |
-| `offset` | int | No, default 0 | Result offset for pagination |
-
-**Returns**:
-```json
-{
-  "data": [
-    {
-      "id": "12345",
-      "nazov": "Nákup kancelárskeho vybavenia",
-      "konecna_hodnota": 15000.00,
-      "datum_zverejnenia": "2024-01-15",
-      "obstaravatel_nazov": "Ministry of Health",
-      "cpv_kod": "30100000",
-      "stav": "ukončená",
-      "dodavatelia": [
-        {"nazov": "Company Ltd", "ico": "12345678"}
-      ]
-    }
-  ],
-  "total": 1234
-}
-```
-
-**File**: `src/uvo_mcp/tools/procurements.py`
-
-**Implementation**:
-```python
-@mcp.tool()
-async def search_completed_procurements(
-    ctx: Context,
-    text_query: str | None = None,
-    cpv_codes: list[str] | None = None,
-    procurer_id: str | None = None,
-    supplier_ico: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> dict:
-    app_ctx = _get_app_context(ctx)
-    params = {
-        "limit": min(limit, app_ctx.settings.max_page_size),
-        "offset": max(offset, 0),
-    }
-    if text_query:
-        params["text"] = text_query
-    # ... build Atlas Search compound query + pagination ...
-
-    pipeline = build_search_pipeline(params)
-    cursor = app_ctx.mongo[settings.mongodb_database]["notices"].aggregate(pipeline)
-    return {"data": [doc async for doc in cursor], "total": ...}
-```
-
-### 2. get_procurement_detail
-
-Get full details of a specific procurement.
-
-**Tool Name**: `get_procurement_detail`
-
-**Parameters**:
-| Name | Type | Optional | Description |
-|------|------|----------|-------------|
-| `procurement_id` | string | No | Procurement ID |
-
-**Returns**:
-```json
-{
-  "id": "12345",
-  "nazov": "Nákup kancelárskeho vybavenia",
-  "konecna_hodnota": 15000.00,
-  "datum_zverejnenia": "2024-01-15",
-  "obstaravatel_nazov": "Ministry of Health",
-  "cpv_kod": "30100000",
-  "stav": "ukončená",
-  "dodavatelia": [
-    {"nazov": "Company Ltd", "ico": "12345678"}
-  ],
-  "popis": "Long description...",
-  "kriteria": [...]
-}
-```
-
-**Error Response** (if not found):
-```json
-{
-  "error": "Procurement 12345 not found",
-  "status_code": 404
-}
-```
-
-**Implementation**:
-```python
-@mcp.tool()
-async def get_procurement_detail(ctx: Context, procurement_id: str) -> dict:
-    app_ctx = _get_app_context(ctx)
-    coll = app_ctx.mongo[settings.mongodb_database]["notices"]
-    doc = await coll.find_one({"_id": procurement_id})
-    if not doc:
-        return {"error": f"Procurement {procurement_id} not found", "status_code": 404}
-    return doc
-```
-
-### 3. find_procurer
-
-Search for contracting authorities (obstaravatelia) in the Slovak UVO registry.
-
-**Tool Name**: `find_procurer`
-
-**Parameters**:
-| Name | Type | Optional | Description |
-|------|------|----------|-------------|
-| `name_query` | string | Yes | Full-text search by name |
-| `ico` | string | Yes | Exact company registration number |
-| `limit` | int | No, default 20 | Page size (max 100) |
-| `offset` | int | No, default 0 | Result offset |
-
-**Returns**:
-```json
-{
-  "data": [
-    {
-      "id": "98765",
-      "nazov": "Ministry of Health",
-      "ico": "166698269",
-      "zakazky_count": 234,
-      "total_value": 50000000.00
-    }
-  ],
-  "total": 567
-}
-```
-
-**File**: `src/uvo_mcp/tools/subjects.py`
-
-**Implementation**:
-```python
-@mcp.tool()
-async def find_procurer(
-    ctx: Context,
-    name_query: str | None = None,
-    ico: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> dict:
-    app_ctx = _get_app_context(ctx)
-    params = {
-        "limit": min(limit, app_ctx.settings.max_page_size),
-        "offset": max(offset, 0),
-    }
-    if name_query:
-        params["text"] = name_query
-    if ico:
-        params["ico"] = ico
-    
-    response = await app_ctx.http_client.get("/api/obstaravatelia", params=params)
-    response.raise_for_status()
-    return response.json()
-```
-
-### 4. find_supplier
-
-Search for suppliers (awarded contractors) in the Slovak UVO registry.
-
-**Tool Name**: `find_supplier`
-
-**Parameters**:
-| Name | Type | Optional | Description |
-|------|------|----------|-------------|
-| `name_query` | string | Yes | Full-text search by name |
-| `ico` | string | Yes | Exact company registration number |
-| `limit` | int | No, default 20 | Page size (max 100) |
-| `offset` | int | No, default 0 | Result offset |
-
-**Returns**:
-```json
-{
-  "data": [
-    {
-      "id": "54321",
-      "nazov": "Tech Solutions Ltd",
-      "ico": "12345678",
-      "zakazky_count": 89,
-      "total_value": 5000000.00
-    }
-  ],
-  "total": 1023
-}
-```
-
-**Implementation**:
-```python
-@mcp.tool()
-async def find_supplier(
-    ctx: Context,
-    name_query: str | None = None,
-    ico: str | None = None,
-    limit: int = 20,
-    offset: int = 0,
-) -> dict:
-    app_ctx = _get_app_context(ctx)
-    params = {
-        "limit": min(limit, app_ctx.settings.max_page_size),
-        "offset": max(offset, 0),
-    }
-    if name_query:
-        params["text"] = name_query
-    if ico:
-        params["ico"] = ico
-    
-    response = await app_ctx.http_client.get("/api/dodavatelia", params=params)
-    response.raise_for_status()
-    return response.json()
-```
-
-## Error Handling
-
-All tools follow a consistent error pattern:
-
-**Success** (HTTP 200):
-```json
-{"data": [...], "total": N}
-```
-
-**API Error** (HTTP 4xx/5xx):
-```json
-{
-  "error": "API returned HTTP 500",
-  "status_code": 500
-}
-```
-
-**Connection Error** (timeout, DNS, etc):
-```json
-{
-  "error": "Connection error: [reason]",
-  "status_code": 0
-}
-```
-
-**Caller must check** for `error` field in response (it's not raised as an exception).
-
-## Health Check
-
-**Endpoint**: `GET /health`
-
-**Response**:
-```json
-{
-  "status": "ok",
-  "service": "uvo-mcp"
-}
-```
-
-Used by Docker Compose and Kubernetes to verify the server is running.
-
-## How to Add a New Tool
-
-1. **Create tool function in appropriate file**:
    ```python
-   # In src/uvo_mcp/tools/procurements.py (or subjects.py)
-   
+   # src/uvo_mcp/tools/subjects.py (or a new module imported at the bottom of server.py)
    @mcp.tool()
-   async def my_new_tool(
-       ctx: Context,
-       param1: str | None = None,
-       limit: int = 20,
-       offset: int = 0,
-   ) -> dict:
-       """Search description goes here."""
+   async def my_new_tool(ctx: Context, ico: str, limit: int = 20) -> dict:
+       """One-line description shown to the LLM."""
        app_ctx = _get_app_context(ctx)
-       
-       # Build params
-       params = {
-           "limit": min(limit, app_ctx.settings.max_page_size),
-           "offset": max(offset, 0),
-       }
-       if param1:
-           params["field"] = param1
-       
-       # Call API
-       try:
-           response = await app_ctx.http_client.get("/api/endpoint", params=params)
-           response.raise_for_status()
-           return response.json()
-       except httpx.HTTPStatusError as exc:
-           return {
-               "error": f"API returned HTTP {exc.response.status_code}",
-               "status_code": exc.response.status_code,
-           }
-       except httpx.HTTPError as exc:
-           return {"error": f"Connection error: {exc}", "status_code": 0}
+       if app_ctx.mongo_db is None:
+           return {"error": "MongoDB not configured", "status_code": 503}
+       limit, _ = clamp_page(limit, 0, max_limit=app_ctx.settings.max_page_size)
+       return await my_query(app_ctx.mongo_db, ico=ico, limit=limit)
    ```
 
-2. **Tool is auto-registered**:
-   - The `@mcp.tool()` decorator from server.py automatically registers it
-   - Tools in `tools/procurements.py` and `tools/subjects.py` are imported in `server.py`
-   - Available immediately on next server restart
+3. Add the module to the import list at the bottom of `server.py` so the decorator runs.
 
-3. **No configuration needed** — the tool is callable via:
-   - **GUI**: `await mcp_client.call_tool("my_new_tool", {...})`
-   - **Claude**: Just ask Claude to use it
+### Health
 
-## Caching (Future)
+- `GET /health` — liveness: `{"status": "ok", "service": "uvo-mcp"}`. Never checks dependencies.
+- `GET /readyz` — readiness: 200 when a bounded Mongo ping succeeds and the required Atlas Search indexes exist (cached briefly). 503 otherwise.
 
-Caching is configured but not yet implemented. Configuration available:
-- `CACHE_TTL_SEARCH` — Cache search results for N seconds
-- `CACHE_TTL_ENTITY` — Cache procurer/supplier lookups for N seconds
-- `CACHE_TTL_DETAIL` — Cache detail views for N seconds
+## API (`uvo_api`)
 
-Implementation will likely use `cachetools` (already in dependencies).
+### Application
+
+`create_app` in `src/uvo_api/app.py` builds the FastAPI app, registers the error handlers, and mounts the `/v1` sub-app. The lifespan creates the Mongo, Neo4j, and Redis clients, stores them on `app.state`, and closes them on shutdown. The `/v1` sub-app shares those clients.
+
+Routes under `/api/*` return the schemas in `uvo_api/_schema.py`. Public `/v1` routes are mounted under `/v1`.
+
+### Routes
+
+**Procurement and entity routes** (`/api/…`):
+
+- `GET /api/contracts` — filters: `q`, `cpv`, `date_from`, `date_to`, `value_min`, `value_max`, `ico`, `supplier_ico`, `procurer_ico`, `limit`, `offset`
+- `GET /api/contracts/{contract_id}` — contract detail
+- `GET /api/procurers`, `GET /api/procurers/{ico}`, `GET /api/procurers/{ico}/summary`
+- `GET /api/procurers/{ico}/concentration?top_n=N` — supplier concentration (HHI)
+- `GET /api/suppliers`, `GET /api/suppliers/{ico}`, `GET /api/suppliers/{ico}/summary`
+- `GET /api/firma/{ico}`, `GET /api/firma/{ico}/partneri`, `GET /api/firma/{ico}/cpv-profile` — company profile tabs (`/api/firmy` for the company list)
+- `GET /api/search/entities`, `GET /api/search/unified` — entity and combined search
+
+**Dashboard routes** (`/api/dashboard/…`):
+
+- `GET /api/dashboard/summary` — KPI snapshot
+- `GET /api/dashboard/spend-by-year`, `top-suppliers`, `top-procurers`, `by-cpv`, `by-month`, `recent`
+- `GET /api/dashboard/ingestion` — pipeline health (source status, ingestion trends, dedup metrics)
+- `GET /api/dashboard/ingestion-log` and `GET /api/dashboard/worker-status` — require the ops bearer token
+
+**Graph routes** (`/api/graph/…`), Neo4j-backed:
+
+- `GET /api/graph/ego/{ico}?hops=N` — `hops` 1–3, default 2; Cytoscape-format JSON
+- `GET /api/graph/cpv/{cpv}?year=YYYY` — procurer–supplier–notice network; Cytoscape-format JSON
+
+**Public API** (`/v1/…`): `/v1/companies` (list, `{ico}`, `{ico}/profile`, `{ico}/risk`) and `/v1/contracts` (list, `{contract_id}`). Requests are rate-limited through Redis, and errors use the envelope in `v1_errors.py`.
+
+### Errors
+
+- `uvo_core.errors.BackendUnavailable` is mapped to HTTP 503 by one exception handler. The reason is logged and never returned to the client.
+- Graph routes return 503 when `API_NEO4J_URI` is unset.
+
+### Health
+
+- `GET /health` — liveness: `{"status": "ok", "service": "uvo-api"}`
+- `GET /readyz` — readiness, same check as the MCP server
+
+## Data Pipeline (Workers)
+
+Six long-lived services ingest data through Redis Streams: four extractors (`extractor-vestnik`, `extractor-crz`, `extractor-ted`, `extractor-itms`), `ingestor` (port 8095), and `dedup-worker` (port 8096). The design, reliability rules, and configuration are in [data-pipeline.md](data-pipeline.md).
+
+Health endpoints return JSON snapshots, and the same port serves `/readyz` and `/metrics`:
+
+```bash
+curl http://localhost:8091/health  # extractor-vestnik
+curl http://localhost:8095/health  # ingestor
+```
+
+Key files:
+
+- `src/uvo_workers/` — `runner.py`, `context.py`, `clients.py`, `extract.py` (`SourceSpec`, `run_extract`), `ingestor.py`, `dedup.py`, `metrics.py`, `health.py`
+- `src/uvo_core/adapters/redis/streams.py` — XADD, XREADGROUP, XAUTOCLAIM, XACK, XTRIM helpers
+- `src/uvo_core/adapters/redis/locks.py` — distributed lock helpers
+- `src/uvo_core/adapters/mongo/dedup.py` — cross-source dedup logic
+
+## Caching
+
+Search results, entity lookups, and dashboard aggregates use the in-process TTL cache in `uvo_core/cache.py`. The TTLs are `CACHE_TTL_SEARCH`, `CACHE_TTL_ENTITY`, and `CACHE_TTL_DETAIL` (MCP settings). Cached aggregates are cleared by `clear_data_caches` / `clear_analytics_caches`. Both `uvo_api` and `uvo_mcp` run a `notices:written` subscriber that calls `clear_data_caches()`. It is debounced, and it stops quietly if Redis is unreachable, after which the caches expire by TTL.
 
 ## Storage Mapping
 
-The MCP server reads from MongoDB and Neo4j; the `uvo_pipeline` writes to both from upstream sources. See [data-pipeline.md](data-pipeline.md) for the full source list and schema.
+The services read from MongoDB and Neo4j. The workers write to both.
 
-**MongoDB collections used by MCP tools**:
-| Tool | Collection | Query shape |
-|------|------------|-------------|
-| `search_completed_procurements` | `notices` | Atlas Search compound query (`sk_folding` analyzer), filters on `procurer.ico`, `cpv_code`, `publication_date` |
-| `get_procurement_detail` | `notices` | `find_one({"_id": ...})` |
-| `find_procurer` | `procurers` | Atlas Search on `name` (autocomplete edgeGram) + `ico` equality |
-| `find_supplier` | `suppliers` | Atlas Search on `name` (autocomplete edgeGram) + `ico` equality |
-
-**Neo4j** is used by the graph tools (`graph_ego_network`, `graph_cpv_network`).
+| Feature | Store | Access |
+|---------|-------|--------|
+| Procurement search and detail | MongoDB `notices` | Atlas Search (`sk_folding` analyzer) or `find` / aggregation when there is no text query |
+| Procurer and supplier search | MongoDB `procurers`, `suppliers` | Atlas Search (`autocomplete` edgeGram subfield) and `ico` equality |
+| Company risk, dashboard aggregates | MongoDB `notices` and entity collections | Aggregation pipelines |
+| Semantic company search | MongoDB vector index | `$vectorSearch` over FastEmbed embeddings |
+| Graph routes and tools | Neo4j | Cypher (`uvo_core/adapters/neo4j/graph.py`) |
 
 ## Testing
 
-**File**: `tests/mcp/`
-
-### Test Setup
-
-Unit tests mock the MongoDB and Neo4j clients via the `AppContext`:
-
-```python
-@pytest.mark.asyncio
-async def test_search_completed_procurements(mock_ctx):
-    # mock_ctx provides an AppContext with stubbed mongo / neo4j
-    mock_ctx.mongo_coll("notices").set_result(
-        [{"_id": "1", "title": "Test Procurement", "value": 10000}],
-        total=1,
-    )
-
-    result = await search_completed_procurements(mock_ctx, text_query="test")
-    assert result["total"] == 1
-```
-
-### Run Tests
+Tests live in `tests/` (`core/`, `api/`, `mcp/`, `workers/`, `pipeline/`, `gui/`) plus `tests/e2e/`, which needs `docker compose up`.
 
 ```bash
-pytest tests/mcp/ -v
+uv run pytest tests/ --ignore=tests/e2e -q   # unit suite
+uv run pytest tests/mcp/ -v                  # MCP only
 ```
+
+Shared fixtures are in `tests/conftest.py`. The API fixtures are in `tests/api/conftest.py` and `tests/api/_deps.py`. Unit tests use `mongomock-motor`, `fakeredis`, and `respx`. Tests for the Neo4j layer assert on query text and parameters.
 
 ## Logging
 
-Tools log important events (via Python's `logging` module):
-
-```python
-logger.error("Search failed: %s", exc)
-logger.info("API request to %s", endpoint)
-```
-
-Set `LOG_LEVEL` environment variable to control verbosity:
-- `DEBUG` — Detailed parameter mapping, request URLs
-- `INFO` — Normal operation (default)
-- `WARNING` — Rate limits, slow requests
-- `ERROR` — API failures
+The workers and the pipeline CLI configure `logging` at INFO in code. There is no `LOG_LEVEL` environment variable.

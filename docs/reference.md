@@ -4,287 +4,226 @@ Quick lookup reference for developers.
 
 ## MCP Tool Signatures
 
-All tools return JSON dicts. Error responses include `error` and `status_code` fields.
+All tools return JSON-serializable dicts. Tool names are the Python function names. Failures are reported as `{"error": ..., "status_code": ...}` where the tool handles them, or as MCP tool errors otherwise (see [backend.md](backend.md#errors)). The MCP endpoint is `POST /mcp` for streamable-http, or stdio with `uv run python -m uvo_mcp stdio`.
 
 ### search_completed_procurements
 
 ```
-Name:       search_completed_procurements
 Module:     uvo_mcp.tools.procurements
-Endpoint:   POST /mcp (via MCP protocol)
-
 Parameters:
-  text_query (str, optional)    Full-text search query
-  cpv_codes (list[str], optional) EU product classification codes
-  procurer_id (str, optional)   Filter by authority ID
-  supplier_ico (str, optional)  Filter by supplier company number
-  date_from (str, optional)     Start date (YYYY-MM-DD)
-  date_to (str, optional)       End date (YYYY-MM-DD)
-  limit (int, default 20)       Page size (max 100)
-  offset (int, default 0)       Result offset
+  text_query (str, optional)       Full-text search query
+  cpv_codes (list[str], optional)  EU product classification codes
+  procurer_id (str, optional)      Filter by authority ID
+  supplier_ico (str, optional)     Filter by supplier company number
+  date_from (str, optional)        Start date (YYYY-MM-DD)
+  date_to (str, optional)          End date (YYYY-MM-DD)
+  limit (int, default 20)          Page size (max 100)
+  offset (int, default 0)          Result offset
 
 Returns:
-  {
-    "data": [
-      {
-        "id": str,
-        "nazov": str,
-        "konecna_hodnota": float,
-        "datum_zverejnenia": str,
-        "obstaravatel_nazov": str,
-        "cpv_kod": str,
-        "stav": str,
-        "dodavatelia": [{"nazov": str, "ico": str}],
-        ...
-      }
-    ],
-    "total": int
-  }
+  {"items": [...], "total": int, "limit": int, "offset": int}
 ```
 
 ### get_procurement_detail
 
 ```
-Name:       get_procurement_detail
 Module:     uvo_mcp.tools.procurements
-Endpoint:   POST /mcp (via MCP protocol)
-
 Parameters:
-  procurement_id (str, required) Procurement ID
+  procurement_id (str, required)
 
-Returns:
-  {
-    "id": str,
-    "nazov": str,
-    "konecna_hodnota": float,
-    "datum_zverejnenia": str,
-    "obstaravatel_nazov": str,
-    "cpv_kod": str,
-    "stav": str,
-    "dodavatelia": [{"nazov": str, "ico": str}],
-    "popis": str,
-    ...
-  }
-
-Error (404):
-  {"error": "Procurement {id} not found", "status_code": 404}
+Returns: the full notice document.
+Error:   {"error": "Procurement {id} not found", "status_code": 404}
 ```
 
-### find_procurer
+### find_procurer and find_supplier
 
 ```
-Name:       find_procurer
 Module:     uvo_mcp.tools.subjects
-Endpoint:   POST /mcp (via MCP protocol)
-
 Parameters:
-  name_query (str, optional)    Full-text search by name
-  ico (str, optional)           Company registration number
-  limit (int, default 20)       Page size (max 100)
-  offset (int, default 0)       Result offset
+  name_query (str, optional)       Name search (substring, wildcard, or phrase)
+  ico (str, optional)              Company registration number (exact)
+  sort_by (str, default "name")    Sort order
+  limit (int, default 20)          Page size (max 100)
+  offset (int, default 0)          Result offset
 
 Returns:
-  {
-    "data": [
-      {
-        "id": str,
-        "nazov": str,
-        "ico": str,
-        "zakazky_count": int,
-        "total_value": float,
-        ...
-      }
-    ],
-    "total": int
-  }
+  {"items": [...], "total": int, ...}
 ```
 
-### find_supplier
+### Other tools
 
-```
-Name:       find_supplier
-Module:     uvo_mcp.tools.subjects
-Endpoint:   POST /mcp (via MCP protocol)
-
-Parameters:
-  name_query (str, optional)    Full-text search by name
-  ico (str, optional)           Company registration number
-  limit (int, default 20)       Page size (max 100)
-  offset (int, default 0)       Result offset
-
-Returns:
-  {
-    "data": [
-      {
-        "id": str,
-        "nazov": str,
-        "ico": str,
-        "zakazky_count": int,
-        "total_value": float,
-        ...
-      }
-    ],
-    "total": int
-  }
-```
+| Tool | Module | Parameters |
+|------|--------|------------|
+| `search_autocomplete` | `tools.autocomplete` | `query`, `types` (optional list), `limit` (default 5) |
+| `search_companies_vector` | `tools.vector_search` | `query`, `limit` (default 10), `role` (default `"all"`) |
+| `company_risk_profile_tool` | `tools.risk` | `ico` |
+| `find_supplier_concentration` | `tools.graph` | `procurer_ico`, `top_n` (default 10) |
+| `find_related_organisations` | `tools.graph` | `ico`, `max_hops` (default 2) |
+| `get_procurement_network` | `tools.graph` | `cpv_code`, `year` |
+| `graph_ego_network` | `tools.graph` | `ico`, `max_hops` (default 2) |
+| `graph_cpv_network` | `tools.graph` | `cpv_code`, `year` |
 
 ## Frontends
 
-The public SPA lives in [`src/uvo-gui-react/`](../src/uvo-gui-react/) (React 18 + Vite + TanStack Query). It calls the FastAPI bridge on port 8001, which fans out to the MCP server. See the package's `README.md` for routes, components, and dev instructions.
+The public SPA lives in [`src/uvo-gui-react/`](../src/uvo-gui-react/) (React 18 + Vite + TanStack Query). It calls the API on port 8001 under `/api/...`. The API calls `uvo_core.services` in-process. The SPA does not talk to the MCP server. See the package's `README.md` for routes, components, and dev instructions.
 
 ## Environment Variables
 
-**Storage** (required):
+Settings are read from the environment and from `.env`. `ApiSettings` reads only `API_*` names. Every other package reads unprefixed names. See `CLAUDE.md` for the `API_` prefix trap.
+
+**Storage and credentials** (compose requires the first two):
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `MONGO_PASSWORD` | — | MongoDB user password |
-| `NEO4J_PASSWORD` | — | Neo4j user password |
+| `MONGO_PASSWORD` | *(required)* | MongoDB user password |
+| `NEO4J_PASSWORD` | *(required)* | Neo4j user password |
+| `MONGODB_URI` | — | MongoDB URI for MCP and the workers |
+| `NEO4J_URI` | — | Neo4j URI for the workers and MCP |
+| `API_MONGODB_URI` | *(required, no default)* | MongoDB URI for the API |
+| `API_NEO4J_URI` | unset | Neo4j URI for the API; graph routes return 503 when unset |
+| `API_NEO4J_USER` / `API_NEO4J_PASSWORD` | — | Neo4j credentials for the API |
+| `API_REDIS_PASSWORD` | `""` | Redis password for the API (`/v1` rate limiting) |
+| `API_HOST` / `API_PORT` | `0.0.0.0` / `8001` | API bind address and port |
+| `API_CORS_ORIGINS` | `http://localhost:5174`, `http://localhost:8080` | Allowed browser origins (list) |
+| `API_OPS_TOKEN` | `""` | Bearer token for ops endpoints; empty disables them |
+| `API_DOCS_ENABLED` | `false` | Expose interactive API docs |
 
-**Redis** (required for microservices):
+**Redis** (workers, MCP, and API):
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `REDIS_URL` | `redis://redis:6379/0` | Redis connection URI |
-| `REDIS_PASSWORD` | `` | Redis password (if auth enabled) |
+| `REDIS_PASSWORD` | `""` | Redis password. MCP needs it for the `notices:written` cache-invalidation subscriber |
 
-**Microservices — Extractor Intervals** (all in seconds):
+**Workers — extractor intervals and modes** (seconds):
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `VESTNIK_INTERVAL_SECONDS` | `3600` | UVO Vestník extraction interval |
 | `CRZ_INTERVAL_SECONDS` | `3600` | CRZ extraction interval |
 | `TED_INTERVAL_SECONDS` | `21600` | TED extraction interval (6 hours) |
 | `ITMS_INTERVAL_SECONDS` | `3600` | ITMS extraction interval |
+| `VESTNIK_MODE` | `recent` | `recent` or `historical` |
+| `CRZ_MODE` / `TED_MODE` / `ITMS_MODE` | `recent` | Extraction mode for each source |
 
-**Microservices — Extraction Modes**:
+**Workers — stream and ingestor reliability:**
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `VESTNIK_MODE` | `recent` | `recent` or `historical` (legacy pipeline modes) |
-| `CRZ_MODE` | `recent` | `` |
-| `TED_MODE` | `recent` | `` |
-| `ITMS_MODE` | `recent` | `` |
+| `INGESTOR_BATCH_SIZE` | `100` | Messages per XREADGROUP call |
+| `INGESTOR_MAX_DELIVERIES` | `5` | Deliveries before a failing entry is dead-lettered to `notices:dead` |
+| `INGESTOR_RECLAIM_INTERVAL_SECONDS` | `30` | How often stale pending entries are reclaimed |
+| `INGESTOR_RECLAIM_MIN_IDLE_MS` | `60000` | Idle time before a pending entry is reclaimable |
+| `INGESTOR_MAINTENANCE_INTERVAL_SECONDS` | `30` | Cadence for MINID trimming and lag and PEL metrics |
+| `STREAM_MAXLEN_APPROX` | `1000000` | Memory safety cap per stream. Acked entries are trimmed separately |
+| `STREAM_HIGH_WATER` | `50000` | Extractors pause while consumer-group lag + pending reaches this |
+| `CHECKPOINT_OVERLAP_SECONDS` | `86400` | CRZ/TED re-fetch window behind the cycle start |
 
-**Microservices — Cross-source Deduplication**:
+**Workers — cross-source deduplication:**
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `DEDUP_INTERVAL_SECONDS` | `3600` | Fallback poll interval (1 hour) |
-| `DEDUP_DEBOUNCE_SECONDS` | `5` | Coalesce events within N seconds |
-| `DEDUP_WINDOW_DAYS` | `30` | Only dedup notices ingested in last N days |
+| `DEDUP_DEBOUNCE_SECONDS` | `5` | Coalesce `notices:written` events within N seconds |
+| `DEDUP_WINDOW_DAYS` | `30` | Only dedup notices ingested in the last N days |
+| `DEDUP_LOCK_TTL_SECONDS` | `1800` | TTL of the cross-replica `dedup:lock` |
 
-**Microservices — ITMS Cache** (Redis-backed by default):
+**Workers — ITMS cache:**
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ITMS_CACHE_BACKEND` | `redis` | `redis` (production) or `memory` (tests) |
 | `ITMS_CACHE_TTL_SECONDS` | `604800` | Cache TTL (7 days) |
 
-**Microservices — Ingestor Batching**:
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `INGESTOR_BATCH_SIZE` | `100` | Messages per XREADGROUP call |
-| `STREAM_MAXLEN_APPROX` | `1000000` | Memory safety cap per Redis stream (acked entries are trimmed separately; backpressure keeps unread entries far below it) |
-| `STREAM_HIGH_WATER` | `50000` | Extractors pause while consumer-group lag + pending reaches this |
-| `CHECKPOINT_OVERLAP_SECONDS` | `86400` | CRZ/TED re-fetch window behind the cycle start |
-| `INGESTOR_MAX_DELIVERIES` | `5` | Deliveries before a failing entry is dead-lettered to `notices:dead` |
-| `INGESTOR_RECLAIM_INTERVAL_SECONDS` | `30` | How often stale pending entries are reclaimed |
-| `INGESTOR_RECLAIM_MIN_IDLE_MS` | `60000` | Idle time before a pending entry is reclaimable |
-| `DEDUP_LOCK_TTL_SECONDS` | `1800` | TTL of the cross-replica `dedup:lock` |
+**Legacy pipeline** (one-shot backfill mode):
 
-**Legacy Pipeline** (one-shot backfill mode):
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `HISTORICAL_FROM_YEAR` | `2014` | Start year for `pipeline run --mode historical` |
 | `RECENT_DAYS` | `365` | Days window for `pipeline run --mode recent` |
 
-**MCP Server** (data layer):
+**MCP and API data access:**
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `EKOSYSTEM_BASE_URL` | `https://datahub.ekosystem.slovensko.digital` | Ekosystem Datahub URL |
-| `EKOSYSTEM_API_TOKEN` | `` | Ekosystem API token (optional) |
+| `EKOSYSTEM_API_TOKEN` | `""` | Ekosystem API token (optional) |
 | `TED_BASE_URL` | `https://api.ted.europa.eu` | TED API URL |
-| `MCP_SERVER_URL` | `http://localhost:8000/mcp` | URL for API bridge to reach MCP server |
-| `MCP_HOST` | `0.0.0.0` | MCP server bind address |
-| `MCP_PORT` | `8000` | MCP server port |
+| `REQUEST_TIMEOUT` | `30.0` | HTTP request timeout (seconds) |
 | `CACHE_TTL_SEARCH` | `300` | Search result cache TTL (seconds) |
 | `CACHE_TTL_ENTITY` | `3600` | Entity lookup cache TTL (seconds) |
 | `CACHE_TTL_DETAIL` | `1800` | Detail view cache TTL (seconds) |
-| `REQUEST_TIMEOUT` | `30.0` | HTTP request timeout (seconds) |
-| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ## Project Structure
 
 ```
 uvo-search/
 ├── src/
-│   ├── uvo_mcp/                          # MCP server (port 8000)
-│   │   ├── __main__.py, server.py, config.py, models.py
-│   │   └── tools/ (procurements.py, subjects.py, graph.py)
+│   ├── uvo_core/                         # Shared core; imports no other package
+│   │   ├── services/                     # Query services used by API and MCP (search, graph, risk)
+│   │   ├── domain/                       # Models, CPV helpers, scoring, hashing, company merge
+│   │   ├── adapters/mongo/               # Loaders, dedup, ingestion log, checkpoints, search indexes
+│   │   ├── adapters/neo4j/               # Graph queries and loader
+│   │   ├── adapters/redis/               # Streams, locks, pub/sub, cache invalidation, client
+│   │   ├── infra/clients.py              # Client factories with explicit timeouts and pools
+│   │   ├── cache.py, errors.py, ports.py
+│   │   └── testing.py
 │   │
-│   ├── uvo_api/                          # FastAPI bridge (port 8001)
-│   │   └── routers/ (contracts.py, dashboard.py, graph.py, procurers.py, suppliers.py)
+│   ├── uvo_api/                          # FastAPI delivery adapter (port 8001)
+│   │   ├── app.py, config.py, auth.py, ratelimit.py, errors.py, v1_errors.py
+│   │   ├── routers/                      # /api/* routers; routers/v1/ for the public API
+│   │   └── __main__.py
 │   │
-│   ├── uvo_pipeline/                     # Shared library (no public port)
-│   │   ├── extractors/                   # Source-specific extraction (vestnik, crz, ted, itms)
+│   ├── uvo_mcp/                          # FastMCP delivery adapter (port 8000)
+│   │   ├── server.py, config.py, __main__.py
+│   │   └── tools/                        # procurements, subjects, graph, risk, autocomplete, vector_search
+│   │
+│   ├── uvo_pipeline/                     # Source extractors/transformers, health CLI, legacy orchestrator
+│   │   ├── extractors/                   # vestnik_nkod, crz, ted, itms
 │   │   ├── transformers/                 # Normalize to CanonicalNotice
-│   │   ├── loaders/                      # Mongo + Neo4j loading
-│   │   ├── redis_client.py               # Async Redis factory (NEW)
-│   │   ├── streams.py                    # XADD, XREADGROUP, XACK helpers (NEW)
-│   │   ├── pubsub.py                     # PUBLISH, SUBSCRIBE helpers (NEW)
-│   │   ├── locks.py                      # Distributed lock CAS helpers (NEW)
-│   │   ├── dedup.py                      # Cross-source dedup (moved from orchestrator) (NEW)
-│   │   ├── cache/                        # ITMS cache backends (NEW)
-│   │   │   ├── memory.py                 # In-process (tests)
-│   │   │   └── redis.py                  # Redis-backed (production)
-│   │   ├── orchestrator.py               # Legacy one-shot entry point
-│   │   ├── models.py, config.py
-│   │   └── __main__.py                   # Legacy CLI: uv run python -m uvo_pipeline
+│   │   ├── catalog/nkod.py               # Vestník dataset discovery (NKOD SPARQL)
+│   │   ├── cache/                        # ITMS cache backends (memory, redis)
+│   │   ├── utils/                        # date validation, fetch_with_retry, rate limiter
+│   │   ├── health.py, orchestrator.py, config.py
+│   │   └── __main__.py                   # uv run python -m uvo_pipeline [run|health]
 │   │
-│   ├── uvo_workers/                      # Long-lived microservice daemons (NEW)
-│   │   ├── runner.py                     # Daemon loop, signal handling, /health, lock
-│   │   ├── vestnik.py, crz.py, ted.py, itms.py  # Per-source extractors
-│   │   ├── ingestor.py                   # Streams consumer
-│   │   ├── dedup.py                      # Dedup subscriber
-│   │   ├── health.py                     # /health endpoint helpers
-│   │   └── __main__.py                   # Entry point: uv run python -m uvo_workers.<service>
+│   ├── uvo_workers/                      # Long-lived ingestion services (ports 8091–8096)
+│   │   ├── context.py, clients.py, settings.py, extract.py, runner.py
+│   │   ├── vestnik.py, crz.py, ted.py, itms.py   # Source declarations
+│   │   ├── ingestor.py, dedup.py
+│   │   └── metrics.py, health.py
 │   │
 │   └── uvo-gui-react/                    # React 18 SPA (port 8080 / 5174 dev)
-│       └── src/ (components, hooks, pages, i18n, lib)
+│       └── src/ (api, components, hooks, i18n, pages, lib, test)
 │
 ├── tests/
-│   ├── conftest.py                       # Shared pytest fixtures
-│   ├── mcp/                              # MCP unit tests (mocked)
-│   ├── api/                              # API bridge unit tests
-│   ├── pipeline/                         # Pipeline unit tests
-│   └── e2e/                              # End-to-end (requires docker compose)
+│   ├── conftest.py
+│   ├── core/, api/, mcp/, workers/, pipeline/, gui/   # Unit tests
+│   ├── e2e/                              # End-to-end (requires docker compose)
+│   └── test_dockerfiles.py
 │
 ├── docs/
 │   ├── architecture.md                   # System design and data flow
-│   ├── backend.md                        # Backend (MCP + microservices) guide
-│   ├── data-pipeline.md                  # Data pipeline (microservices) operations
+│   ├── backend.md                        # Backend (API, MCP, shared core)
+│   ├── data-pipeline.md                  # Workers and pipeline operations
 │   ├── reference.md                      # Quick reference (this file)
-│   ├── plan.md                           # Project roadmap
-│   ├── data-sources-research.md          # API documentation
-│   └── superpowers/
-│       └── specs/
-│           └── 2026-04-27-source-microservices-design.md  # Authoritative design spec
+│   ├── api-v1.md                         # Public /v1 API
+│   ├── plans/                            # Dated plans (historical)
+│   └── superpowers/specs/                # Design specs (historical)
 │
 ├── .github/workflows/
-│   ├── ci.yml                            # Unit tests, lint, Docker build
-│   └── docker-publish.yml                # Push to registry on tag
+│   ├── ci.yml                            # test, lint (incl. lint-imports), frontend, images, compose E2E
+│   └── docker-publish.yml                # Publish images after CI succeeds on main
 │
 ├── Dockerfile                            # Multi-stage: targets mcp, api, workers, pipeline
-├── docker-compose.yml                    # Local deployment (14 services)
-├── pyproject.toml                        # Dependencies, tooling config
+├── docker-compose.yml                    # Local deployment
+├── pyproject.toml                        # Dependencies, pytest, ruff, import-linter config
 ├── uv.lock                               # Locked dependency versions
 ├── .env.example                          # Configuration template
-├── CLAUDE.md                             # Development context
+├── CLAUDE.md                             # Development context (what is live)
 ├── README.md                             # Project overview
 └── .gitignore
 ```
-
-**New in source-microservices**:
-- `src/uvo_workers/` — 6 daemon entrypoints (4 extractors + ingestor + dedup-worker)
-- `src/uvo_core/adapters/redis/client.py`, `streams.py`, `pubsub.py`, `locks.py` — Redis integration helpers
-- `src/uvo_pipeline/cache/` — ITMS cache abstraction (memory + Redis backends)
-- `src/uvo_core/adapters/mongo/dedup.py` — Extracted from `orchestrator.py` for reuse
-- `docs/superpowers/specs/2026-04-27-source-microservices-design.md` — Full design specification
 
 ## Dev Commands
 
@@ -302,10 +241,10 @@ cp .env.example .env
 ### Run Local
 
 ```bash
-# Terminal 1: MCP server
+# Terminal 1: MCP server (streamable-http on 8000)
 uv run python -m uvo_mcp
 
-# Terminal 2: API bridge
+# Terminal 2: API (port 8001)
 uv run python -m uvo_api
 
 # Terminal 3: React SPA (Vite dev server)
@@ -314,43 +253,33 @@ cd src/uvo-gui-react && npm install && npm run dev
 # Open http://localhost:5174
 ```
 
-### Run with Hot Reload
-
-```bash
-# MCP server (auto-restarts on code change)
-uv run watchfiles 'python -m uvo_mcp' src/uvo_mcp
-
-# React SPA (Vite HMR is the default `npm run dev`)
-cd src/uvo-gui-react && npm run dev
-```
-
 ### Test
 
 ```bash
-# All Python unit tests
-uv run pytest tests/mcp/ tests/api/ tests/pipeline/ -v
+# Full unit suite (CI runs this with -m "not e2e and not integration")
+uv run pytest tests/ --ignore=tests/e2e -q
 
-# MCP tests only
+# One area
 uv run pytest tests/mcp/ -v
 
-# With coverage
-uv run pytest tests/ -m "not e2e and not integration" --cov=src/
+# E2E (requires docker compose up)
+uv run pytest tests/e2e/ -v
 
-# Specific test
-uv run pytest tests/mcp/test_procurements.py::test_search -v
+# With coverage
+uv run pytest --cov=src -v
+
+# React SPA
+cd src/uvo-gui-react && npm test -- --run
 ```
 
 ### Lint & Format
 
 ```bash
-# Check for issues
 uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/   # use `ruff format` without --check to rewrite
+uv run lint-imports                      # layering contracts from pyproject.toml
 
-# Auto-fix
-uv run ruff check --fix src/ tests/
-
-# Format code
-uv run ruff format src/ tests/
+cd src/uvo-gui-react && npm run lint && npx tsc -b
 ```
 
 ### Docker
@@ -369,20 +298,22 @@ docker compose logs -f
 docker compose down -v
 ```
 
+See `CLAUDE.md` for the WSL-specific commands on this machine.
+
 ## Common Patterns
 
-### Call an MCP Tool from a Frontend
+### Call the API from a frontend
 
-The React SPA goes through the FastAPI bridge — it calls REST endpoints, not the MCP server directly. Example (TanStack Query in React):
+The React SPA calls REST endpoints under `/api/`. It does not call the MCP server directly. Example (TanStack Query in React):
 
 ```ts
 import { useQuery } from "@tanstack/react-query";
 
-export function useContracts(query: string) {
+export function useContracts(q: string) {
   return useQuery({
-    queryKey: ["contracts", query],
+    queryKey: ["contracts", q],
     queryFn: async () => {
-      const r = await fetch(`/api/contracts?query=${encodeURIComponent(query)}`);
+      const r = await fetch(`/api/contracts?q=${encodeURIComponent(q)}`);
       if (!r.ok) throw new Error(await r.text());
       return r.json();
     },
@@ -390,7 +321,7 @@ export function useContracts(query: string) {
 }
 ```
 
-The API bridge translates that request into an MCP tool call (`search_completed_procurements`) and returns JSON.
+The API router validates the parameters and calls `uvo_core.services.search` in-process. The MCP server exposes the same service functions as tools for LLM clients.
 
 ## URLs & External Resources
 
@@ -405,19 +336,17 @@ The API bridge translates that request into an MCP tool call (`search_completed_
 
 ## Dependencies
 
-**Runtime**:
-- `mcp[cli]>=1.0.0` — Model Context Protocol (Anthropic)
-- `httpx>=0.27.0` — Async HTTP client
-- `pydantic>=2.0.0` — Data validation
-- `pydantic-settings>=2.0.0` — Configuration management
-- `cachetools>=5.0.0` — Caching utilities (future use)
+Runtime dependencies are declared in `pyproject.toml`. The main ones are:
 
-**Development**:
-- `pytest>=8.0` — Testing framework
-- `pytest-asyncio>=0.24` — Async test support
-- `pytest-cov>=5.0` — Coverage reporting
-- `respx>=0.22` — HTTP mocking (tests)
-- `ruff>=0.8` — Linter & formatter
+- `mcp[cli]` — Model Context Protocol server (FastMCP)
+- `fastapi[standard]`, `uvicorn` — API
+- `motor`, `neo4j`, `redis` — database and cache clients
+- `fastembed` — local embeddings for vector search
+- `pydantic`, `pydantic-settings` — validation and configuration
+- `cachetools` — in-process caches
+- `lxml` — Vestník XML parsing
+
+Development dependencies include `pytest` (with `pytest-asyncio`, `pytest-cov`, `respx`, `fakeredis`, `mongomock-motor`), `ruff`, and `import-linter`.
 
 ## Configuration Files
 
@@ -430,35 +359,40 @@ The API bridge translates that request into an MCP tool call (`search_completed_
 | `docker-compose.yml` | Local deployment configuration |
 | `.github/workflows/ci.yml` | CI/CD pipeline (tests, lint, Docker build) |
 
-## Error Codes
+## Error Shapes
 
-### HTTP Status Codes
+### API
 
-| Code | Meaning | Handled By |
-|------|---------|-----------|
-| 200 | Success | Tool returns data |
-| 400 | Bad request | Tool returns error dict |
-| 404 | Not found | Tool returns error dict |
-| 429 | Rate limited | Tool returns error dict (cache if available, future) |
-| 5xx | Server error | Tool returns error dict |
-| 0 | Connection error | Tool returns error dict |
+| Condition | Response |
+|-----------|----------|
+| Validation error | 422 from FastAPI |
+| Backend unavailable (`BackendUnavailable`) | 503 with a generic detail; the reason is logged, not returned |
+| Graph route with `API_NEO4J_URI` unset | 503 |
+| Ops endpoint, `API_OPS_TOKEN` empty | 503 (endpoints are unconfigured and refuse all callers) |
+| Ops endpoint, missing or wrong bearer token | 401 |
+
+### MCP tools
+
+| Condition | Response |
+|-----------|----------|
+| MongoDB not configured | `{"error": "MongoDB not configured", "status_code": 503}` |
+| Procurement not found | `{"error": "Procurement {id} not found", "status_code": 404}` |
+| Backend exception | Reported by FastMCP as a tool error |
 
 ### Frontend Error Messages
 
 | Message | Cause | Recovery |
 |---------|-------|----------|
-| "Chyba pri vyhľadávaní: ..." | MCP tool failed | Retry search |
+| "Chyba pri vyhľadávaní: ..." | API request failed | Retry search |
 | "Hľadať" button disabled | Loading in progress | Wait for completion |
 | Empty results | No matches found | Broaden search criteria |
 
 ## Performance Considerations
 
-- **Page size**: Default 20, max 100 (configurable via MCP tool)
-- **Request timeout**: 30 seconds (configurable via `REQUEST_TIMEOUT`)
-- **Search caching**: Configured (300s) but not yet implemented
-- **Entity caching**: Configured (3600s) but not yet implemented
-
-See [plan.md](plan.md) for caching implementation roadmap.
+- **Page size**: default 20, max 100 (`clamp_page`). Offsets are capped as well.
+- **Request timeout**: 30 seconds (`REQUEST_TIMEOUT` for MCP)
+- **Client bounds**: explicit timeouts and pool sizes come from `uvo_core.infra.clients`, configured per service
+- **Caching**: in-process TTL caches for search (`CACHE_TTL_SEARCH`), entity lookups (`CACHE_TTL_ENTITY`), and detail views (`CACHE_TTL_DETAIL`). Dashboard aggregates are cached too. A `notices:written` subscriber clears them.
 
 ## Contributing
 
