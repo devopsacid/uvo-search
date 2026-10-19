@@ -54,3 +54,13 @@ def mock_context(mock_http_client):
     ctx = MagicMock()
     ctx.request_context.lifespan_context = app_ctx
     return ctx, mock
+
+
+@pytest.fixture(autouse=True)
+def _clear_analytics_caches():
+    """Analytics aggregates are process-cached; isolate tests from each other."""
+    from uvo_core.adapters.mongo.analytics import clear_analytics_caches
+
+    clear_analytics_caches()
+    yield
+    clear_analytics_caches()

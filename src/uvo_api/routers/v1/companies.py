@@ -4,8 +4,7 @@ import asyncio
 
 from fastapi import APIRouter, Query
 
-from uvo_api.db import get_analytics, get_graph_store
-from uvo_api.routers.dashboard import _cpv_prefix, _load_cpv_labels
+from uvo_api.db import get_analytics, get_db, get_graph_store
 from uvo_api.routers.v1._common import decode_cursor, next_pagination
 from uvo_api.routers.v1.models import (
     CompanyCard,
@@ -23,7 +22,10 @@ from uvo_api.routers.v1.models import (
 )
 from uvo_api.services import run_query
 from uvo_api.v1_errors import ApiV1Error
+from uvo_core.adapters.mongo.entities import entity_name, entity_roles, get_entity_by_ico
 from uvo_core.domain.companies import merge_companies_by_ico
+from uvo_core.domain.cpv import cpv_prefix as _cpv_prefix
+from uvo_core.domain.cpv import load_cpv_labels as _load_cpv_labels
 from uvo_core.domain.scoring import cpv_concentration
 from uvo_core.services.risk import company_risk_profile
 
@@ -32,11 +34,14 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 # find_supplier / find_procurer cap at 100 rows; we merge + slice a page from that.
 _MERGE_FETCH = 100
 
-_EMPTY: dict = {"items": []}
 
-
-async def _empty() -> dict:
-    return _EMPTY
+async def _resolve_identity(ico: str) -> tuple[list[str], str]:
+    """(roles, display name) for an ICO; raises the v1 404 when the company is unknown."""
+    entity = await get_entity_by_ico(get_db(), ico)
+    roles = entity_roles(entity)
+    if not roles:
+        raise ApiV1Error(404, "company_not_found", f"No company found for ICO {ico}.")
+    return roles, entity_name(entity)
 
 
 @router.get("", response_model=CompanyListResponse)
@@ -74,22 +79,7 @@ async def search_companies(
 @router.get("/{ico}", response_model=CompanyRecordResponse)
 async def get_company(ico: str) -> CompanyRecordResponse:
     """Core identity record for a company by ICO."""
-    supplier_result, procurer_result = await asyncio.gather(
-        run_query("find_supplier", {"ico": ico, "limit": 1}),
-        run_query("find_procurer", {"ico": ico, "limit": 1}),
-    )
-    supplier_items = supplier_result.get("items", [])
-    procurer_items = procurer_result.get("items", [])
-    if not supplier_items and not procurer_items:
-        raise ApiV1Error(404, "company_not_found", f"No company found for ICO {ico}.")
-
-    roles: list[str] = []
-    if supplier_items:
-        roles.append("supplier")
-    if procurer_items:
-        roles.append("procurer")
-    name = (supplier_items or procurer_items)[0].get("name") or ""
-
+    roles, name = await _resolve_identity(ico)
     return CompanyRecordResponse(data=CompanyRecord(ico=ico, name=name, roles=roles))
 
 
@@ -114,24 +104,11 @@ def _cpv_breakdown(rows: list[dict]) -> tuple[list[CpvBreakdownRow], float]:
 async def get_company_profile(ico: str) -> CompanyProfileResponse:
     """Flagship procurement profile: totals, spend by year, counterparties, CPV mix."""
     analytics = get_analytics()
-    supplier_result, procurer_result, core, partners = await asyncio.gather(
-        run_query("find_supplier", {"ico": ico, "limit": 1}),
-        run_query("find_procurer", {"ico": ico, "limit": 1}),
+    (roles, name), core, partners = await asyncio.gather(
+        _resolve_identity(ico),
         analytics.core_stats(ico),
         analytics.partners(ico, "all", "value", 10, 0),
     )
-
-    supplier_items = supplier_result.get("items", [])
-    procurer_items = procurer_result.get("items", [])
-    if not supplier_items and not procurer_items:
-        raise ApiV1Error(404, "company_not_found", f"No company found for ICO {ico}.")
-
-    roles: list[str] = []
-    if supplier_items:
-        roles.append("supplier")
-    if procurer_items:
-        roles.append("procurer")
-    name = (supplier_items or procurer_items)[0].get("name") or ""
 
     def _agg_block(key: str) -> dict:
         rows = core.get(key) or []
@@ -186,21 +163,7 @@ async def get_company_profile(ico: str) -> CompanyProfileResponse:
 async def get_company_risk(ico: str) -> CompanyRiskResponse:
     """Red-flag risk profile: supplier concentration, single-pair dependency,
     market-value deviation, and award clustering, blended into a 0-100 score."""
-    supplier_result, procurer_result = await asyncio.gather(
-        run_query("find_supplier", {"ico": ico, "limit": 1}),
-        run_query("find_procurer", {"ico": ico, "limit": 1}),
-    )
-    supplier_items = supplier_result.get("items", [])
-    procurer_items = procurer_result.get("items", [])
-    if not supplier_items and not procurer_items:
-        raise ApiV1Error(404, "company_not_found", f"No company found for ICO {ico}.")
-
-    roles: list[str] = []
-    if supplier_items:
-        roles.append("supplier")
-    if procurer_items:
-        roles.append("procurer")
-    name = (supplier_items or procurer_items)[0].get("name") or ""
+    roles, name = await _resolve_identity(ico)
 
     profile = await company_risk_profile(ico, get_analytics(), get_graph_store())
 

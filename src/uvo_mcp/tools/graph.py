@@ -7,7 +7,6 @@ import logging
 
 from mcp.server.fastmcp import Context
 
-from uvo_core.adapters.neo4j.graph import _build_cpv_graph, _build_ego_graph  # noqa: F401
 from uvo_core.services import graph as graph_svc
 from uvo_mcp.server import AppContext, mcp
 

@@ -61,10 +61,18 @@ def test_cpv_breakdown_pipeline_year_bounds():
     assert year_match["$match"]["_year"] == {"$gte": 2024, "$lte": 2024}
 
 
-def test_monthly_buckets_pipeline_year_window():
+def test_monthly_buckets_pipeline_matches_raw_date_fields_first():
+    """The year window must hit the raw fields in the first $match so indexes apply."""
     pipeline = build_monthly_buckets_pipeline(2024)
-    window = next(s for s in pipeline if "$match" in s and "_d" in s["$match"])
-    assert window["$match"]["_d"] == {"$gte": "2024-", "$lt": "2025-"}
+    first = pipeline[0]["$match"]
+    assert first["notice_type"] == "contract_award"
+    window = {"$gte": "2024-", "$lt": "2025-"}
+    assert first["$or"] == [
+        {"award_date": window},
+        {"award_date": None, "publication_date": window},
+    ]
+    # No computed-field stage ahead of the match: that would defeat index use.
+    assert not any("$addFields" in stage for stage in pipeline)
 
 
 def test_top_entities_pipeline_supplier_unwinds():

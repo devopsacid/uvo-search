@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import functools
 from collections.abc import Callable
 from typing import Any
@@ -26,7 +27,8 @@ def async_ttl_cache(*, maxsize: int, ttl: float, key_from: Callable | None = Non
     """Decorator for async functions. Caches by hashable args/kwargs.
 
     Concurrent identical calls share a single in-flight coroutine (prevents
-    thundering herd). Pass ``key_from`` to derive the cache key from a subset
+    thundering herd). Results are deep-copied on the way out so callers may
+    mutate what they receive without poisoning the cache. Pass ``key_from`` to derive the cache key from a subset
     of arguments (e.g. to skip an unhashable ``db`` handle).
     """
 
@@ -44,22 +46,39 @@ def async_ttl_cache(*, maxsize: int, ttl: float, key_from: Callable | None = Non
             except TypeError:
                 return await fn(*args, **kwargs)
 
-            if key in cache:
-                return cache[key]
+            while True:
+                if key in cache:
+                    return copy.deepcopy(cache[key])
+                in_flight = pending.get(key)
+                if in_flight is None:
+                    break
+                try:
+                    # shield: a cancelled waiter must not cancel the shared future.
+                    return copy.deepcopy(await asyncio.shield(in_flight))
+                except asyncio.CancelledError:
+                    task = asyncio.current_task()
+                    if in_flight.cancelled() and not (task and task.cancelling()):
+                        # The leader was cancelled, not us: retry (possibly as leader).
+                        continue
+                    raise
 
-            if key in pending:
-                return await pending[key]
-
-            fut: asyncio.Future = asyncio.get_event_loop().create_future()
+            fut: asyncio.Future = asyncio.get_running_loop().create_future()
             pending[key] = fut
             try:
                 result = await fn(*args, **kwargs)
+            except asyncio.CancelledError:
+                fut.cancel()
+                raise
+            except BaseException as exc:
+                fut.set_exception(exc)
+                # Mark retrieved so a waiter-less failure doesn't log
+                # "Future exception was never retrieved" at GC time.
+                fut.exception()
+                raise
+            else:
                 cache[key] = result
                 fut.set_result(result)
-                return result
-            except Exception as exc:
-                fut.set_exception(exc)
-                raise
+                return copy.deepcopy(result)
             finally:
                 pending.pop(key, None)
 

@@ -60,6 +60,22 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await _ensure_index(db.notices, [("pipeline_run_id", 1)], name="pipeline_run_id")
     await _ensure_index(db.notices, [("title_slug", 1)], name="title_slug")
 
+    # Dashboard / firma query paths always constrain notice_type; the compound
+    # indexes let those aggregations seek instead of scanning the corpus.
+    await _ensure_index(
+        db.notices,
+        [("notice_type", 1), ("publication_date", -1)],
+        name="notice_type_publication_date_desc",
+    )
+    await _ensure_index(
+        db.notices, [("procurer.ico", 1), ("notice_type", 1)], name="procurer_ico_notice_type"
+    )
+    await _ensure_index(
+        db.notices,
+        [("awards.supplier.ico", 1), ("notice_type", 1)],
+        name="supplier_ico_notice_type",
+    )
+
     # procurers / suppliers:
     # - ico_unique uses partialFilterExpression rather than sparse. MongoDB
     #   "sparse" still indexes null-valued fields, so two records with ico=null
@@ -108,6 +124,8 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     from uvo_pipeline.ingestion_log import ensure_log_indexes
 
     await ensure_log_indexes(db)
+    # worker-status reads the latest event per component.
+    await _ensure_index(db.ingestion_log, [("component", 1), ("ts", -1)], name="component_ts_desc")
 
     # Entity listing sorts: an empty-query entity_search is find({}).sort(<field>, _id)
     # (uvo_core.adapters.mongo.subjects); _id makes pagination stable on ties.

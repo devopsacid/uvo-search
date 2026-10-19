@@ -92,18 +92,6 @@ def client(monkeypatch):
     return TestClient(app)
 
 
-# ------------------------------------------------------------------
-# Helper: build a side_effect list for the 6 sequential call_tool
-# calls issued by get_firma_profile for a supplier-only ICO:
-#   1. find_supplier
-#   2. find_procurer
-#   3. search (top-5 as supplier)
-#   4. _empty / search (top-5 as procurer) — skipped via _empty()
-#   5. search (agg 100 as supplier)
-#   6. _empty / search (agg 100 as procurer) — skipped via _empty()
-# ------------------------------------------------------------------
-
-
 CORE_AGG_RESULT = {
     "as_supplier": [{"count": 10, "total": 5_000_000.0, "last": "2023-06-15"}],
     "as_procurer": [],
@@ -115,18 +103,20 @@ CORE_AGG_RESULT = {
 }
 
 
+async def _top_contracts_by_role(db, ico, role, limit=5):
+    """Stand-in for the sorted top-contracts query."""
+    return (SUPPLIER_CONTRACTS if role == "supplier" else PROCURER_CONTRACTS)["items"]
+
+
 def test_supplier_only_ico_returns_200(client):
     """A supplier-only ICO returns roles=['supplier'], primary_role='supplier'."""
 
-    call_tool_effects = [
-        SUPPLIER_RESULT,  # find_supplier
-        EMPTY_RESULT,  # find_procurer → not found
-        SUPPLIER_CONTRACTS,  # top-5 as supplier
-    ]
+    entity = {"supplier": SUPPLIER_RESULT["items"][0], "procurer": None}
 
     with (
         patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
-        patch("uvo_api.routers.firma.run_query", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
+        patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
     ):
         response = client.get(f"/api/firma/{SUPPLIER_ONLY_ICO}")
@@ -187,16 +177,12 @@ def test_dual_role_ico_returns_200(client):
         "spend_by_year": [{"_id": "2023", "total": 11_000_000.0}],
     }
 
-    call_tool_effects = [
-        dual_supplier,  # find_supplier
-        dual_procurer,  # find_procurer
-        SUPPLIER_CONTRACTS,  # top-5 as supplier
-        PROCURER_CONTRACTS,  # top-5 as procurer
-    ]
+    entity = {"supplier": dual_supplier["items"][0], "procurer": dual_procurer["items"][0]}
 
     with (
         patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
-        patch("uvo_api.routers.firma.run_query", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
+        patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=dual_core_agg)),
     ):
         response = client.get(f"/api/firma/{DUAL_ROLE_ICO}")
@@ -222,17 +208,48 @@ def test_dual_role_ico_returns_200(client):
 def test_unknown_ico_returns_404(client):
     """An ICO unknown to both find_supplier and find_procurer returns 404."""
 
-    call_tool_effects = [
-        EMPTY_RESULT,  # find_supplier
-        EMPTY_RESULT,  # find_procurer
-    ]
+    entity = {"supplier": None, "procurer": None}
 
     with (
         patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
-        patch("uvo_api.routers.firma.run_query", new=AsyncMock(side_effect=call_tool_effects)),
+        patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
+        patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value={})),
     ):
         response = client.get(f"/api/firma/{UNKNOWN_ICO}")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Firma nenájdená"
+
+
+def test_top_contracts_use_value_sorted_query_with_nested_supplier(client):
+    """B1: top contracts come from the value-sorted query; nested award.supplier is read."""
+    entity = {"supplier": None, "procurer": PROCURER_RESULT["items"][0]}
+    nested = {
+        "items": [
+            {
+                "_id": "c900",
+                "title": "Bridge",
+                "procurer": {"ico": "12345678", "name": "Ministry of Finance"},
+                "final_value": 9_000_000.0,
+                "award_date": "2021-01-01",
+                "awards": [{"supplier": {"ico": "55555555", "name": "Nested Co"}}],
+            }
+        ]
+    }
+    top = AsyncMock(return_value=nested["items"])
+    with (
+        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
+        patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
+        patch("uvo_api.routers.firma.top_contracts_by_value", new=top),
+        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value={})),
+    ):
+        response = client.get(f"/api/firma/{DUAL_ROLE_ICO}")
+
+    assert response.status_code == 200
+    assert {c.args[2] for c in top.call_args_list} == {"supplier", "procurer"}
+    assert all(c.args[3] == 5 for c in top.call_args_list)
+    contract = response.json()["top_contracts"][0]
+    assert contract["role"] == "procurer"
+    assert contract["counterparty_ico"] == "55555555"
+    assert contract["counterparty_name"] == "Nested Co"

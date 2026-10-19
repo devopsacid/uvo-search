@@ -89,8 +89,8 @@ def test_search_companies_merges_and_envelopes(client, monkeypatch):
 
 def test_get_company_record(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.run_query",
-        AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY]),
+        "uvo_api.routers.v1.companies.get_entity_by_ico",
+        AsyncMock(return_value={"supplier": SUPPLIER_RESULT["items"][0], "procurer": None}),
     )
     resp = client.get("/v1/companies/87654321", headers=AUTH_HEADERS)
     assert resp.status_code == 200
@@ -101,8 +101,8 @@ def test_get_company_record(client, monkeypatch):
 
 def test_get_company_record_not_found(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.run_query",
-        AsyncMock(side_effect=[EMPTY, EMPTY]),
+        "uvo_api.routers.v1.companies.get_entity_by_ico",
+        AsyncMock(return_value={"supplier": None, "procurer": None}),
     )
     resp = client.get("/v1/companies/00000000", headers=AUTH_HEADERS)
     assert resp.status_code == 404
@@ -111,8 +111,8 @@ def test_get_company_record_not_found(client, monkeypatch):
 
 def test_company_profile(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.run_query",
-        AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY]),
+        "uvo_api.routers.v1.companies.get_entity_by_ico",
+        AsyncMock(return_value={"supplier": SUPPLIER_RESULT["items"][0], "procurer": None}),
     )
     analytics = MagicMock()
     analytics.core_stats = AsyncMock(return_value=CORE_AGG)
@@ -133,8 +133,8 @@ def test_company_profile(client, monkeypatch):
 
 def test_company_risk(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.run_query",
-        AsyncMock(side_effect=[SUPPLIER_RESULT, EMPTY]),
+        "uvo_api.routers.v1.companies.get_entity_by_ico",
+        AsyncMock(return_value={"supplier": SUPPLIER_RESULT["items"][0], "procurer": None}),
     )
     analytics = MagicMock()
     analytics.core_stats = AsyncMock(
@@ -211,8 +211,8 @@ def test_company_risk(client, monkeypatch):
 
 def test_company_risk_not_found(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.run_query",
-        AsyncMock(side_effect=[EMPTY, EMPTY]),
+        "uvo_api.routers.v1.companies.get_entity_by_ico",
+        AsyncMock(return_value={"supplier": None, "procurer": None}),
     )
     resp = client.get("/v1/companies/00000000/risk", headers=AUTH_HEADERS)
     assert resp.status_code == 404
@@ -272,8 +272,8 @@ def test_get_contract_detail_not_found(client, monkeypatch):
 
 def test_invalid_cursor_returns_400(client, monkeypatch):
     monkeypatch.setattr(
-        "uvo_api.routers.v1.companies.run_query",
-        AsyncMock(side_effect=[EMPTY, EMPTY]),
+        "uvo_api.routers.v1.companies.get_entity_by_ico",
+        AsyncMock(return_value={"supplier": None, "procurer": None}),
     )
     resp = client.get("/v1/companies?cursor=!!!notbase64", headers=AUTH_HEADERS)
     assert resp.status_code == 400

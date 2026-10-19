@@ -7,6 +7,7 @@ the profile. No motor/neo4j import here — that is the port-boundary validation
 
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from dataclasses import asdict
 
@@ -78,11 +79,14 @@ async def company_risk_profile(
     ico: str, analytics: CompanyAnalytics, graph: GraphStore | None = None
 ) -> dict:
     """Assemble the red-flag risk profile for a company from ports + domain scoring."""
-    core = await analytics.core_stats(ico)
-    all_partners = await analytics.partners(ico, "all", "value", _PARTNER_FETCH, 0)
-    market = await analytics.market_cpv(_MARKET_CPV_FETCH)
-    timeline = await analytics.award_timeline(ico)
-    supplier_rows = await _supplier_rows(ico, analytics, graph)
+    # The five reads are independent; fan them out instead of paying their latencies in series.
+    core, all_partners, market, timeline, supplier_rows = await asyncio.gather(
+        analytics.core_stats(ico),
+        analytics.partners(ico, "all", "value", _PARTNER_FETCH, 0),
+        analytics.market_cpv(_MARKET_CPV_FETCH),
+        analytics.award_timeline(ico),
+        _supplier_rows(ico, analytics, graph),
+    )
 
     flags = [
         supplier_concentration(supplier_rows),

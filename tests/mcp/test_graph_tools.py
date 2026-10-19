@@ -1,4 +1,4 @@
-from uvo_mcp.tools.graph import _build_cpv_graph, _build_ego_graph
+from uvo_core.adapters.neo4j.graph import _build_cpv_graph, _build_ego_graph
 
 
 def test_build_ego_graph_shape():

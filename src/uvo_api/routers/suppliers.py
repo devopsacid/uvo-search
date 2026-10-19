@@ -1,11 +1,12 @@
 # src/uvo_api/routers/suppliers.py
 """Suppliers endpoints."""
 
-from collections import defaultdict
+import asyncio
 
 from fastapi import APIRouter, HTTPException, Query
 
-from uvo_api._schema import contract_date, contract_value, map_contract_row, year_from_date
+from uvo_api._schema import map_contract_row
+from uvo_api.db import get_db
 from uvo_api.models import (
     ContractRow,
     PaginationMeta,
@@ -17,6 +18,8 @@ from uvo_api.models import (
     SupplierSummary,
 )
 from uvo_api.services import run_query
+from uvo_core.adapters.mongo.analytics import entity_profile
+from uvo_core.adapters.mongo.entities import get_entity_by_ico
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
@@ -53,31 +56,23 @@ async def list_suppliers(
     )
 
 
-async def _fetch_supplier_and_contracts(ico: str) -> tuple[dict, list[dict]]:
-    supplier_result = await run_query("find_supplier", {"ico": ico, "limit": 1})
-    suppliers = supplier_result.get("items", [])
-    if not suppliers:
+async def _require_supplier(ico: str) -> dict:
+    """Identity record for a supplier (cached point lookup); 404 when unknown."""
+    entity = await get_entity_by_ico(get_db(), ico)
+    supplier = entity["supplier"]
+    if not supplier:
         raise HTTPException(status_code=404, detail=f"Supplier {ico} not found")
-    supplier = suppliers[0]
-
-    contracts_result = await run_query(
-        "search_completed_procurements", {"supplier_ico": ico, "limit": 100}
-    )
-    contracts = contracts_result.get("items", [])
-    return supplier, contracts
+    return supplier
 
 
 @router.get("/{ico}/summary", response_model=SupplierSummary)
 async def get_supplier_summary(ico: str) -> SupplierSummary:
-    supplier, contracts = await _fetch_supplier_and_contracts(ico)
+    supplier, profile = await asyncio.gather(
+        _require_supplier(ico), entity_profile(get_db(), ico, "supplier")
+    )
 
-    spend_by_year: dict[int, float] = defaultdict(float)
-    for c in contracts:
-        year = year_from_date(contract_date(c))
-        spend_by_year[year] += contract_value(c)
-
-    total_value = float(supplier.get("total_value") or sum(spend_by_year.values()))
-    count = int(supplier.get("contract_count") or len(contracts))
+    total_value = float(supplier.get("total_value") or profile["total_value"])
+    count = int(supplier.get("contract_count") or profile["contract_count"])
 
     return SupplierSummary(
         ico=str(supplier.get("ico") or ico),
@@ -86,42 +81,35 @@ async def get_supplier_summary(ico: str) -> SupplierSummary:
         total_value=total_value,
         avg_value=total_value / count if count else 0,
         spend_by_year=[
-            SpendByYear(year=y, total_value=v) for y, v in sorted(spend_by_year.items()) if y > 0
+            SpendByYear(year=y["year"], total_value=y["total_value"])
+            for y in profile["spend_by_year"]
         ],
     )
 
 
 @router.get("/{ico}", response_model=SupplierDetail)
 async def get_supplier_detail(ico: str) -> SupplierDetail:
-    supplier, contracts = await _fetch_supplier_and_contracts(ico)
+    supplier, profile, contracts_result = await asyncio.gather(
+        _require_supplier(ico),
+        entity_profile(get_db(), ico, "supplier"),
+        # Only the displayed contract rows come from the (paged) search; every
+        # aggregate figure below is computed over the full population.
+        run_query("search_completed_procurements", {"supplier_ico": ico, "limit": 100}),
+    )
+    rows: list[ContractRow] = [map_contract_row(c) for c in contracts_result.get("items", [])]
 
-    procurer_totals: dict[str, dict] = defaultdict(lambda: {"name": "", "count": 0, "value": 0.0})
-    years: set[int] = set()
-    rows: list[ContractRow] = []
+    top_procurers = [
+        ProcurerRelation(
+            ico=p["ico"],
+            name=p["name"],
+            contract_count=p["contract_count"],
+            total_value=p["total_value"],
+        )
+        for p in profile["partners"]
+    ]
 
-    for c in contracts:
-        row = map_contract_row(c)
-        rows.append(row)
-        years.add(row.year)
-        if row.procurer_ico:
-            p = procurer_totals[row.procurer_ico]
-            p["name"] = row.procurer_name
-            p["count"] += 1
-            p["value"] += row.value
-
-    top_procurers = sorted(
-        [
-            ProcurerRelation(
-                ico=k, name=v["name"], contract_count=v["count"], total_value=v["value"]
-            )
-            for k, v in procurer_totals.items()
-        ],
-        key=lambda x: x.total_value,
-        reverse=True,
-    )[:10]
-
-    total_value = float(supplier.get("total_value") or sum(r.value for r in rows))
-    count = int(supplier.get("contract_count") or len(rows))
+    total_value = float(supplier.get("total_value") or profile["total_value"])
+    count = int(supplier.get("contract_count") or profile["contract_count"])
 
     return SupplierDetail(
         ico=str(supplier.get("ico") or ico),
@@ -129,7 +117,7 @@ async def get_supplier_detail(ico: str) -> SupplierDetail:
         contract_count=count,
         total_value=total_value,
         avg_value=total_value / count if count else 0,
-        years_active=sorted(y for y in years if y > 0),
+        years_active=profile["years_active"],
         top_procurers=top_procurers,
         contracts=rows,
     )

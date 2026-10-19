@@ -173,3 +173,18 @@ async def test_stopped_status_for_worker_stopped_event(client_and_db):
     assert res.status_code == 200
     workers = {w["component"]: w for w in res.json()["workers"]}
     assert workers["dedup-worker"]["status"] == "stopped"
+
+
+def test_events_24h_uses_single_group_not_per_component_counts(client_and_db, monkeypatch):
+    client, db = client_and_db
+    calls = {"n": 0}
+    original = db.ingestion_log.count_documents
+
+    async def _spy(*args, **kwargs):
+        calls["n"] += 1
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(db.ingestion_log, "count_documents", _spy)
+    resp = client.get("/api/dashboard/worker-status")
+    assert resp.status_code == 200
+    assert calls["n"] == 0

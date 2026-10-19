@@ -19,6 +19,7 @@ async def ensure_constraints(session: AsyncSession) -> None:
     ]
     indexes = [
         "CREATE INDEX notice_pub_date IF NOT EXISTS FOR (n:Notice) ON (n.publication_date)",
+        "CREATE INDEX notice_cpv IF NOT EXISTS FOR (n:Notice) ON (n.cpv_code)",
         "CREATE INDEX notice_value IF NOT EXISTS FOR (n:Notice) ON (n.final_value)",
         "CREATE INDEX procurer_slug IF NOT EXISTS FOR (p:Procurer) ON (p.name_slug)",
         "CREATE INDEX supplier_slug IF NOT EXISTS FOR (s:Supplier) ON (s.name_slug)",
