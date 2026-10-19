@@ -5,11 +5,12 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from uvo_api.cache_invalidation import run_cache_invalidator
 from uvo_api.config import get_settings
+from uvo_api.db import get_db
 from uvo_api.errors import register_error_handlers
 from uvo_api.routers import (
     contracts,
@@ -25,6 +26,7 @@ from uvo_api.routers import (
 )
 from uvo_api.routers.firma import firmy_router
 from uvo_api.routers.v1 import create_v1_app
+from uvo_core.adapters.mongo.health import mongo_ready
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,14 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health() -> dict:
         return {"status": "ok", "service": "uvo-api"}
+
+    @app.get("/readyz")
+    async def readyz(response: Response) -> dict:
+        """Readiness: 200 only when MongoDB answers a bounded ping; /health stays liveness."""
+        if await mongo_ready(get_db()):
+            return {"status": "ready", "service": "uvo-api"}
+        response.status_code = 503
+        return {"status": "unavailable", "service": "uvo-api"}
 
     app.include_router(contracts.router)
     app.include_router(suppliers.router)

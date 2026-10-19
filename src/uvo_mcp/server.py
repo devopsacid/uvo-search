@@ -15,6 +15,10 @@ from uvo_mcp.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
+# The lifespan context is not reachable from plain Starlette routes, so the
+# readiness probe reads the Mongo handle from here (set/cleared by app_lifespan).
+_runtime: dict[str, Any] = {"mongo_db": None}
+
 
 @dataclass
 class AppContext:
@@ -62,6 +66,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         timeout=settings.request_timeout,
     ) as client:
         logger.info("MCP server starting, httpx client ready")
+        _runtime["mongo_db"] = mongo_db
         yield AppContext(
             http_client=client,
             settings=settings,
@@ -70,6 +75,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
             embedding_model=embedding_model,
         )
         logger.info("MCP server shutting down")
+        _runtime["mongo_db"] = None
 
     if mongo_client:
         mongo_client.close()
@@ -98,3 +104,17 @@ import uvo_mcp.tools.vector_search  # noqa: F401, E402
 async def health_check(request: Request) -> JSONResponse:
     """Health check endpoint — returns 200 OK with status information."""
     return JSONResponse({"status": "ok", "service": "uvo-mcp"})
+
+
+@mcp.custom_route("/readyz", methods=["GET"], name="readiness_check")
+async def readiness_check(request: Request) -> JSONResponse:
+    """Readiness probe — 200 only when MongoDB answers a bounded ping, else 503.
+
+    ``/health`` stays an unconditional liveness check so a database blip restarts
+    nothing; this endpoint only gates traffic.
+    """
+    from uvo_core.adapters.mongo.health import mongo_ready
+
+    if await mongo_ready(_runtime["mongo_db"]):
+        return JSONResponse({"status": "ready", "service": "uvo-mcp"})
+    return JSONResponse({"status": "unavailable", "service": "uvo-mcp"}, status_code=503)
