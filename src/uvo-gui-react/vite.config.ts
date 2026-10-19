@@ -44,6 +44,14 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/test/**', 'src/main.tsx', 'src/**/*.d.ts'],
+      reporter: ['text-summary', 'html'],
+      // Floors set ~10 points under current coverage; raise as tests are added.
+      thresholds: { statements: 70, branches: 70, functions: 60, lines: 70 },
+    },
     fakeTimers: {
       shouldAdvanceTime: true,
     },
