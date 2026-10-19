@@ -64,3 +64,13 @@ describe('downloadCsv', () => {
     expect(revoke).toHaveBeenCalledWith('blob:x')
   })
 })
+
+describe('toCsv number rounding', () => {
+  it('rounds float noise to 2 decimals, keeping the decimal comma', () => {
+    expect(toCsv([{ name: 'A', value: 1009305.2540000001 }], columns)).toContain('A;1009305,25\r\n')
+    expect(toCsv([{ name: 'A', value: 0.1 + 0.2 }], columns)).toContain('A;0,3\r\n')
+    expect(toCsv([{ name: 'A', value: 12.5 }], columns)).toContain('A;12,5\r\n')
+    expect(toCsv([{ name: 'A', value: 42 }], columns)).toContain('A;42\r\n')
+    expect(toCsv([{ name: 'A', value: -0.001 }], columns)).toContain('A;0\r\n')
+  })
+})

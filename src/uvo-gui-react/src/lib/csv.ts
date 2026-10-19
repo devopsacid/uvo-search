@@ -14,11 +14,18 @@ const EOL = '\r\n'
 // Spreadsheet formula triggers; a leading apostrophe makes the cell inert text.
 const FORMULA_START = /^[=+\-@\t\r]/
 
+export function roundCsvNumber(n: number, decimals = 2): number {
+  const factor = 10 ** decimals
+  const rounded = Math.round((n + Number.EPSILON * Math.sign(n)) * factor) / factor
+  return Object.is(rounded, -0) ? 0 : rounded
+}
+
 function formatCell(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined) return ''
   let text: string
   if (typeof raw === 'number') {
-    text = Number.isFinite(raw) ? String(raw).replace('.', ',') : ''
+    // Round away float noise (1009305.2540000001); 2 decimals covers EUR amounts and % shares.
+    text = Number.isFinite(raw) ? String(roundCsvNumber(raw)).replace('.', ',') : ''
   } else {
     text = FORMULA_START.test(raw) ? `'${raw}` : raw
   }
