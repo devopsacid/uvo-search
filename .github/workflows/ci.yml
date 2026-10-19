@@ -58,6 +58,9 @@ jobs:
       - name: Run ruff format check
         run: uv run ruff format --check src/ tests/
 
+      - name: Check import layering
+        run: uv run lint-imports
+
   frontend:
     name: Frontend (lint, types, tests, build)
     runs-on: ubuntu-latest

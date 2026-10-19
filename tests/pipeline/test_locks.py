@@ -1,9 +1,9 @@
-"""Unit tests for uvo_pipeline.locks."""
+"""Unit tests for uvo_core.adapters.redis.locks."""
 
 import pytest_asyncio
 from fakeredis import aioredis as fake_aioredis
 
-from uvo_pipeline.locks import acquire_lock, lock, release_lock
+from uvo_core.adapters.redis.locks import acquire_lock, lock, release_lock
 
 
 @pytest_asyncio.fixture

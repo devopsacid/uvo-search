@@ -2,7 +2,7 @@
 
 No transformer ever set title_slug directly (see uvo_core.domain.models.CanonicalNotice,
 which now derives it via a model validator for all *new* writes). Dedup pass 2
-(title_slug + publication_date ±7 days, see uvo_pipeline.dedup) depends on it, so
+(title_slug + publication_date ±7 days, see uvo_core.adapters.mongo.dedup) depends on it, so
 the ~480k pre-existing notices need a one-time backfill to catch up.
 
 content_hash does not include title_slug, so this backfill is a plain $set and

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from redis.exceptions import ResponseError
 
-from uvo_pipeline.streams import autoclaim_stale
+from uvo_core.adapters.redis.streams import autoclaim_stale
 
 
 @pytest.mark.asyncio

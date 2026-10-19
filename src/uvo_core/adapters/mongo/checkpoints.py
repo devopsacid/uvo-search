@@ -1,14 +1,14 @@
 """CheckpointStore port adapter — wraps the pipeline_state collection.
 
 Extracted so extractor workers can depend on the CheckpointStore port instead
-of importing uvo_pipeline.utils.checkpoint directly (Phase 5 write-side).
+of importing uvo_core.adapters.mongo.checkpoint_store directly (Phase 5 write-side).
 """
 
 from __future__ import annotations
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from uvo_pipeline.utils.checkpoint import get_checkpoint, save_checkpoint
+from uvo_core.adapters.mongo.checkpoint_store import get_checkpoint, save_checkpoint
 
 
 class MongoCheckpointStore:

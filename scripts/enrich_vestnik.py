@@ -22,13 +22,13 @@ import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
 from neo4j import AsyncGraphDatabase
 
+from uvo_core.adapters.mongo.loaders import upsert_batch
+from uvo_core.adapters.neo4j.loader import merge_notice_batch
+from uvo_core.domain.hashing import compute_notice_hash
 from uvo_pipeline.catalog.nkod import discover_vestnik_datasets
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.extractors.vestnik_nkod import fetch_bulletin
-from uvo_pipeline.loaders.mongo import upsert_batch
-from uvo_pipeline.loaders.neo4j import merge_notice_batch
 from uvo_pipeline.transformers.vestnik_nkod import transform_notice
-from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 
 logging.basicConfig(

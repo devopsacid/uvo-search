@@ -14,13 +14,13 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic_settings import BaseSettings
 
 from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
+from uvo_core.adapters.redis.client import get_redis_settings
 from uvo_core.adapters.redis.notice_stream import RedisNoticeStream
+from uvo_core.domain.hashing import compute_notice_hash
 from uvo_pipeline.catalog.nkod import discover_vestnik_datasets
 from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.extractors.vestnik_nkod import fetch_bulletin
-from uvo_pipeline.redis_client import get_redis_settings
 from uvo_pipeline.transformers.vestnik_nkod import transform_notice as transform_vestnik_notice
-from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 from uvo_workers.checkpoints import resolve_since
 from uvo_workers.flush import flush_notices

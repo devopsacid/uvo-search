@@ -21,14 +21,12 @@ from neo4j import AsyncGraphDatabase
 from pydantic_settings import BaseSettings
 from redis.exceptions import RedisError
 
-from uvo_core.domain.models import CanonicalNotice
-from uvo_pipeline.config import get_pipeline_settings
-from uvo_pipeline.ingestion_log import IngestionLogEntry, log_event, log_events
-from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
-from uvo_pipeline.loaders.neo4j import ensure_constraints, merge_notice_batch
-from uvo_pipeline.pubsub import publish
-from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
-from uvo_pipeline.streams import (
+from uvo_core.adapters.mongo.ingestion_log import IngestionLogEntry, log_event, log_events
+from uvo_core.adapters.mongo.loaders import ensure_indexes, upsert_batch
+from uvo_core.adapters.neo4j.loader import ensure_constraints, merge_notice_batch
+from uvo_core.adapters.redis.client import close_redis, get_redis, get_redis_settings
+from uvo_core.adapters.redis.pubsub import publish
+from uvo_core.adapters.redis.streams import (
     ack,
     autoclaim_stale,
     decode_entry,
@@ -38,6 +36,8 @@ from uvo_pipeline.streams import (
     read_group,
     trim_consumed,
 )
+from uvo_core.domain.models import CanonicalNotice
+from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.utils.date_validation import validate_notice_dates
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health

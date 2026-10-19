@@ -4,8 +4,8 @@ from datetime import date
 
 import pytest
 
+from uvo_core.domain.hashing import compute_notice_hash
 from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer
-from uvo_pipeline.utils.hashing import compute_notice_hash
 
 
 def _make_notice(**kwargs) -> CanonicalNotice:
@@ -84,7 +84,7 @@ def test_pipeline_report_has_notices_skipped():
 @pytest.mark.asyncio
 async def test_ensure_indexes_creates_ingested_docs_indexes(mock_mongo_db):
     """ensure_indexes must create required indexes on ingested_docs collection."""
-    from uvo_pipeline.loaders.mongo import ensure_indexes
+    from uvo_core.adapters.mongo.loaders import ensure_indexes
 
     await ensure_indexes(mock_mongo_db)
 
@@ -97,7 +97,7 @@ async def test_ensure_indexes_creates_ingested_docs_indexes(mock_mongo_db):
 
 @pytest.mark.asyncio
 async def test_upsert_batch_inserts_new_notices(mock_mongo_db):
-    from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
+    from uvo_core.adapters.mongo.loaders import ensure_indexes, upsert_batch
 
     await ensure_indexes(mock_mongo_db)
     notices = [_make_notice(source_id="N-001"), _make_notice(source_id="N-002")]
@@ -114,7 +114,7 @@ async def test_upsert_batch_inserts_new_notices(mock_mongo_db):
 
 @pytest.mark.asyncio
 async def test_upsert_batch_skips_unchanged_notices(mock_mongo_db):
-    from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
+    from uvo_core.adapters.mongo.loaders import ensure_indexes, upsert_batch
 
     await ensure_indexes(mock_mongo_db)
     notices = [_make_notice(source_id="N-001")]
@@ -136,7 +136,7 @@ async def test_upsert_batch_skips_unchanged_notices(mock_mongo_db):
 
 @pytest.mark.asyncio
 async def test_upsert_batch_updates_changed_notices(mock_mongo_db):
-    from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch
+    from uvo_core.adapters.mongo.loaders import ensure_indexes, upsert_batch
 
     await ensure_indexes(mock_mongo_db)
     n1 = _make_notice(source_id="N-001", title="Original")
@@ -169,7 +169,7 @@ def test_pipeline_report_accumulates_skipped():
 @pytest.mark.asyncio
 async def test_cross_source_dedup_pass2_matches_by_title_slug(mock_mongo_db):
     """Pass 2 must match notices without ICO by title_slug + pub_date within 7 days."""
-    from uvo_pipeline.loaders.mongo import ensure_indexes
+    from uvo_core.adapters.mongo.loaders import ensure_indexes
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
     await ensure_indexes(mock_mongo_db)
@@ -216,7 +216,7 @@ async def test_cross_source_dedup_pass2_matches_by_title_slug(mock_mongo_db):
 @pytest.mark.asyncio
 async def test_cross_source_dedup_pass2_no_match_when_dates_too_far(mock_mongo_db):
     """Pass 2 must NOT match notices with pub_date more than 7 days apart."""
-    from uvo_pipeline.loaders.mongo import ensure_indexes
+    from uvo_core.adapters.mongo.loaders import ensure_indexes
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
     await ensure_indexes(mock_mongo_db)
@@ -507,7 +507,7 @@ async def test_cross_source_dedup_pass3_skips_high_frequency_supplier(mock_mongo
     MAX_NOTICES_PER_SUPPLIER_ICO candidate notices, even when pairs would
     otherwise satisfy the date/value guards — avoids false merges from a
     high-volume framework supplier (e.g. stationery, cleaning contracts)."""
-    from uvo_pipeline.dedup import MAX_NOTICES_PER_SUPPLIER_ICO
+    from uvo_core.adapters.mongo.dedup import MAX_NOTICES_PER_SUPPLIER_ICO
     from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
     run_id = "test-run-6"
@@ -537,7 +537,7 @@ async def test_cross_source_dedup_pass3_skips_high_frequency_supplier(mock_mongo
 
 def test_notice_hash_set_before_upsert():
     """Notices must have content_hash set before reaching upsert_batch."""
-    from uvo_pipeline.utils.hashing import compute_notice_hash
+    from uvo_core.domain.hashing import compute_notice_hash
 
     n = _make_notice()
     assert n.content_hash is None  # default — not set by model

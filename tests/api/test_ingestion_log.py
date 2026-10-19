@@ -9,7 +9,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from uvo_api.app import create_app
 from uvo_api.config import get_settings
-from uvo_pipeline.ingestion_log import ensure_log_indexes
+from uvo_core.adapters.mongo.ingestion_log import ensure_log_indexes
 
 OPS_TOKEN = "test-ops-token"
 

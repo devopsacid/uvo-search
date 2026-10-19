@@ -120,6 +120,12 @@ async def test_cpv_network_uses_date_range_not_year_accessor():
     assert calls[0]["end"] == "2025-01-01"
 
 
+async def test_procurement_network_excludes_null_ico_suppliers():
+    driver, calls = _driver()
+    await graph.procurement_network(driver, "72000000-5", 2024)
+    assert "s.ico IS NOT NULL" in calls[0]["text"]
+
+
 async def test_procurement_network_uses_date_range():
     driver, calls = _driver()
     await graph.procurement_network(driver, "72000000-5", 2024)

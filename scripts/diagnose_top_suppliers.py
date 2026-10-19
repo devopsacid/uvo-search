@@ -138,7 +138,7 @@ JSON.stringify([{{
 """
             rows = _mongosh(js, container, db)
             r = (rows[0] if rows else {}) if not isinstance(rows[0] if rows else None, list) else (rows[0][0] if rows[0] else {})
-            print(f"    WARNING: empty ICO")
+            print("    WARNING: empty ICO")
             print(f"    suppliers with this name: {r.get('suppliers_match', '?')}")
             print(f"    notices with null/empty supplier ICO: {r.get('notices_empty_ico', '?')}")
             continue
@@ -198,7 +198,7 @@ JSON.stringify({{
             for v in variants:
                 print(f"      {v.get('count', 0):>5}x  {v.get('_id')}")
         else:
-            print(f"    ICO clean — single name under this ICO")
+            print("    ICO clean — single name under this ICO")
 
 
 def sampling_bias_check(api_entries: list[dict], global_top: list[dict]) -> None:

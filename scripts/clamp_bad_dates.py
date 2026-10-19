@@ -14,10 +14,9 @@ from datetime import date
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from uvo_core.adapters.mongo.ingestion_log import ensure_log_indexes, log_event
 from uvo_pipeline.config import PipelineSettings
-from uvo_pipeline.ingestion_log import ensure_log_indexes, log_event
 from uvo_pipeline.utils.date_validation import MIN_YEAR, max_year
-
 
 DATE_FIELDS = ["publication_date", "deadline_date", "award_date"]
 

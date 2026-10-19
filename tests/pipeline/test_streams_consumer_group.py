@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 from redis.exceptions import ResponseError
 
-from uvo_pipeline.streams import ensure_consumer_group
+from uvo_core.adapters.redis.streams import ensure_consumer_group
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,7 @@ You monitor the filling of the local uvo-search database. Report facts and delta
 ## How to query (host CLI hangs on service-name URIs — always go through containers)
 
 - Mongo: `docker exec uvo-search-mongo-1 mongosh --quiet "mongodb://uvo:changeme@localhost:27017/uvo_search?authSource=admin" --eval '...'`
-- Redis: `docker exec uvo-search-redis-1 redis-cli XINFO GROUPS <stream>` (streams: `notices:vestnik`, `notices:crz`, `notices:ted`, `notices:itms` — check `src/uvo_pipeline/streams.py` for exact names)
+- Redis: `docker exec uvo-search-redis-1 redis-cli XINFO GROUPS <stream>` (streams: `notices:vestnik`, `notices:crz`, `notices:ted`, `notices:itms` — check `src/uvo_core/adapters/redis/streams.py` for exact names)
 - Health CLI (inside a container): `docker compose exec -T api python -m uvo_pipeline health --json` — includes `days_since_last_ingest` and `stale` per source
 - Container/backfill logs: `docker logs <container> --tail 50`
 

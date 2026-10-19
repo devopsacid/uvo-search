@@ -101,6 +101,7 @@ async def procurement_network(driver, cpv_code: str, year: int) -> dict:
             WHERE n.cpv_code STARTS WITH $cpv_prefix
               AND n.publication_date >= date($start)
               AND n.publication_date < date($end)
+              AND s.ico IS NOT NULL
             RETURN DISTINCT
                 p.ico AS procurer_ico, p.name AS procurer_name,
                 s.ico AS supplier_ico, s.name AS supplier_name,

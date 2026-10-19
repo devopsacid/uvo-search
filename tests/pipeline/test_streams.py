@@ -1,11 +1,11 @@
-"""Unit tests for uvo_pipeline.streams."""
+"""Unit tests for uvo_core.adapters.redis.streams."""
 
 import json
 
 import pytest_asyncio
 from fakeredis import aioredis as fake_aioredis
 
-from uvo_pipeline.streams import (
+from uvo_core.adapters.redis.streams import (
     ack,
     decode_entry,
     ensure_consumer_group,

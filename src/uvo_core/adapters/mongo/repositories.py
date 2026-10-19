@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from uvo_core.adapters.mongo.dedup import persist_match_groups as _persist_match_groups
+from uvo_core.adapters.mongo.loaders import upsert_batch as _upsert_batch
 from uvo_core.adapters.mongo.procurements import fetch_procurement_detail, search_procurements
 from uvo_core.adapters.mongo.subjects import entity_search
 from uvo_core.domain.models import CanonicalNotice
 from uvo_core.services.search import vector_search_companies
-from uvo_pipeline.dedup import persist_match_groups as _persist_match_groups
-from uvo_pipeline.loaders.mongo import upsert_batch as _upsert_batch
 
 
 class MongoNoticeRepository:

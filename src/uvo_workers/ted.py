@@ -12,12 +12,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic_settings import BaseSettings
 
 from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
+from uvo_core.adapters.redis.client import get_redis_settings
 from uvo_core.adapters.redis.notice_stream import RedisNoticeStream
+from uvo_core.domain.hashing import compute_notice_hash
 from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.extractors.ted import search_sk_notices
-from uvo_pipeline.redis_client import get_redis_settings
 from uvo_pipeline.transformers.ted import transform_ted_notice
-from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_workers.checkpoints import next_checkpoint, resolve_since
 from uvo_workers.flush import flush_notices
 from uvo_workers.runner import run_extractor_loop

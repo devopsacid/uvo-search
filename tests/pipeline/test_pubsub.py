@@ -1,11 +1,11 @@
-"""Unit tests for uvo_pipeline.pubsub."""
+"""Unit tests for uvo_core.adapters.redis.pubsub."""
 
 import asyncio
 
 import pytest_asyncio
 from fakeredis import aioredis as fake_aioredis
 
-from uvo_pipeline.pubsub import publish, subscribe
+from uvo_core.adapters.redis.pubsub import publish, subscribe
 
 
 @pytest_asyncio.fixture

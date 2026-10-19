@@ -18,7 +18,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 import uvo_workers.crz as crz_mod
 import uvo_workers.runner as runner_mod
-from uvo_pipeline.redis_client import RedisSettings
+from uvo_core.adapters.redis.client import RedisSettings
 from uvo_workers.runner import run_extractor_loop
 
 BASE_URL = "https://datahub.ekosystem.slovensko.digital"

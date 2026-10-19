@@ -43,8 +43,8 @@ import sys
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from uvo_core.adapters.mongo.loaders import recompute_entity_stats
 from uvo_pipeline.config import get_pipeline_settings
-from uvo_pipeline.loaders.mongo import recompute_entity_stats
 
 logging.basicConfig(
     level=logging.INFO,

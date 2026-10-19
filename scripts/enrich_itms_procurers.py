@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
 import sys
 from typing import Any
 
@@ -24,12 +23,12 @@ import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
 from neo4j import AsyncGraphDatabase
 
+from uvo_core.adapters.mongo.loaders import upsert_batch
+from uvo_core.adapters.neo4j.loader import merge_notice_batch
+from uvo_core.domain.hashing import compute_notice_hash
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.extractors.itms import _fetch_subject
-from uvo_pipeline.loaders.mongo import upsert_batch
-from uvo_pipeline.loaders.neo4j import merge_notice_batch
 from uvo_pipeline.transformers.itms import transform_procurement
-from uvo_pipeline.utils.hashing import compute_notice_hash
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 
 logging.basicConfig(

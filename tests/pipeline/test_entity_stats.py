@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from pymongo import UpdateOne
 
-from uvo_pipeline.loaders.mongo import _entity_stats_pipeline, recompute_entity_stats
+from uvo_core.adapters.mongo.loaders import _entity_stats_pipeline, recompute_entity_stats
 
 
 def _has(pipeline, token: str) -> bool:

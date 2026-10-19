@@ -7,7 +7,7 @@ testing the full daemon loop is covered by integration tests.
 import pytest
 from mongomock_motor import AsyncMongoMockClient
 
-from uvo_pipeline.ingestion_log import ensure_log_indexes
+from uvo_core.adapters.mongo.ingestion_log import ensure_log_indexes
 from uvo_workers.runner import _log_cycle_result
 
 

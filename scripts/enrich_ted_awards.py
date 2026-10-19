@@ -22,12 +22,12 @@ import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
 from neo4j import AsyncGraphDatabase
 
+from uvo_core.adapters.mongo.loaders import upsert_batch
+from uvo_core.adapters.neo4j.loader import merge_notice_batch
+from uvo_core.domain.hashing import compute_notice_hash
 from uvo_pipeline.config import PipelineSettings
 from uvo_pipeline.extractors.ted import search_sk_notices
-from uvo_pipeline.loaders.mongo import upsert_batch
-from uvo_pipeline.loaders.neo4j import merge_notice_batch
 from uvo_pipeline.transformers.ted import transform_ted_notice
-from uvo_pipeline.utils.hashing import compute_notice_hash
 
 logging.basicConfig(
     level=logging.INFO,

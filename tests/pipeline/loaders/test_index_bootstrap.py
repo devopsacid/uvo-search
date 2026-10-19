@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from mongomock_motor import AsyncMongoMockClient
 
-from uvo_pipeline.loaders.mongo import ensure_indexes
-from uvo_pipeline.loaders.neo4j import ensure_constraints
+from uvo_core.adapters.mongo.loaders import ensure_indexes
+from uvo_core.adapters.neo4j.loader import ensure_constraints
 
 
 async def _index_keys(coll) -> set[tuple]:
