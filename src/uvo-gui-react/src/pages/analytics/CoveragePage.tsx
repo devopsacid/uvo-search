@@ -26,10 +26,10 @@ function monthlySeries(cov: AnalyticsCoverage): TimeseriesSeries[] {
   }))
 }
 
-export function PokrytiePage() {
+export function CoveragePage() {
   const q = useAnalyticsCoverage()
   const cov = q.data
-  const t = sk.analytics.pokrytie
+  const t = sk.analytics.coverage
   const first = cov?.monthly[0]?.period ?? 'od'
   const last = cov?.monthly[cov.monthly.length - 1]?.period ?? 'do'
 
@@ -68,7 +68,7 @@ export function PokrytiePage() {
 type CoverageQuery = ReturnType<typeof useAnalyticsCoverage>
 
 function MonthlyCard({ q, cov, from, to }: { q: CoverageQuery; cov?: AnalyticsCoverage; from: string; to: string }) {
-  const t = sk.analytics.pokrytie
+  const t = sk.analytics.coverage
   const series = cov ? monthlySeries(cov) : []
   const months = cov?.monthly ?? []
   const ariaLabel = months.length
@@ -90,7 +90,7 @@ function MonthlyCard({ q, cov, from, to }: { q: CoverageQuery; cov?: AnalyticsCo
       isEmpty={q.isSuccess && series.length === 0}
       onExportCsv={() =>
         downloadCsv(
-          csvFilename('pokrytie-mesacne', from, to),
+          csvFilename('coverage-monthly', from, to),
           toCsv(months, [
             { header: sk.analytics.csv.period, value: (m) => m.period },
             ...SOURCE_ORDER.map((s) => ({ header: sk.analytics.filters.sources[s], value: (m: (typeof months)[number]) => m[s] })),
@@ -118,7 +118,7 @@ function MonthlyCard({ q, cov, from, to }: { q: CoverageQuery; cov?: AnalyticsCo
 }
 
 function QualityCard({ q, cov, from, to }: { q: CoverageQuery; cov?: AnalyticsCoverage; from: string; to: string }) {
-  const t = sk.analytics.pokrytie
+  const t = sk.analytics.coverage
   const sources = cov?.sources ?? []
   return (
     <ChartCard
@@ -132,7 +132,7 @@ function QualityCard({ q, cov, from, to }: { q: CoverageQuery; cov?: AnalyticsCo
       isEmpty={q.isSuccess && sources.length === 0}
       onExportCsv={() =>
         downloadCsv(
-          csvFilename('pokrytie-kvalita', from, to),
+          csvFilename('coverage-quality', from, to),
           toCsv(sources, [
             { header: t.colSource, value: (s) => sk.analytics.filters.sources[s.source] },
             { header: t.colWithValue, value: (s) => s.quality.with_value_pct },

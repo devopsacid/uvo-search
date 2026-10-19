@@ -10,10 +10,10 @@ const STYLES: Record<HhiBand, string> = {
 
 /** Band chip with a text label (never colour-only) and the threshold explanation as tooltip. */
 export function HhiBadge({ band }: { band: HhiBand }) {
-  const text = sk.analytics.koncentracia.bands[band]
+  const text = sk.analytics.concentration.bands[band]
   return (
     <span
-      title={sk.analytics.koncentracia.bandHint[band]}
+      title={sk.analytics.concentration.bandHint[band]}
       className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium', STYLES[band])}
     >
       {text}

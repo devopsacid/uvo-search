@@ -22,7 +22,7 @@ const MAX_HHI_YEARS = 15
 type Extra = Record<string, string | undefined>
 
 /**
- * Keys use the *effective* filters (defaults applied), so a bare `/analytika/prehlad` and the
+ * Keys use the *effective* filters (defaults applied), so a bare `/analytics/overview` and the
  * same view with explicit default dates share one cache entry.
  */
 export const analyticsKeys = {

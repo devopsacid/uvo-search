@@ -11,7 +11,7 @@ function Probe() {
   return <output data-testid="search">{search}</output>
 }
 
-function renderBar(route = '/analytika/prehlad') {
+function renderBar(route = '/analytics/overview') {
   return renderWithProviders(
     <>
       <AnalyticsFilterBar />
@@ -47,7 +47,7 @@ describe('AnalyticsFilterBar', () => {
   })
 
   it('round-trips URL state into the controls', () => {
-    renderBar('/analytika/prehlad?date_from=2023-01-01&date_to=2023-12-31&cpv=45&source=crz')
+    renderBar('/analytics/overview?date_from=2023-01-01&date_to=2023-12-31&cpv=45&source=crz')
     expect(screen.getByLabelText(sk.analytics.filters.dateFrom)).toHaveValue('2023-01-01')
     expect(screen.getByLabelText(sk.analytics.filters.dateTo)).toHaveValue('2023-12-31')
     expect(screen.getByLabelText(sk.analytics.filters.cpv)).toHaveValue('45')
@@ -75,7 +75,7 @@ describe('AnalyticsFilterBar', () => {
   })
 
   it('commits the source select and resets all filters', async () => {
-    renderBar('/analytika/prehlad?cpv=45')
+    renderBar('/analytics/overview?cpv=45')
     fireEvent.change(screen.getByLabelText(sk.analytics.filters.source), { target: { value: 'ted' } })
     await waitFor(() => expect(search().get('source')).toBe('ted'))
     expect(search().get('cpv')).toBe('45')
@@ -102,23 +102,23 @@ describe('AnalyticsFilterBar', () => {
   })
 
   it('flags a reversed range with an alert', () => {
-    renderBar('/analytika/prehlad?date_from=2024-05-01&date_to=2024-01-01')
+    renderBar('/analytics/overview?date_from=2024-05-01&date_to=2024-01-01')
     expect(screen.getByRole('alert')).toHaveTextContent(sk.analytics.filters.rangeReversed)
   })
 
   it('flags a range longer than 15 years', () => {
-    renderBar('/analytika/prehlad?date_from=2005-01-01&date_to=2024-01-01')
+    renderBar('/analytics/overview?date_from=2005-01-01&date_to=2024-01-01')
     expect(screen.getByRole('alert')).toHaveTextContent(sk.analytics.filters.rangeSpan)
   })
 
   it('copies the current view URL and announces it', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
-    renderBar('/analytika/prehlad?date_from=2023-01-01&date_to=2023-12-31&cpv=45')
+    renderBar('/analytics/overview?date_from=2023-01-01&date_to=2023-12-31&cpv=45')
     fireEvent.click(screen.getByRole('button', { name: sk.analytics.filters.copyLink }))
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     const copied = new URL(writeText.mock.calls[0][0] as string)
-    expect(copied.pathname).toBe('/analytika/prehlad')
+    expect(copied.pathname).toBe('/analytics/overview')
     expect(copied.searchParams.get('cpv')).toBe('45')
     expect(copied.searchParams.get('date_from')).toBe('2023-01-01')
     expect((await screen.findAllByText(sk.analytics.filters.linkCopied)).length).toBeGreaterThan(0)

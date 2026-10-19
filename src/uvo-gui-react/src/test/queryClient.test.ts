@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createQueryClient, shouldRetry } from '@/api/queryClient'
 import { apiClient } from '@/api/client'
 import { dashboardKeys } from '@/api/queries/dashboard'
-import { firmaKeys } from '@/api/queries/firma'
+import { companyKeys } from '@/api/queries/companies'
 import { ingestionKeys } from '@/api/queries/ingestion'
 
 describe('createQueryClient', () => {
@@ -34,8 +34,8 @@ describe('createQueryClient', () => {
 
 describe('query key factories', () => {
   it('share a root so invalidating by prefix works', () => {
-    expect(firmaKeys.profile('1')).toEqual([...firmaKeys.all, 'profile', '1'])
-    expect(firmaKeys.list({ q: 'a' })[0]).toBe(firmaKeys.all[0])
+    expect(companyKeys.profile('1')).toEqual([...companyKeys.all, 'profile', '1'])
+    expect(companyKeys.list({ q: 'a' })[0]).toBe(companyKeys.all[0])
     expect(ingestionKeys.log({}).slice(0, 1)).toEqual(ingestionKeys.all)
     expect(ingestionKeys.workerStatus().slice(0, 1)).toEqual(ingestionKeys.all)
   })

@@ -7,7 +7,7 @@ import { StackedPeriodChart } from '@/components/analytics/StackedPeriodChart'
 import { TopBarChart, type TopBarRow } from '@/components/analytics/TopBarChart'
 import { useAnalyticsFilters } from '@/hooks/useAnalyticsFilters'
 import { autoGranularity, formatPeriodLabel, periodCaption, type AnalyticsFilters } from '@/lib/analyticsFilters'
-import { analyticsLink, zakazkyLink } from '@/lib/analyticsLinks'
+import { analyticsLink, contractsLink } from '@/lib/analyticsLinks'
 import { pivotSeries } from '@/lib/analyticsSeries'
 import { csvFilename, downloadCsv, toCsv } from '@/lib/csv'
 import { cn, fillTemplate, formatCompactCurrency, formatCurrency, formatNumber, formatPercent } from '@/lib/utils'
@@ -44,7 +44,7 @@ type CpvQuery = ReturnType<typeof useAnalyticsCpv>
 function bucketHref(filters: AnalyticsFilters, level: 'division' | 'group', b: CpvBucket): string {
   return level === 'division'
     ? analyticsLink('cpv', { ...filters, cpv: b.prefix })
-    : zakazkyLink(filters, { cpv: b.prefix })
+    : contractsLink(filters, { cpv: b.prefix })
 }
 
 function bucketLabel(b: CpvBucket): string {
@@ -150,7 +150,7 @@ function TrendCard({ filters }: { filters: AnalyticsFilters }) {
       isEmpty={q.isSuccess && series.length === 0}
       onExportCsv={() =>
         downloadCsv(
-          csvFilename('cpv-vyvoj', filters.date_from, filters.date_to),
+          csvFilename('cpv-trend', filters.date_from, filters.date_to),
           toCsv(rows, [
             { header: sk.analytics.csv.period, value: (r) => String(r.period) },
             ...series.map((s) => ({ header: s.label, value: (r: Record<string, string | number>) => r[s.key] ?? 0 })),
@@ -266,7 +266,7 @@ function DivisionsTable({ filters, level, q }: { filters: AnalyticsFilters; leve
                 <td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(b.contract_count)}</td>
                 <td className="px-3 py-2.5 text-right tabular-nums">{formatPercent(b.share_pct)}</td>
                 <td className="px-3 py-2.5">
-                  <TableLink to={zakazkyLink(filters, { cpv: b.prefix })}>{sk.analytics.charts.showContracts}</TableLink>
+                  <TableLink to={contractsLink(filters, { cpv: b.prefix })}>{sk.analytics.charts.showContracts}</TableLink>
                 </td>
               </tr>
             ))}

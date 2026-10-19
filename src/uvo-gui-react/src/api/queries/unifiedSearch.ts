@@ -3,14 +3,14 @@ import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '@/hooks/useDebouncedValue
 import { apiClient } from '../client'
 import { searchKeys } from './search'
 
-export interface FirmaHit {
+export interface CompanyHit {
   ico: string
   name: string
   roles: string[]
   contract_count: number
 }
 
-export interface ZakazkaHit {
+export interface ContractHit {
   id: string
   title: string
   procurer_name: string | null
@@ -20,8 +20,8 @@ export interface ZakazkaHit {
 
 export interface UnifiedSearchResult {
   q: string
-  firmy: FirmaHit[]
-  zakazky: ZakazkaHit[]
+  companies: CompanyHit[]
+  contracts: ContractHit[]
 }
 
 export function useUnifiedSearch(query: string) {

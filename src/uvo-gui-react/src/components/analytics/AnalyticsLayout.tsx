@@ -7,10 +7,10 @@ import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 const TABS = [
-  { slug: 'prehlad', label: () => sk.analytics.tabs.prehlad },
-  { slug: 'koncentracia', label: () => sk.analytics.tabs.koncentracia },
+  { slug: 'overview', label: () => sk.analytics.tabs.overview },
+  { slug: 'concentration', label: () => sk.analytics.tabs.concentration },
   { slug: 'cpv', label: () => sk.analytics.tabs.cpv },
-  { slug: 'pokrytie', label: () => sk.analytics.tabs.pokrytie },
+  { slug: 'coverage', label: () => sk.analytics.tabs.coverage },
 ] as const
 
 /** Shared frame of the four dashboards: title, definition hint, tabs and the sticky filter bar. */
@@ -24,7 +24,7 @@ export function AnalyticsLayout() {
     if (v) carried.set(key, v)
   }
   const search = carried.toString() ? `?${carried.toString()}` : ''
-  const showFilters = !location.pathname.endsWith('/pokrytie')
+  const showFilters = !location.pathname.endsWith('/coverage')
 
   return (
     <div className="space-y-5">
@@ -35,7 +35,7 @@ export function AnalyticsLayout() {
           {TABS.map((tab) => (
             <NavLink
               key={tab.slug}
-              to={{ pathname: `/analytika/${tab.slug}`, search: tab.slug === 'pokrytie' ? '' : search }}
+              to={{ pathname: `/analytics/${tab.slug}`, search: tab.slug === 'coverage' ? '' : search }}
               className={({ isActive }) =>
                 cn(
                   '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
@@ -55,7 +55,7 @@ export function AnalyticsLayout() {
         <AnalyticsFilterBar />
       ) : (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          {sk.analytics.pokrytie.noFilters}
+          {sk.analytics.coverage.noFilters}
         </p>
       )}
 

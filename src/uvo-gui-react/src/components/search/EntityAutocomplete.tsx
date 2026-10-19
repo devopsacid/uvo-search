@@ -49,7 +49,7 @@ export function EntityAutocomplete({
       if (onSelect) {
         onSelect(hit.ico, hit.type as 'supplier' | 'procurer', hit.name)
       } else {
-        navigate(`/firma/${hit.ico}`)
+        navigate(`/company/${hit.ico}`)
       }
     },
     [hits, navigate, onSelect],

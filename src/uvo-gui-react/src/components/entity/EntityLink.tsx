@@ -15,7 +15,7 @@ interface EntityLinkProps {
  * Use this EVERYWHERE a supplier or procurer name is rendered.
  */
 export function EntityLink({ ico, name, type: _type, className }: EntityLinkProps) {
-  const to = `/firma/${ico}`
+  const to = `/company/${ico}`
   if (!ico) return <span className={className}>{name || '—'}</span>
 
   return (

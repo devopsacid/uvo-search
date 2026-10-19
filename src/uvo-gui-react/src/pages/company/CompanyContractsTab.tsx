@@ -15,12 +15,12 @@ type Role = 'all' | 'supplier' | 'procurer'
 const PAGE_SIZE = 20
 
 const CHIPS: { role: Role; label: string }[] = [
-  { role: 'all', label: sk.firma.chipAll },
-  { role: 'supplier', label: sk.firma.chipAsSupplier },
-  { role: 'procurer', label: sk.firma.chipAsProcurer },
+  { role: 'all', label: sk.company.chipAll },
+  { role: 'supplier', label: sk.company.chipAsSupplier },
+  { role: 'procurer', label: sk.company.chipAsProcurer },
 ]
 
-export function FirmaZakazkyTab() {
+export function CompanyContractsTab() {
   const { ico } = useParams<{ ico: string }>()
   const safeIco = ico ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
@@ -139,7 +139,7 @@ export function FirmaZakazkyTab() {
             </Table>
           </div>
         ) : contracts.length === 0 ? (
-          <EmptyState title={sk.firma.zakazkyEmpty} description={sk.firma.zakazkyEmptyHint} />
+          <EmptyState title={sk.company.contractsEmpty} description={sk.company.contractsEmptyHint} />
         ) : (
           <div className="rounded-lg border border-border bg-card">
             <Table>

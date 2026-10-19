@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useAnalyticsConcentration } from '@/api/queries/analytics'
-import { useFirmaProfile } from '@/api/queries/firma'
+import { useCompanyProfile } from '@/api/queries/companies'
 import { HhiBadge } from '@/components/analytics/HhiBadge'
 import { SpendByYearChart } from '@/components/charts/SpendByYearChart'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
@@ -23,12 +23,12 @@ function KpiCard({ label, value }: { label: string; value: string }) {
 function ProcurerConcentrationCard({ ico }: { ico: string }) {
   const filters: AnalyticsFilters = { ...defaultRange(), procurer_ico: ico }
   const { data, isLoading, isError } = useAnalyticsConcentration(filters, 'supplier')
-  const t = sk.analytics.koncentracia
+  const t = sk.analytics.concentration
 
   if (isError || (data && data.entity_count === 0)) return null
   return (
     <div className="rounded-lg border border-border bg-card p-4">
-      <h2 className="mb-3 text-sm font-semibold text-foreground">{sk.firma.supplierConcentration}</h2>
+      <h2 className="mb-3 text-sm font-semibold text-foreground">{sk.company.supplierConcentration}</h2>
       {isLoading || !data ? (
         <Skeleton className="h-16 w-full" />
       ) : (
@@ -55,9 +55,9 @@ function ProcurerConcentrationCard({ ico }: { ico: string }) {
             </div>
           </dl>
           <p className="mt-3 text-xs text-muted-foreground">
-            {sk.firma.concentrationPeriod.replace('{from}', formatDate(filters.date_from)).replace('{to}', formatDate(filters.date_to))}{' '}
-            <Link to={analyticsLink('koncentracia', { procurer_ico: ico })} className="text-primary hover:underline">
-              {sk.firma.concentrationLink}
+            {sk.company.concentrationPeriod.replace('{from}', formatDate(filters.date_from)).replace('{to}', formatDate(filters.date_to))}{' '}
+            <Link to={analyticsLink('concentration', { procurer_ico: ico })} className="text-primary hover:underline">
+              {sk.company.concentrationLink}
             </Link>
           </p>
         </>
@@ -66,11 +66,11 @@ function ProcurerConcentrationCard({ ico }: { ico: string }) {
   )
 }
 
-export function FirmaPrehladTab() {
+export function CompanyOverviewTab() {
   const { ico } = useParams<{ ico: string }>()
   const safeIco = ico ?? ''
 
-  const { data: profile, isLoading } = useFirmaProfile(safeIco)
+  const { data: profile, isLoading } = useCompanyProfile(safeIco)
 
   const supplierCount = profile?.stats.as_supplier?.contract_count ?? 0
   const procurerCount = profile?.stats.as_procurer?.contract_count ?? 0
@@ -111,7 +111,7 @@ export function FirmaPrehladTab() {
       .slice(0, 5)
   })()
 
-  // SpendByYearChart expects { year, total_value } — firma's SpendByYear has the same shape
+  // SpendByYearChart expects { year, total_value } — company's SpendByYear has the same shape
   const spendData = (profile?.spend_by_year ?? []).map((s) => ({
     year: s.year,
     total_value: s.total_value,
@@ -123,13 +123,13 @@ export function FirmaPrehladTab() {
       {!isLoading && (procurerCount > 0 || supplierCount > 0) && (
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {procurerCount > 0 && (
-            <Link to={analyticsLink('prehlad', { procurer_ico: safeIco })} className="text-primary hover:underline">
-              {procurerCount > 0 && supplierCount > 0 ? sk.firma.analyticsAsProcurer : sk.firma.analyticsLink}
+            <Link to={analyticsLink('overview', { procurer_ico: safeIco })} className="text-primary hover:underline">
+              {procurerCount > 0 && supplierCount > 0 ? sk.company.analyticsAsProcurer : sk.company.analyticsLink}
             </Link>
           )}
           {supplierCount > 0 && (
-            <Link to={analyticsLink('prehlad', { supplier_ico: safeIco })} className="text-primary hover:underline">
-              {procurerCount > 0 && supplierCount > 0 ? sk.firma.analyticsAsSupplier : sk.firma.analyticsLink}
+            <Link to={analyticsLink('overview', { supplier_ico: safeIco })} className="text-primary hover:underline">
+              {procurerCount > 0 && supplierCount > 0 ? sk.company.analyticsAsSupplier : sk.company.analyticsLink}
             </Link>
           )}
         </p>
@@ -143,9 +143,9 @@ export function FirmaPrehladTab() {
           ))
         ) : (
           <>
-            <KpiCard label={sk.firma.kpiZakazky} value={formatNumber(totalContracts)} />
-            <KpiCard label={sk.firma.kpiHodnota} value={formatCurrency(totalValue)} />
-            <KpiCard label={sk.firma.kpiPosledna} value={formatDate(lastContractAt)} />
+            <KpiCard label={sk.company.kpiContracts} value={formatNumber(totalContracts)} />
+            <KpiCard label={sk.company.kpiValue} value={formatCurrency(totalValue)} />
+            <KpiCard label={sk.company.kpiLast} value={formatDate(lastContractAt)} />
           </>
         )}
       </div>
@@ -165,7 +165,7 @@ export function FirmaPrehladTab() {
       {/* Top contracts */}
       <div className="rounded-lg border border-border bg-card">
         <div className="border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-foreground">{sk.firma.topContracts}</h2>
+          <h2 className="text-sm font-semibold text-foreground">{sk.company.topContracts}</h2>
         </div>
         <Table>
           <TableHeader>
@@ -173,7 +173,7 @@ export function FirmaPrehladTab() {
               <TableHead>{sk.search.colTitle}</TableHead>
               <TableHead className="text-right">{sk.search.colValue}</TableHead>
               <TableHead>{sk.search.colYear}</TableHead>
-              <TableHead>{sk.firma.colCounterparty}</TableHead>
+              <TableHead>{sk.company.colCounterparty}</TableHead>
             </tr>
           </TableHeader>
           <TableBody>
@@ -191,7 +191,7 @@ export function FirmaPrehladTab() {
                     <TableCell>
                       {c.counterparty_ico ? (
                         <Link
-                          to={`/firma/${c.counterparty_ico}`}
+                          to={`/company/${c.counterparty_ico}`}
                           className="text-primary underline-offset-2 hover:underline"
                         >
                           {c.counterparty_name || c.counterparty_ico}
@@ -212,19 +212,19 @@ export function FirmaPrehladTab() {
       {topPartners.length > 0 && (
         <div className="rounded-lg border border-border bg-card">
           <div className="border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold text-foreground">{sk.firma.topPartners}</h2>
+            <h2 className="text-sm font-semibold text-foreground">{sk.company.topPartners}</h2>
           </div>
           <div className="divide-y divide-border">
             {topPartners.map((p) => (
               <div key={p.ico} className="flex items-center justify-between px-4 py-2.5">
                 <Link
-                  to={`/firma/${p.ico}`}
+                  to={`/company/${p.ico}`}
                   className="text-sm text-primary underline-offset-2 hover:underline"
                 >
                   {p.name}
                 </Link>
                 <span className="text-sm tabular-nums text-muted-foreground">
-                  {formatNumber(p.count)} {sk.firma.contractsUnit}
+                  {formatNumber(p.count)} {sk.company.contractsUnit}
                 </span>
               </div>
             ))}

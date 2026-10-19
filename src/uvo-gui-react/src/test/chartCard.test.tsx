@@ -8,7 +8,7 @@ const ok: ChartQueryState = { isLoading: false, isError: false, error: null, isF
 
 function renderCard(
   props: Partial<React.ComponentProps<typeof ChartCard>> = {},
-  route = '/analytika/prehlad',
+  route = '/analytics/overview',
 ) {
   return renderWithProviders(
     <ChartCard
@@ -69,13 +69,13 @@ describe('ChartCard states', () => {
   })
 
   it('shows the empty state; with an off-default period it offers to widen it', () => {
-    renderCard({ isEmpty: true }, '/analytika/prehlad?date_from=2024-01-01&date_to=2024-02-01')
+    renderCard({ isEmpty: true }, '/analytics/overview?date_from=2024-01-01&date_to=2024-02-01')
     expect(screen.getByText(sk.analytics.charts.emptyTitle)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: sk.analytics.charts.widenPeriod })).toBeInTheDocument()
   })
 
   it('with entity filters active the empty state offers to clear them', () => {
-    renderCard({ isEmpty: true }, '/analytika/prehlad?cpv=45')
+    renderCard({ isEmpty: true }, '/analytics/overview?cpv=45')
     expect(screen.getByRole('button', { name: sk.common.clearFilters })).toBeInTheDocument()
   })
 

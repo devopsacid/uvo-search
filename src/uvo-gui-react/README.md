@@ -30,16 +30,16 @@ npm run lint   # ESLint check
 
 ## Pages
 
-- `/` — redirects to `/analytika/prehlad`
-- `/analytika/prehlad`, `/analytika/koncentracia`, `/analytika/cpv`, `/analytika/pokrytie` — analytics dashboards (market overview, concentration (HHI/CR4/CR10), CPV sectors, data coverage). Filters live in the URL. `/cpv-trends` redirects to `/analytika/cpv`
-- `/firmy` — company list (suppliers and procurers)
-- `/firma/:ico/{prehlad,zakazky,siet,partneri,cpv}` — company workspace tabs
-- `/zakazky` — contract list; accepts `date_from`, `date_to`, `cpv`, `source`, `procurer_ico`, `supplier_ico` for drill-down
-- `/hladaj` — combined search
+- `/` — redirects to `/analytics/overview`
+- `/analytics/overview`, `/analytics/concentration`, `/analytics/cpv`, `/analytics/coverage` — analytics dashboards (market overview, concentration (HHI/CR4/CR10), CPV sectors, data coverage). Filters live in the URL. `/cpv-trends` redirects to `/analytics/cpv`
+- `/companies` — company list (suppliers and procurers)
+- `/company/:ico/{overview,contracts,network,partners,cpv}` — company workspace tabs
+- `/contracts` — contract list; accepts `date_from`, `date_to`, `cpv`, `source`, `procurer_ico`, `supplier_ico` for drill-down
+- `/search` — unified search (companies and contracts)
 - `/graph` — graph visualization (Cytoscape)
 - `/ingestion` — pipeline status
 - `/about` — project info
-- Legacy paths `/suppliers`, `/procurers`, `/search`, `/pinpoint` redirect to the current pages
+- Legacy paths `/suppliers`, `/procurers`, `/pinpoint` and the former Slovak paths (`/analytika/*`, `/firma/*`, `/firmy`, `/zakazky`, `/hladaj`) redirect to the current pages, keeping the query string
 
 ## Architecture Notes
 

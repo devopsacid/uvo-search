@@ -2,26 +2,26 @@ import { useQuery } from '@tanstack/react-query'
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { apiClient } from '../client'
 
-export const firmaKeys = {
-  all: ['firma'] as const,
-  list: (params: object) => [...firmaKeys.all, 'list', params] as const,
-  profile: (ico: string) => [...firmaKeys.all, 'profile', ico] as const,
-  partneri: (ico: string, params: object) => [...firmaKeys.all, 'partneri', ico, params] as const,
-  cpv: (ico: string) => [...firmaKeys.all, 'cpv', ico] as const,
+export const companyKeys = {
+  all: ['company'] as const,
+  list: (params: object) => [...companyKeys.all, 'list', params] as const,
+  profile: (ico: string) => [...companyKeys.all, 'profile', ico] as const,
+  partners: (ico: string, params: object) => [...companyKeys.all, 'partners', ico, params] as const,
+  cpv: (ico: string) => [...companyKeys.all, 'cpv', ico] as const,
 }
 
-export interface FirmaStatsBlock {
+export interface CompanyStatsBlock {
   contract_count: number
   total_value: number
   last_contract_at: string | null
 }
 
-export interface FirmaStats {
-  as_supplier: FirmaStatsBlock | null
-  as_procurer: FirmaStatsBlock | null
+export interface CompanyStats {
+  as_supplier: CompanyStatsBlock | null
+  as_procurer: CompanyStatsBlock | null
 }
 
-export interface FirmaTopContract {
+export interface CompanyTopContract {
   id: string
   title: string
   value: number | null
@@ -31,7 +31,7 @@ export interface FirmaTopContract {
   role: string
 }
 
-export interface FirmaTopCpv {
+export interface CompanyTopCpv {
   code: string
   label: string
   contract_count: number
@@ -44,14 +44,14 @@ export interface SpendByYear {
   contract_count: number
 }
 
-export interface FirmaProfile {
+export interface CompanyProfile {
   ico: string
   name: string
   roles: string[]
   primary_role: string
-  stats: FirmaStats
-  top_cpvs: FirmaTopCpv[]
-  top_contracts: FirmaTopContract[]
+  stats: CompanyStats
+  top_cpvs: CompanyTopCpv[]
+  top_contracts: CompanyTopContract[]
   spend_by_year: SpendByYear[]
 }
 
@@ -69,12 +69,12 @@ export interface PartnerListResponse {
   items: PartnerRow[]
 }
 
-export function useFirmaPartneri(
+export function useCompanyPartners(
   ico: string,
   params: { role: string; sort: string; limit: number; offset: number },
 ) {
   return useQuery({
-    queryKey: firmaKeys.partneri(ico, params),
+    queryKey: companyKeys.partners(ico, params),
     queryFn: ({ signal }) => {
       const sp = new URLSearchParams({
         role: params.role,
@@ -82,7 +82,7 @@ export function useFirmaPartneri(
         limit: String(params.limit),
         offset: String(params.offset),
       })
-      return apiClient.get<PartnerListResponse>(`/firma/${ico}/partneri?${sp}`, { signal })
+      return apiClient.get<PartnerListResponse>(`/companies/${ico}/partners?${sp}`, { signal })
     },
     enabled: !!ico,
     placeholderData: (prev) => prev,
@@ -102,17 +102,17 @@ export interface CpvProfileResponse {
   market_baseline: CpvProfileRow[]
 }
 
-export function useFirmaCpvProfile(ico: string) {
+export function useCompanyCpvProfile(ico: string) {
   return useQuery({
-    queryKey: firmaKeys.cpv(ico),
+    queryKey: companyKeys.cpv(ico),
     queryFn: ({ signal }) =>
-      apiClient.get<CpvProfileResponse>(`/firma/${ico}/cpv-profile`, { signal }),
+      apiClient.get<CpvProfileResponse>(`/companies/${ico}/cpv-profile`, { signal }),
     enabled: !!ico,
     placeholderData: (prev) => prev,
   })
 }
 
-export interface FirmaCard {
+export interface CompanyCard {
   ico: string
   name: string
   roles: string[]
@@ -120,15 +120,15 @@ export interface FirmaCard {
   total_value: number
 }
 
-export interface FirmaListResponse {
+export interface CompanyListResponse {
   total: number
-  items: FirmaCard[]
+  items: CompanyCard[]
 }
 
-export function useFirmyList(params: { q: string; role: string; limit: number; offset: number }) {
+export function useCompaniesList(params: { q: string; role: string; limit: number; offset: number }) {
   const debouncedQ = useDebouncedValue(params.q, SEARCH_DEBOUNCE_MS)
   return useQuery({
-    queryKey: firmaKeys.list({ ...params, q: debouncedQ }),
+    queryKey: companyKeys.list({ ...params, q: debouncedQ }),
     queryFn: ({ signal }) => {
       const sp = new URLSearchParams({
         q: debouncedQ,
@@ -136,17 +136,17 @@ export function useFirmyList(params: { q: string; role: string; limit: number; o
         limit: String(params.limit),
         offset: String(params.offset),
       })
-      return apiClient.get<FirmaListResponse>(`/firmy?${sp}`, { signal })
+      return apiClient.get<CompanyListResponse>(`/companies?${sp}`, { signal })
     },
     placeholderData: (prev) => prev,
   })
 }
 
-export function useFirmaProfile(ico: string) {
+export function useCompanyProfile(ico: string) {
   return useQuery({
-    queryKey: firmaKeys.profile(ico),
-    // HttpError carries .status, so FirmaPage can tell 404 from other failures.
-    queryFn: ({ signal }) => apiClient.get<FirmaProfile>(`/firma/${ico}`, { signal }),
+    queryKey: companyKeys.profile(ico),
+    // HttpError carries .status, so CompanyPage can tell 404 from other failures.
+    queryFn: ({ signal }) => apiClient.get<CompanyProfile>(`/companies/${ico}`, { signal }),
     enabled: !!ico,
   })
 }

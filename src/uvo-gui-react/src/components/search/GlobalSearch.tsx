@@ -1,14 +1,14 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUnifiedSearch } from '@/api/queries/unifiedSearch'
-import type { FirmaHit, ZakazkaHit } from '@/api/queries/unifiedSearch'
+import type { CompanyHit, ContractHit } from '@/api/queries/unifiedSearch'
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
 import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 type FlatItem =
-  | { kind: 'firma'; hit: FirmaHit }
-  | { kind: 'zakazka'; hit: ZakazkaHit }
+  | { kind: 'company'; hit: CompanyHit }
+  | { kind: 'contract'; hit: ContractHit }
 
 const ICO_RE = /^\d{8}$/
 
@@ -21,14 +21,14 @@ export function GlobalSearch() {
 
   const { data, isFetching } = useUnifiedSearch(inputValue)
 
-  const firmy = useMemo(() => data?.firmy ?? [], [data])
-  const zakazky = useMemo(() => data?.zakazky ?? [], [data])
+  const companies = useMemo(() => data?.companies ?? [], [data])
+  const contracts = useMemo(() => data?.contracts ?? [], [data])
   const items: FlatItem[] = useMemo(
     () => [
-      ...firmy.map((hit): FlatItem => ({ kind: 'firma', hit })),
-      ...zakazky.map((hit): FlatItem => ({ kind: 'zakazka', hit })),
+      ...companies.map((hit): FlatItem => ({ kind: 'company', hit })),
+      ...contracts.map((hit): FlatItem => ({ kind: 'contract', hit })),
     ],
-    [firmy, zakazky],
+    [companies, contracts],
   )
   const hasResults = items.length > 0
 
@@ -48,10 +48,10 @@ export function GlobalSearch() {
       if (!item) return
       setOpen(false)
       setInputValue('')
-      if (item.kind === 'firma') {
-        navigate(`/firma/${item.hit.ico}`)
+      if (item.kind === 'company') {
+        navigate(`/company/${item.hit.ico}`)
       } else {
-        navigate(`/zakazky?selected=${item.hit.id}`)
+        navigate(`/contracts?selected=${item.hit.id}`)
       }
     },
     [items, navigate],
@@ -62,7 +62,7 @@ export function GlobalSearch() {
       e.preventDefault()
       if (ICO_RE.test(inputValue.trim())) {
         setOpen(false)
-        navigate(`/firma/${inputValue.trim()}`)
+        navigate(`/company/${inputValue.trim()}`)
         setInputValue('')
         return
       }
@@ -76,7 +76,7 @@ export function GlobalSearch() {
       }
       if (inputValue.trim()) {
         setOpen(false)
-        navigate(`/hladaj?q=${encodeURIComponent(inputValue.trim())}`)
+        navigate(`/search?q=${encodeURIComponent(inputValue.trim())}`)
         setInputValue('')
       }
       return
@@ -119,16 +119,16 @@ export function GlobalSearch() {
           role="listbox"
           className="absolute z-50 mt-1 w-full rounded-md border border-border bg-card shadow-lg"
         >
-          {firmy.length > 0 && (
+          {companies.length > 0 && (
             <>
               <li className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {sk.globalSearch.sectionFirmy}
+                {sk.globalSearch.sectionCompanies}
               </li>
-              {firmy.map((hit, i) => {
+              {companies.map((hit, i) => {
                 const flatIndex = i
                 return (
                   <li
-                    key={`firma-${hit.ico}`}
+                    key={`company-${hit.ico}`}
                     role="option"
                     aria-selected={flatIndex === activeIndex}
                     onMouseDown={() => commit(flatIndex)}
@@ -162,16 +162,16 @@ export function GlobalSearch() {
               })}
             </>
           )}
-          {zakazky.length > 0 && (
+          {contracts.length > 0 && (
             <>
               <li className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {sk.globalSearch.sectionZakazky}
+                {sk.globalSearch.sectionContracts}
               </li>
-              {zakazky.map((hit, i) => {
-                const flatIndex = firmy.length + i
+              {contracts.map((hit, i) => {
+                const flatIndex = companies.length + i
                 return (
                   <li
-                    key={`zakazka-${hit.id}`}
+                    key={`contract-${hit.id}`}
                     role="option"
                     aria-selected={flatIndex === activeIndex}
                     onMouseDown={() => commit(flatIndex)}

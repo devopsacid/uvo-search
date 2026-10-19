@@ -47,7 +47,7 @@ export function TimeseriesChart({ points, onSelectPeriod, height = 288 }: Timese
         />
         <Tooltip
           formatter={(value: number, name: string) =>
-            name === sk.analytics.prehlad.valueSeries ? [formatCurrency(value), name] : [formatNumber(value), name]
+            name === sk.analytics.overview.valueSeries ? [formatCurrency(value), name] : [formatNumber(value), name]
           }
           contentStyle={{ fontSize: 12, borderRadius: 6 }}
         />
@@ -55,7 +55,7 @@ export function TimeseriesChart({ points, onSelectPeriod, height = 288 }: Timese
         <Bar
           yAxisId="value"
           dataKey="total_value"
-          name={sk.analytics.prehlad.valueSeries}
+          name={sk.analytics.overview.valueSeries}
           fill={CHART_COLORS[0]}
           radius={[3, 3, 0, 0]}
           cursor={onSelectPeriod ? 'pointer' : undefined}
@@ -67,7 +67,7 @@ export function TimeseriesChart({ points, onSelectPeriod, height = 288 }: Timese
         <Line
           yAxisId="count"
           dataKey="contract_count"
-          name={sk.analytics.prehlad.countSeries}
+          name={sk.analytics.overview.countSeries}
           stroke={CHART_COLORS[1]}
           strokeWidth={2}
           dot={!dense}

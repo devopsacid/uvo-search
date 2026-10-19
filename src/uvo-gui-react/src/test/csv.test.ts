@@ -44,8 +44,8 @@ describe('toCsv', () => {
 
 describe('csvFilename', () => {
   it('follows uvo-<view>-<from>_<to>.csv', () => {
-    expect(csvFilename('top-dodavatelia', '2022-01-01', '2026-10-19')).toBe(
-      'uvo-top-dodavatelia-2022-01-01_2026-10-19.csv',
+    expect(csvFilename('top-suppliers', '2022-01-01', '2026-10-19')).toBe(
+      'uvo-top-suppliers-2022-01-01_2026-10-19.csv',
     )
   })
 })

@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { useFirmaCpvProfile, type CpvProfileRow } from '@/api/queries/firma'
+import { useCompanyCpvProfile, type CpvProfileRow } from '@/api/queries/companies'
 import { formatCurrency, formatNumber } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
@@ -31,7 +31,7 @@ function SkeletonCpvRows() {
 
 function CpvBarTable({ rows }: { rows: CpvProfileRow[] }) {
   if (rows.length === 0) {
-    return <p className="py-6 text-center text-sm text-muted-foreground">{sk.firma.cpvNoData}</p>
+    return <p className="py-6 text-center text-sm text-muted-foreground">{sk.company.cpvNoData}</p>
   }
 
   return (
@@ -40,10 +40,10 @@ function CpvBarTable({ rows }: { rows: CpvProfileRow[] }) {
         <thead>
           <tr className="border-b border-border text-left text-xs text-muted-foreground">
             <th className="pb-2 pr-4 font-medium">CPV</th>
-            <th className="pb-2 pr-4 font-medium">{sk.firma.colCategory}</th>
-            <th className="pb-2 pr-4 w-32 font-medium">{sk.firma.colShare}</th>
-            <th className="pb-2 pr-4 text-right font-medium">{sk.firma.colHodnota}</th>
-            <th className="pb-2 text-right font-medium">{sk.firma.colZakazky}</th>
+            <th className="pb-2 pr-4 font-medium">{sk.company.colCategory}</th>
+            <th className="pb-2 pr-4 w-32 font-medium">{sk.company.colShare}</th>
+            <th className="pb-2 pr-4 text-right font-medium">{sk.company.colValue}</th>
+            <th className="pb-2 text-right font-medium">{sk.company.colContracts}</th>
           </tr>
         </thead>
         <tbody>
@@ -78,15 +78,15 @@ function CpvBarTable({ rows }: { rows: CpvProfileRow[] }) {
   )
 }
 
-export function FirmaCpvTab() {
+export function CompanyCpvTab() {
   const { ico } = useParams<{ ico: string }>()
   const safeIco = ico ?? ''
 
-  const { data, isLoading, isError } = useFirmaCpvProfile(safeIco)
+  const { data, isLoading, isError } = useCompanyCpvProfile(safeIco)
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-semibold text-foreground">{sk.firma.cpvTitle}</h2>
+      <h2 className="text-base font-semibold text-foreground">{sk.company.cpvTitle}</h2>
 
       {isError && (
         <p className="py-6 text-center text-sm text-muted-foreground">{sk.common.error}</p>
@@ -95,7 +95,7 @@ export function FirmaCpvTab() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Company section */}
         <div className="rounded-lg border border-border bg-card p-4">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">{sk.firma.cpvCompany}</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">{sk.company.cpvCompany}</h3>
           {isLoading ? (
             <table className="w-full text-sm">
               <tbody>
@@ -109,7 +109,7 @@ export function FirmaCpvTab() {
 
         {/* Market baseline section */}
         <div className="rounded-lg border border-border bg-card p-4">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">{sk.firma.cpvMarket}</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">{sk.company.cpvMarket}</h3>
           {isLoading ? (
             <table className="w-full text-sm">
               <tbody>

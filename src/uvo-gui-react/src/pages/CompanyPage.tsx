@@ -1,14 +1,14 @@
 import { Suspense } from 'react'
 import { useParams, Link, NavLink, Outlet } from 'react-router-dom'
-import { useFirmaProfile } from '@/api/queries/firma'
+import { useCompanyProfile } from '@/api/queries/companies'
 import { RouteFallback } from '@/components/layout/RouteFallback'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 const ROLE_LABELS: Record<string, string> = {
-  supplier: sk.firma.roleSupplier,
-  procurer: sk.firma.roleProcurer,
+  supplier: sk.company.roleSupplier,
+  procurer: sk.company.roleProcurer,
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -27,26 +27,26 @@ function RoleBadge({ role }: { role: string }) {
   )
 }
 
-export function FirmaPage() {
+export function CompanyPage() {
   const { ico } = useParams<{ ico: string }>()
   const safeIco = ico ?? ''
 
-  const { data: profile, isLoading, isError, error } = useFirmaProfile(safeIco)
+  const { data: profile, isLoading, isError, error } = useCompanyProfile(safeIco)
 
   const is404 = isError && (error as { status?: number })?.status === 404
 
   if (is404) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <p className="text-lg font-medium text-foreground">{sk.firma.notFound}</p>
+        <p className="text-lg font-medium text-foreground">{sk.company.notFound}</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {sk.firma.notFoundDetail.replace('{ico}', safeIco)}
+          {sk.company.notFoundDetail.replace('{ico}', safeIco)}
         </p>
         <Link
-          to="/firmy"
+          to="/companies"
           className="mt-6 rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90"
         >
-          {sk.firma.notFoundAction}
+          {sk.company.notFoundAction}
         </Link>
       </div>
     )
@@ -56,7 +56,7 @@ export function FirmaPage() {
     return (
       <div className="py-12 text-center">
         <p className="text-muted-foreground">{sk.common.error}</p>
-        <Link to="/firmy" className="mt-4 block text-sm text-primary hover:underline">
+        <Link to="/companies" className="mt-4 block text-sm text-primary hover:underline">
           ← {sk.common.back}
         </Link>
       </div>
@@ -64,19 +64,19 @@ export function FirmaPage() {
   }
 
   const tabs = [
-    { to: `/firma/${safeIco}/prehlad`, label: sk.firma.tabPrehlad },
-    { to: `/firma/${safeIco}/zakazky`, label: sk.firma.tabZakazky },
-    { to: `/firma/${safeIco}/siet`, label: sk.firma.tabSiet },
-    { to: `/firma/${safeIco}/partneri`, label: sk.firma.tabPartneri },
-    { to: `/firma/${safeIco}/cpv`, label: sk.firma.tabCpv },
+    { to: `/company/${safeIco}/overview`, label: sk.company.tabOverview },
+    { to: `/company/${safeIco}/contracts`, label: sk.company.tabContracts },
+    { to: `/company/${safeIco}/network`, label: sk.company.tabNetwork },
+    { to: `/company/${safeIco}/partners`, label: sk.company.tabPartners },
+    { to: `/company/${safeIco}/cpv`, label: sk.company.tabCpv },
   ]
 
   return (
     <div className="space-y-4">
       {/* Breadcrumb */}
       <div className="text-sm text-muted-foreground">
-        <Link to="/firmy" className="hover:underline">
-          {sk.firma.breadcrumbFirmy}
+        <Link to="/companies" className="hover:underline">
+          {sk.company.breadcrumbCompanies}
         </Link>
         <span className="mx-1.5">›</span>
         <span>{isLoading ? safeIco : (profile?.name ?? safeIco)}</span>
@@ -102,7 +102,7 @@ export function FirmaPage() {
       </div>
 
       {/* Tab strip */}
-      <nav className="flex gap-1 border-b border-border pb-0" aria-label={sk.firma.sectionsLabel}>
+      <nav className="flex gap-1 border-b border-border pb-0" aria-label={sk.company.sectionsLabel}>
         {tabs.map(({ to, label }) => (
           <NavLink
             key={to}

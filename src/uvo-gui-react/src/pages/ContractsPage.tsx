@@ -21,7 +21,7 @@ const YEAR_OPTIONS = Array.from({ length: 15 }, (_, i) => {
 
 const SOURCE_OPTIONS = Object.entries(sk.analytics.filters.sources).map(([value, label]) => ({ value, label }))
 
-export function ZakazkyPage() {
+export function ContractsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const q = searchParams.get('q') ?? ''
