@@ -48,12 +48,12 @@ curl http://localhost:8091/health  # Returns JSON snapshot: {"status": "ok", "se
 ```
 
 **Key Files**:
-- `src/uvo_pipeline/redis_client.py` — Async Redis factory
-- `src/uvo_pipeline/streams.py` — XADD, XREADGROUP, XACK helpers
-- `src/uvo_pipeline/pubsub.py` — PUBLISH, SUBSCRIBE helpers
-- `src/uvo_pipeline/locks.py` — Distributed lock helpers
+- `src/uvo_core/adapters/redis/client.py` — Async Redis factory
+- `src/uvo_core/adapters/redis/streams.py` — XADD, XREADGROUP, XACK helpers
+- `src/uvo_core/adapters/redis/pubsub.py` — PUBLISH, SUBSCRIBE helpers
+- `src/uvo_core/adapters/redis/locks.py` — Distributed lock helpers
 - `src/uvo_pipeline/cache/` — ITMS cache (memory + Redis backends)
-- `src/uvo_pipeline/dedup.py` — Cross-source dedup logic
+- `src/uvo_core/adapters/mongo/dedup.py` — Cross-source dedup logic
 - `src/uvo_workers/` — Daemon entrypoints (runner.py, vestnik.py, crz.py, ted.py, itms.py, ingestor.py, dedup.py)
 
 ## Starting the Servers

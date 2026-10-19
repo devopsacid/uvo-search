@@ -1,19 +1,19 @@
 """NoticeStream port adapter — wraps Redis Streams XADD/XREADGROUP/XACK.
 
 Extracted so extractor/ingestor workers can depend on the NoticeStream port
-instead of importing uvo_pipeline.streams directly (Phase 5 write-side).
+instead of importing uvo_core.adapters.redis.streams directly (Phase 5 write-side).
 """
 
 from __future__ import annotations
 
 import redis.asyncio as aioredis
 
-from uvo_pipeline.streams import DEFAULT_MAXLEN_SAFETY_NET
-from uvo_pipeline.streams import ack as _ack
-from uvo_pipeline.streams import read_group as _read_group
-from uvo_pipeline.streams import wait_for_capacity as _wait_for_capacity
-from uvo_pipeline.streams import xadd_many as _xadd_many
-from uvo_pipeline.streams import xadd_notice as _xadd_notice
+from uvo_core.adapters.redis.streams import DEFAULT_MAXLEN_SAFETY_NET
+from uvo_core.adapters.redis.streams import ack as _ack
+from uvo_core.adapters.redis.streams import read_group as _read_group
+from uvo_core.adapters.redis.streams import wait_for_capacity as _wait_for_capacity
+from uvo_core.adapters.redis.streams import xadd_many as _xadd_many
+from uvo_core.adapters.redis.streams import xadd_notice as _xadd_notice
 
 
 class RedisNoticeStream:

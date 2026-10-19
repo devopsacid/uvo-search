@@ -281,9 +281,9 @@ uvo-search/
 
 **New in source-microservices**:
 - `src/uvo_workers/` — 6 daemon entrypoints (4 extractors + ingestor + dedup-worker)
-- `src/uvo_pipeline/redis_client.py`, `streams.py`, `pubsub.py`, `locks.py` — Redis integration helpers
+- `src/uvo_core/adapters/redis/client.py`, `streams.py`, `pubsub.py`, `locks.py` — Redis integration helpers
 - `src/uvo_pipeline/cache/` — ITMS cache abstraction (memory + Redis backends)
-- `src/uvo_pipeline/dedup.py` — Extracted from `orchestrator.py` for reuse
+- `src/uvo_core/adapters/mongo/dedup.py` — Extracted from `orchestrator.py` for reuse
 - `docs/superpowers/specs/2026-04-27-source-microservices-design.md` — Full design specification
 
 ## Dev Commands

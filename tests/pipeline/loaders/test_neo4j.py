@@ -5,8 +5,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from uvo_core.adapters.neo4j.loader import (
+    merge_notice_node,
+    merge_procurer_node,
+    merge_supplier_node,
+)
 from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
-from uvo_pipeline.loaders.neo4j import merge_notice_node, merge_procurer_node, merge_supplier_node
 
 
 @pytest.fixture
@@ -57,7 +61,7 @@ async def test_merge_notice_node(mock_session):
 
 @pytest.mark.asyncio
 async def test_merge_notice_batch_reports_failed_keys(monkeypatch):
-    from uvo_pipeline.loaders import neo4j as neo4j_loader
+    from uvo_core.adapters.neo4j import loader as neo4j_loader
 
     async def _node(session, notice):
         if notice.source_id == "bad":

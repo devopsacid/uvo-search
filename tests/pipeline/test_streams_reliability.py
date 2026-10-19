@@ -1,4 +1,4 @@
-"""Reliability helpers in uvo_pipeline.streams: batch XADD, backpressure,
+"""Reliability helpers in uvo_core.adapters.redis.streams: batch XADD, backpressure,
 safe trimming, paged reclaim and delivery counts."""
 
 import asyncio
@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from fakeredis import aioredis as fake_aioredis
 
-from uvo_pipeline.streams import (
+from uvo_core.adapters.redis.streams import (
     BackpressureTimeout,
     ack,
     autoclaim_stale,

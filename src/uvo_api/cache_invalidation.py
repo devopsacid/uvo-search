@@ -21,7 +21,7 @@ import redis.asyncio as aioredis
 
 from uvo_api.config import get_settings
 from uvo_core.adapters.mongo.analytics import clear_analytics_caches
-from uvo_pipeline.pubsub import subscribe
+from uvo_core.adapters.redis.pubsub import subscribe
 
 logger = logging.getLogger(__name__)
 

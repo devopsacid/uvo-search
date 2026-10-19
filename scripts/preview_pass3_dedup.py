@@ -18,12 +18,12 @@ import logging
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from uvo_pipeline.config import PipelineSettings
-from uvo_pipeline.dedup import (
+from uvo_core.adapters.mongo.dedup import (
     MAX_NOTICES_PER_SUPPLIER_ICO,
     build_ico_value_window_groups,
     persist_match_groups,
 )
+from uvo_pipeline.config import PipelineSettings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("preview_pass3_dedup")

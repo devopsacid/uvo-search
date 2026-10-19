@@ -10,7 +10,7 @@ import pytest
 from mongomock_motor import AsyncMongoMockClient
 
 import uvo_workers.ingestor as ingestor_mod
-from uvo_pipeline.streams import ensure_consumer_group, read_group, xadd_many
+from uvo_core.adapters.redis.streams import ensure_consumer_group, read_group, xadd_many
 from uvo_workers.ingestor import (
     DEAD_LETTER_STREAM,
     IngestorContext,

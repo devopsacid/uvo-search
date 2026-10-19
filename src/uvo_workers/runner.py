@@ -12,10 +12,10 @@ import redis.asyncio
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
+from uvo_core.adapters.mongo.ingestion_log import log_event
+from uvo_core.adapters.redis.client import RedisSettings, close_redis, get_redis
+from uvo_core.adapters.redis.locks import lock
 from uvo_pipeline.config import get_pipeline_settings
-from uvo_pipeline.ingestion_log import log_event
-from uvo_pipeline.locks import lock
-from uvo_pipeline.redis_client import RedisSettings, close_redis, get_redis
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
 from uvo_workers.metrics import build_registry

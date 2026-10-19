@@ -11,13 +11,13 @@ from functools import lru_cache
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic_settings import BaseSettings
 
+from uvo_core.adapters.mongo.dedup import run_cross_source_dedup
+from uvo_core.adapters.mongo.ingestion_log import log_event
+from uvo_core.adapters.mongo.loaders import recompute_entity_stats
+from uvo_core.adapters.redis.client import close_redis, get_redis, get_redis_settings
+from uvo_core.adapters.redis.locks import lock
+from uvo_core.adapters.redis.pubsub import subscribe
 from uvo_pipeline.config import get_pipeline_settings
-from uvo_pipeline.dedup import run_cross_source_dedup
-from uvo_pipeline.ingestion_log import log_event
-from uvo_pipeline.loaders.mongo import recompute_entity_stats
-from uvo_pipeline.locks import lock
-from uvo_pipeline.pubsub import subscribe
-from uvo_pipeline.redis_client import close_redis, get_redis, get_redis_settings
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
 from uvo_workers.metrics import build_registry

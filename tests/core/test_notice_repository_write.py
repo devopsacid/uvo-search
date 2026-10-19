@@ -5,8 +5,8 @@ that depend on NoticeRepository rather than the free functions stay covered.
 
 from mongomock_motor import AsyncMongoMockClient
 
+from uvo_core.adapters.mongo.loaders import ensure_indexes
 from uvo_core.adapters.mongo.repositories import MongoNoticeRepository
-from uvo_pipeline.loaders.mongo import ensure_indexes
 
 
 def _notice(source_id: str, title: str = "Test notice") -> dict:

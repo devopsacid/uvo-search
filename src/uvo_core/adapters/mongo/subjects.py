@@ -6,7 +6,7 @@ Three query shapes:
 - empty name query → indexed ``find({}).sort(...)`` (B22). The old ``$search
   exists`` + ``$facet`` sorted and counted the whole collection in memory just to
   list the top N; ``contract_count`` / ``total_value`` / ``name`` now have B-tree
-  indexes (``uvo_pipeline.loaders.mongo.ensure_indexes``) that serve the sort.
+  indexes (``uvo_core.adapters.mongo.loaders.ensure_indexes``) that serve the sort.
 - name query → ``$search`` + ``$facet``, bounded by the text-matched set.
 
 Every list path drops ``name_embedding`` (384 floats per row) — B13.

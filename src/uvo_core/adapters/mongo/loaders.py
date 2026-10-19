@@ -9,8 +9,8 @@ from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pymongo import InsertOne, UpdateOne
 from pymongo.errors import BulkWriteError, OperationFailure
 
+from uvo_core.domain.hashing import compute_notice_hash
 from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
-from uvo_pipeline.utils.hashing import compute_notice_hash
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +101,6 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     # pipeline_state: unique on source
     await _ensure_index(db.pipeline_state, [("source", 1)], unique=True, name="source_unique")
 
-    # ckan_packages: unique on package_id
-    await _ensure_index(
-        db.ckan_packages, [("package_id", 1)], unique=True, name="package_id_unique"
-    )
-    await _ensure_index(db.ckan_packages, [("last_modified", -1)], name="last_modified_desc")
-
     # ingested_docs: fast lookup + audit trail
     await _ensure_index(
         db.ingested_docs,
@@ -121,7 +115,7 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await _ensure_index(db.ingested_docs, [("ingested_at", -1)], name="ingested_at_desc")
 
     # ingestion_log: TTL + query indexes
-    from uvo_pipeline.ingestion_log import ensure_log_indexes
+    from uvo_core.adapters.mongo.ingestion_log import ensure_log_indexes
 
     await ensure_log_indexes(db)
     # worker-status reads the latest event per component.

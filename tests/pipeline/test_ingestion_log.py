@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 from mongomock_motor import AsyncMongoMockClient
 
-from uvo_pipeline.ingestion_log import (
+from uvo_core.adapters.mongo.ingestion_log import (
     IngestionLogEntry,
     ensure_log_indexes,
     log_event,
@@ -82,7 +82,7 @@ async def test_log_event_failure_is_logged_not_raised(db, caplog):
     class _BrokenDb:
         ingestion_log = _Broken()
 
-    with caplog.at_level("ERROR", logger="uvo_pipeline.ingestion_log"):
+    with caplog.at_level("ERROR", logger="uvo_core.adapters.mongo.ingestion_log"):
         await log_event(
             _BrokenDb(), level="info", event="worker_started", component="c", message="m"
         )
@@ -131,7 +131,7 @@ async def test_log_events_failure_is_logged_not_raised(caplog):
         ingestion_log = _Broken()
 
     entry = IngestionLogEntry(level="info", event="batch_written", component="c", message="m")
-    with caplog.at_level("ERROR", logger="uvo_pipeline.ingestion_log"):
+    with caplog.at_level("ERROR", logger="uvo_core.adapters.mongo.ingestion_log"):
         await log_events(_BrokenDb(), [entry])
 
     assert any("mongo down" in (r.exc_text or "") for r in caplog.records)
