@@ -1,10 +1,18 @@
 name: CI
 
+# push is limited to main; every other branch is covered by its pull_request
+# run. Triggering on both for a PR branch ran the whole pipeline twice.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Never cancel a main run: it would swallow that commit's publish (and its
+  # sha-<short> tag, which prod pins). PR runs are safe to supersede.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -50,46 +58,121 @@ jobs:
       - name: Run ruff format check
         run: uv run ruff format --check src/ tests/
 
+  frontend:
+    name: Frontend (lint, types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/uvo-gui-react
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: src/uvo-gui-react/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # The `lint` script needs an ESLint flat config. Skip (loudly) until one
+      # exists rather than failing every PR on a missing file.
+      - name: Lint
+        run: |
+          if ls eslint.config.* >/dev/null 2>&1; then
+            npm run lint
+          else
+            echo "::warning::No eslint.config.* in src/uvo-gui-react; skipping lint"
+          fi
+
+      - name: Type check
+        run: npx tsc -b
+
+      - name: Unit tests
+        run: npm test -- --run
+
+      - name: Build
+        run: npm run build
+
   images:
-    name: Build Docker images
+    name: Build image (${{ matrix.image }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        dockerfile: [Dockerfile.mcp, Dockerfile.api, Dockerfile.workers, Dockerfile.pipeline]
+        include:
+          - image: mcp
+            context: .
+            file: Dockerfile
+            target: mcp
+            mods: "uvo_mcp uvo_core"
+          - image: api
+            context: .
+            file: Dockerfile
+            target: api
+            mods: "uvo_api uvo_core uvo_pipeline"
+          - image: workers
+            context: .
+            file: Dockerfile
+            target: workers
+            mods: "uvo_workers uvo_core uvo_pipeline"
+          # uvo_pipeline does not import uvo_mcp, and the image no longer ships it.
+          - image: pipeline
+            context: .
+            file: Dockerfile
+            target: pipeline
+            mods: "uvo_pipeline uvo_core"
+          - image: gui
+            context: src/uvo-gui-react
+            file: src/uvo-gui-react/Dockerfile
+            target: ""
+            mods: ""
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build ${{ matrix.dockerfile }}
+      # Cache scope == image name, shared with docker-publish.yml so the publish
+      # run after a green main build is a cache hit.
+      - name: Build ${{ matrix.image }}
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
           push: false
           load: true
-          tags: uvo-ci:${{ matrix.dockerfile }}
-          cache-from: type=gha,scope=${{ matrix.dockerfile }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.dockerfile }}
+          tags: uvo-ci:${{ matrix.image }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
       # A build that succeeds proves nothing about whether the app can start.
       # An image whose first-party packages never landed in the venv builds
       # perfectly and then dies with ModuleNotFoundError at runtime, which is
-      # exactly what shipped once already. Import them here.
+      # exactly what shipped once already. Import them here, read-only like
+      # the k8s securityContext.
       - name: Verify first-party packages are importable
+        if: matrix.mods != ''
         run: |
-          case "${{ matrix.dockerfile }}" in
-            Dockerfile.mcp)      MODS="uvo_mcp uvo_core" ;;
-            Dockerfile.api)      MODS="uvo_api uvo_core uvo_pipeline" ;;
-            Dockerfile.workers)  MODS="uvo_workers uvo_core uvo_pipeline" ;;
-            Dockerfile.pipeline) MODS="uvo_pipeline uvo_core uvo_mcp" ;;
-          esac
-          for m in $MODS; do
-            docker run --rm --entrypoint /app/.venv/bin/python \
-              uvo-ci:${{ matrix.dockerfile }} -c "import $m"
+          for m in ${{ matrix.mods }}; do
+            docker run --rm --read-only --entrypoint /app/.venv/bin/python \
+              uvo-ci:${{ matrix.image }} -c "import $m"
             echo "  ok: $m"
           done
+
+      - name: Verify nginx config is valid and serves index.html
+        if: matrix.image == 'gui'
+        run: |
+          docker run --rm uvo-ci:gui nginx -t
+          docker run -d --name gui-check -p 18080:8080 uvo-ci:gui
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:18080/ -o /tmp/index.html && break
+            sleep 1
+          done
+          grep -qi "<!doctype html" /tmp/index.html
+          docker rm -f gui-check
 
   manifests:
     name: Validate k8s manifests
@@ -122,7 +205,7 @@ jobs:
   docker-compose:
     name: Docker Compose Build & E2E
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [test, lint, frontend]
     steps:
       - uses: actions/checkout@v4
 
