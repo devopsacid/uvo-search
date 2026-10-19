@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from uvo_pipeline.models import (
+from uvo_core.domain.models import (
     CanonicalAward,
     CanonicalNotice,
     CanonicalSupplier,

@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
 from uvo_pipeline.loaders.neo4j import merge_notice_node, merge_procurer_node, merge_supplier_node
-from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer, CanonicalSupplier
 
 
 @pytest.fixture

@@ -1,6 +1,6 @@
 import asyncio
 
-from uvo_mcp.cache import async_ttl_cache
+from uvo_core.cache import async_ttl_cache
 
 
 async def test_hits_reuse_cached_result():
@@ -30,7 +30,7 @@ async def test_different_args_miss():
 
 
 async def test_key_from_lets_callers_ignore_first_arg():
-    from uvo_mcp.cache import _make_key
+    from uvo_core.cache import _make_key
 
     calls = {"n": 0}
 
