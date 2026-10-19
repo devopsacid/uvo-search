@@ -42,6 +42,8 @@ const sk = {
     retry: 'Skusit znova',
     back: 'Spat',
     clearFilters: 'Zrusit filtre',
+    loadingPage: 'Načítavam…',
+    all: 'Všetky',
   },
   search: {
     title: 'Vyhladavanie zakazok',

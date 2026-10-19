@@ -10,6 +10,24 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Stable vendor chunks cache across deploys. cytoscape stays out of the
+        // entry graph: only the lazy CytoscapeGraph chunk imports it.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (/node_modules\/(react|react-dom|react-router|react-router-dom|@remix-run|scheduler)\//.test(id))
+            return 'vendor-react'
+          if (id.includes('@tanstack/')) return 'vendor-query'
+          if (/node_modules\/(recharts|recharts-scale|d3-[^/]+|victory-vendor|internmap)\//.test(id))
+            return 'vendor-charts'
+          if (/node_modules\/(cytoscape|react-cytoscapejs)/.test(id)) return 'vendor-graph'
+          return undefined
+        },
+      },
+    },
+  },
   server: {
     port: 5174,
     proxy: {

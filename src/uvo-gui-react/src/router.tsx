@@ -1,20 +1,51 @@
-import { Suspense } from 'react'
+import { lazy } from 'react'
 import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import { Layout } from '@/components/layout/Layout'
-import { OverviewPage } from '@/pages/OverviewPage'
-import { AboutPage } from '@/pages/AboutPage'
-import { ZakazkyPage } from '@/pages/ZakazkyPage'
-import { HladajPage } from '@/pages/HladajPage'
-import { GraphPage } from '@/pages/GraphPage'
-import { IngestionPage } from '@/pages/IngestionPage'
-import { CpvTrendsPage } from '@/pages/CpvTrendsPage'
-import { FirmaPage } from '@/pages/FirmaPage'
-import { FirmaPrehladTab } from '@/pages/firma/FirmaPrehladTab'
-import { FirmaZakazkyTab } from '@/pages/firma/FirmaZakazkyTab'
-import { FirmaSietTab } from '@/pages/firma/FirmaSietTab'
-import { FirmaPartneriTab } from '@/pages/firma/FirmaPartneriTab'
-import { FirmaCpvTab } from '@/pages/firma/FirmaCpvTab'
-import { FirmyPage } from '@/pages/FirmyPage'
+
+// Route components are split into per-page chunks. Layout wraps <Outlet/> in a
+// shared <Suspense>, and FirmaPage does the same for its tab outlet.
+const OverviewPage = lazy(() =>
+  import('@/pages/OverviewPage').then((m) => ({ default: m.OverviewPage })),
+)
+const AboutPage = lazy(() =>
+  import('@/pages/AboutPage').then((m) => ({ default: m.AboutPage })),
+)
+const ZakazkyPage = lazy(() =>
+  import('@/pages/ZakazkyPage').then((m) => ({ default: m.ZakazkyPage })),
+)
+const HladajPage = lazy(() =>
+  import('@/pages/HladajPage').then((m) => ({ default: m.HladajPage })),
+)
+const GraphPage = lazy(() =>
+  import('@/pages/GraphPage').then((m) => ({ default: m.GraphPage })),
+)
+const IngestionPage = lazy(() =>
+  import('@/pages/IngestionPage').then((m) => ({ default: m.IngestionPage })),
+)
+const CpvTrendsPage = lazy(() =>
+  import('@/pages/CpvTrendsPage').then((m) => ({ default: m.CpvTrendsPage })),
+)
+const FirmaPage = lazy(() =>
+  import('@/pages/FirmaPage').then((m) => ({ default: m.FirmaPage })),
+)
+const FirmyPage = lazy(() =>
+  import('@/pages/FirmyPage').then((m) => ({ default: m.FirmyPage })),
+)
+const FirmaPrehladTab = lazy(() =>
+  import('@/pages/firma/FirmaPrehladTab').then((m) => ({ default: m.FirmaPrehladTab })),
+)
+const FirmaZakazkyTab = lazy(() =>
+  import('@/pages/firma/FirmaZakazkyTab').then((m) => ({ default: m.FirmaZakazkyTab })),
+)
+const FirmaSietTab = lazy(() =>
+  import('@/pages/firma/FirmaSietTab').then((m) => ({ default: m.FirmaSietTab })),
+)
+const FirmaPartneriTab = lazy(() =>
+  import('@/pages/firma/FirmaPartneriTab').then((m) => ({ default: m.FirmaPartneriTab })),
+)
+const FirmaCpvTab = lazy(() =>
+  import('@/pages/firma/FirmaCpvTab').then((m) => ({ default: m.FirmaCpvTab })),
+)
 
 function SupplierRedirect() {
   const { ico } = useParams()
@@ -42,14 +73,7 @@ export const router = createBrowserRouter([
           { index: true, element: <Navigate to="prehlad" replace /> },
           { path: 'prehlad', element: <FirmaPrehladTab /> },
           { path: 'zakazky', element: <FirmaZakazkyTab /> },
-          {
-            path: 'siet',
-            element: (
-              <Suspense fallback={<div className="p-8 text-muted-foreground">Načítavam…</div>}>
-                <FirmaSietTab />
-              </Suspense>
-            ),
-          },
+          { path: 'siet', element: <FirmaSietTab /> },
           { path: 'partneri', element: <FirmaPartneriTab /> },
           { path: 'cpv', element: <FirmaCpvTab /> },
         ],

@@ -1,5 +1,7 @@
+import { Suspense } from 'react'
 import { useParams, Link, NavLink, Outlet } from 'react-router-dom'
 import { useFirmaProfile } from '@/api/queries/firma'
+import { RouteFallback } from '@/components/layout/RouteFallback'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
@@ -120,7 +122,9 @@ export function FirmaPage() {
       </nav>
 
       {/* Sub-route content */}
-      <Outlet />
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
     </div>
   )
 }
