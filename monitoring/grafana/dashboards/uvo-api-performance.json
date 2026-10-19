@@ -1024,8 +1024,8 @@
         },
         {
           "refId": "D",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(uvo_api_http_request_duration_seconds_bucket{route=~\"/api/firma.*\"}[5m])))",
-          "legendFormat": "firma",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(uvo_api_http_request_duration_seconds_bucket{route=~\"/api/(companies|firma|firmy).*\"}[5m])))",
+          "legendFormat": "companies",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
