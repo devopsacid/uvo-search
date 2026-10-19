@@ -116,6 +116,7 @@ Every tool is a thin wrapper over `uvo_core.services`. Tool names are the Python
 
 - `GET /health` — liveness: `{"status": "ok", "service": "uvo-mcp"}`. Never checks dependencies.
 - `GET /readyz` — readiness: 200 when a bounded Mongo ping succeeds and the required Atlas Search indexes exist (cached briefly). 503 otherwise.
+- `GET /metrics` — Prometheus exposition (process metrics, `uvo_cache_*`, `uvo_ready{service="uvo-mcp"}`), refreshed by the same 30 s readiness loop. Served outside `/api`, so nginx does not proxy it.
 
 ## API (`uvo_api`)
 
@@ -129,7 +130,7 @@ Routes under `/api/*` return the schemas in `uvo_api/_schema.py`. Public `/v1` r
 
 **Procurement and entity routes** (`/api/…`):
 
-- `GET /api/contracts` — filters: `q`, `cpv`, `date_from`, `date_to`, `value_min`, `value_max`, `ico`, `supplier_ico`, `procurer_ico`, `limit`, `offset`
+- `GET /api/contracts` — filters: `q`, `cpv`, `date_from`, `date_to`, `value_min`, `value_max`, `ico`, `supplier_ico`, `procurer_ico`, `source` (`vestnik`, `crz`, `ted`, `uvo`, `itms`), `limit`, `offset`. `date_from`/`date_to` filter on publication date.
 - `GET /api/contracts/{contract_id}` — contract detail
 - `GET /api/procurers`, `GET /api/procurers/{ico}`, `GET /api/procurers/{ico}/summary`
 - `GET /api/procurers/{ico}/concentration?top_n=N` — supplier concentration (HHI)
@@ -149,17 +150,30 @@ Routes under `/api/*` return the schemas in `uvo_api/_schema.py`. Public `/v1` r
 - `GET /api/graph/ego/{ico}?hops=N` — `hops` 1–3, default 2; Cytoscape-format JSON
 - `GET /api/graph/cpv/{cpv}?year=YYYY` — procurer–supplier–notice network; Cytoscape-format JSON
 
+**Analytics routes** (`/api/analytics/…`), metric definition D1 (`docs/specs/2026-10-19-analytics-dashboards.md` §4). Router `uvo_api/routers/analytics.py`, service `uvo_core/services/analytics.py`, adapter `uvo_core/adapters/mongo/dashboards.py`. GET only, no auth:
+
+- `GET /summary` — KPIs for the period, the previous equal-length period and deltas
+- `GET /timeseries?granularity=month|quarter|year&split_by=source|cpv_division&top=1..10` — zero-filled points, optional series
+- `GET /top?dimension=procurer|supplier|cpv_division&metric=total_value|contract_count&n=1..50` — ranked items with shares and an `other` remainder
+- `GET /concentration?dimension=supplier|procurer` — HHI, `hhi_band`, CR4, CR10, top 10
+- `GET /cpv?level=division|group` — value and count per CPV bucket
+- `GET /coverage` — per-source freshness and field quality; ignores the common filters
+
+All except `/coverage` accept the common filters `date_from`, `date_to` (default: 1 January four years back to today), `cpv` (2–8 digit prefix), `source`, `procurer_ico` and `supplier_ico`. Every response has a `meta` block with `definition: "D1"` and the effective filters. Errors: 422 for invalid input (standard FastAPI body), 504 `{"detail": "analytics_timeout"}` when the aggregate exceeds `maxTimeMS` 15 s, 503 when Mongo is down. Responses are cached for 15 min (see [caching.md](architecture/caching.md)).
+
 **Public API** (`/v1/…`): `/v1/companies` (list, `{ico}`, `{ico}/profile`, `{ico}/risk`) and `/v1/contracts` (list, `{contract_id}`). Requests are rate-limited through Redis, and errors use the envelope in `v1_errors.py`.
 
 ### Errors
 
 - `uvo_core.errors.BackendUnavailable` is mapped to HTTP 503 by one exception handler. The reason is logged and never returned to the client.
+- `/api/analytics/*`: invalid filters return 422; an aggregate that exceeds `maxTimeMS` returns 504 `{"detail": "analytics_timeout"}`. The mapping lives in the analytics router, not in the global handler.
 - Graph routes return 503 when `API_NEO4J_URI` is unset.
 
 ### Health
 
 - `GET /health` — liveness: `{"status": "ok", "service": "uvo-api"}`
 - `GET /readyz` — readiness, same check as the MCP server
+- `GET /metrics` — Prometheus exposition: `uvo_api_http_*` (labelled by route template, never the raw path), `uvo_ready{service="uvo-api"}`, `uvo_source_*` freshness (refreshed every 300 s), `uvo_build_info`, and the `uvo_cache_*` families. Installed by `install_metrics(app)` in `create_app()`; the refreshers start and stop in the lifespan.
 
 ## Data Pipeline (Workers)
 
@@ -181,7 +195,7 @@ Key files:
 
 ## Caching
 
-Search results, entity lookups, and dashboard aggregates use the in-process TTL cache in `uvo_core/cache.py`. The TTLs are `CACHE_TTL_SEARCH`, `CACHE_TTL_ENTITY`, and `CACHE_TTL_DETAIL` (MCP settings). Cached aggregates are cleared by `clear_data_caches` / `clear_analytics_caches`. Both `uvo_api` and `uvo_mcp` run a `notices:written` subscriber that calls `clear_data_caches()`. It is debounced, and it stops quietly if Redis is unreachable, after which the caches expire by TTL.
+Search results, entity lookups, and dashboard and analytics aggregates use the in-process TTL cache `async_ttl_cache` in `uvo_core/cache.py`. Each cache has its own TTL and maxsize, set next to its function. The full policy table, with the Prometheus labels and the invalidation rules, is in [architecture/caching.md](architecture/caching.md). Both `uvo_api` and `uvo_mcp` run a `notices:written` subscriber that calls `clear_data_caches()`. It is debounced to one clear per 60 s, and it stops quietly if Redis is unreachable, after which the caches expire by TTL.
 
 ## Storage Mapping
 
@@ -191,7 +205,8 @@ The services read from MongoDB and Neo4j. The workers write to both.
 |---------|-------|--------|
 | Procurement search and detail | MongoDB `notices` | Atlas Search (`sk_folding` analyzer) or `find` / aggregation when there is no text query |
 | Procurer and supplier search | MongoDB `procurers`, `suppliers` | Atlas Search (`autocomplete` edgeGram subfield) and `ico` equality |
-| Company risk, dashboard aggregates | MongoDB `notices` and entity collections | Aggregation pipelines |
+| Company risk, legacy dashboard aggregates | MongoDB `notices` and entity collections | Aggregation pipelines |
+| Analytics dashboards (`/api/analytics/*`) | MongoDB `notices` | Query-time aggregations with an index-friendly `award_date`/`publication_date` window (`notice_type_award_date_desc`, `source_notice_type_publication_date_desc`) |
 | Semantic company search | MongoDB vector index | `$vectorSearch` over FastEmbed embeddings |
 | Graph routes and tools | Neo4j | Cypher (`uvo_core/adapters/neo4j/graph.py`) |
 

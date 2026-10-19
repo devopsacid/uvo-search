@@ -30,17 +30,16 @@ npm run lint   # ESLint check
 
 ## Pages
 
-- `/` — Overview dashboard
-- `/search` — Search procurements (full-text + filters)
-- `/suppliers` — Browse suppliers by name/ICO
-- `/suppliers/:ico` — Supplier detail & contract history
-- `/procurers` — Browse procurers (authorities)
-- `/procurers/:ico` — Procurer detail & spending analysis
-- `/graph` — Interactive network visualization
-- `/cpv-trends` — CPV code trends over time
-- `/procurers/:ico/concentration` — HHI supplier concentration
-- `/calendar` — Timeline view
-- `/about` — Project info
+- `/` — redirects to `/analytika/prehlad`
+- `/analytika/prehlad`, `/analytika/koncentracia`, `/analytika/cpv`, `/analytika/pokrytie` — analytics dashboards (market overview, concentration (HHI/CR4/CR10), CPV sectors, data coverage). Filters live in the URL. `/cpv-trends` redirects to `/analytika/cpv`
+- `/firmy` — company list (suppliers and procurers)
+- `/firma/:ico/{prehlad,zakazky,siet,partneri,cpv}` — company workspace tabs
+- `/zakazky` — contract list; accepts `date_from`, `date_to`, `cpv`, `source`, `procurer_ico`, `supplier_ico` for drill-down
+- `/hladaj` — combined search
+- `/graph` — graph visualization (Cytoscape)
+- `/ingestion` — pipeline status
+- `/about` — project info
+- Legacy paths `/suppliers`, `/procurers`, `/search`, `/pinpoint` redirect to the current pages
 
 ## Architecture Notes
 

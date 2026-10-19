@@ -28,7 +28,7 @@ docker compose --profile monitoring up -d # adds prometheus + grafana
 
 Both ports are bound to `127.0.0.1`. Do not change that without adding authentication in front. Prometheus keeps 7 days of data in the `prometheus_data` volume.
 
-The stack starts even before the API/MCP expose the new metrics: panels then show "No data" and the `up` targets for missing endpoints are red on http://127.0.0.1:9090/targets. Prometheus does not depend on the app services, so it also runs on its own.
+Prometheus does not depend on the app services, so it starts on its own. If the API, MCP or a worker is not running, its target is red on http://127.0.0.1:9090/targets and the panels that read it show "No data".
 
 Stop: `docker compose --profile monitoring down` (add `-v` to also drop the stored metrics and Grafana state).
 
@@ -92,7 +92,7 @@ The `db-monitor` agent produces the same view with ETAs for backfills.
 Critical, 5 min. Prometheus cannot scrape a worker's `/metrics`. The process is dead, restarting or its health port is unreachable. Check `docker compose ps`, then `docker compose logs --tail 100 <component>`. A worker that exits at start usually has bad Mongo/Redis/Neo4j settings. Related: [UvoWorkerRedisDisconnected](#uvoworkerredisdisconnected).
 
 ### UvoApiDown
-Critical, 5 min. `api:8001/metrics` is unreachable. Check `docker compose ps api` and its logs; also `curl http://127.0.0.1:8001/health` (liveness) and `/readyz`. Until `install_metrics` is wired into the API the target is down by design, in which case this alert is expected.
+Critical, 5 min. `api:8001/metrics` is unreachable. Check `docker compose ps api` and its logs; also `curl http://127.0.0.1:8001/health` (liveness) and `/readyz`. Then `curl -s http://127.0.0.1:8001/metrics | head` to confirm the endpoint answers.
 
 ### UvoMcpDown
 Critical, 5 min. `mcp-server:8000/metrics` is unreachable. Same checks as the API on port 8000. The MCP server starts without Mongo/Neo4j, so a crash loop points at configuration rather than databases.

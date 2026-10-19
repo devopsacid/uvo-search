@@ -150,9 +150,18 @@ Settings are read from the environment and from `.env`. `ApiSettings` reads only
 | `EKOSYSTEM_API_TOKEN` | `""` | Ekosystem API token (optional) |
 | `TED_BASE_URL` | `https://api.ted.europa.eu` | TED API URL |
 | `REQUEST_TIMEOUT` | `30.0` | HTTP request timeout (seconds) |
-| `CACHE_TTL_SEARCH` | `300` | Search result cache TTL (seconds) |
-| `CACHE_TTL_ENTITY` | `3600` | Entity lookup cache TTL (seconds) |
-| `CACHE_TTL_DETAIL` | `1800` | Detail view cache TTL (seconds) |
+| `CACHE_TTL_SEARCH` | `300` | Declared on MCP `Settings` but **not read** by any cache. Search TTL is the constant in `adapters/mongo/procurements.py`. Setting it has no effect |
+| `CACHE_TTL_ENTITY` | `3600` | Same as above. Entity search TTL is the constant in `adapters/mongo/subjects.py` |
+| `CACHE_TTL_DETAIL` | `1800` | Same as above. Detail is uncached |
+
+Per-cache TTLs and maxsizes are listed in [architecture/caching.md](architecture/caching.md).
+
+**Monitoring** (only with `docker compose --profile monitoring`; see [`monitoring/README.md`](../monitoring/README.md)):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `GRAFANA_ADMIN_PASSWORD` | `uvo_grafana_dev` (dev-only default, read by `docker-compose.yml`) | Grafana `admin` password. Grafana listens on `127.0.0.1:3000` only. Set it in `.env` for anything beyond a laptop |
+| `GIT_SHA` | `unknown` | Read by the API to set `uvo_build_info{git_sha}`. Not yet passed by `docker-compose.yml` or the Dockerfile, so local builds report `unknown` |
 
 ## Project Structure
 
@@ -160,7 +169,7 @@ Settings are read from the environment and from `.env`. `ApiSettings` reads only
 uvo-search/
 ├── src/
 │   ├── uvo_core/                         # Shared core; imports no other package
-│   │   ├── services/                     # Query services used by API and MCP (search, graph, risk)
+│   │   ├── services/                     # Query services used by API and MCP (search, graph, risk, analytics)
 │   │   ├── domain/                       # Models, CPV helpers, scoring, hashing, company merge
 │   │   ├── adapters/mongo/               # Loaders, dedup, ingestion log, checkpoints, search indexes
 │   │   ├── adapters/neo4j/               # Graph queries and loader
