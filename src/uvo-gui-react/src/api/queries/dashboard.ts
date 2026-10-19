@@ -3,7 +3,6 @@ import { apiClient } from '../client'
 import type {
   CpvShare,
   DashboardSummary,
-  MonthBucket,
   RecentContract,
   SpendByYear,
   TopProcurer,
@@ -22,7 +21,6 @@ export const dashboardKeys = {
     [...dashboardKeys.all, 'cpvShare', yearFrom, yearTo, ico, entityType] as const,
   recent: (limit?: number, ico?: string, entityType?: string) =>
     [...dashboardKeys.all, 'recent', limit, ico, entityType] as const,
-  byMonth: (year: number) => [...dashboardKeys.all, 'byMonth', year] as const,
 }
 
 export function useDashboardSummary(ico?: string, entityType?: string) {
@@ -100,14 +98,5 @@ export function useRecent(limit = 10, ico?: string, entityType?: string) {
       return apiClient.get<RecentContract[]>(`/dashboard/recent?${params.toString()}`)
     },
     staleTime: 60 * 1000,
-  })
-}
-
-export function useByMonth(year: number) {
-  return useQuery({
-    queryKey: dashboardKeys.byMonth(year),
-    queryFn: () => apiClient.get<MonthBucket[]>(`/dashboard/by-month?year=${year}`),
-    staleTime: 5 * 60 * 1000,
-    enabled: year > 0,
   })
 }

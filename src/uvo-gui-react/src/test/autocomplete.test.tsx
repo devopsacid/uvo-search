@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderWithProviders, screen, fireEvent, waitFor } from './utils'
 import { EntityAutocomplete } from '../components/search/EntityAutocomplete'
-import { SearchPage } from '../pages/SearchPage'
+import { ZakazkyPage } from '../pages/ZakazkyPage'
 import sk from '../i18n/sk'
 
 let fetchCallCount = 0
@@ -276,7 +276,7 @@ describe('Autocomplete', () => {
   })
 
   it('without onSelect callback, Enter commits selection and clears input', async () => {
-    renderWithProviders(<SearchPage />, { route: '/search' })
+    renderWithProviders(<ZakazkyPage />, { route: '/search' })
 
     const input = screen.getByRole('textbox', { name: sk.search.autocompletePlaceholder }) as HTMLInputElement
     fireEvent.change(input, { target: { value: 'test' } })
