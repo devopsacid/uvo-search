@@ -60,7 +60,7 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await _ensure_index(db.notices, [("pipeline_run_id", 1)], name="pipeline_run_id")
     await _ensure_index(db.notices, [("title_slug", 1)], name="title_slug")
 
-    # Dashboard / firma query paths always constrain notice_type; the compound
+    # Dashboard / company query paths always constrain notice_type; the compound
     # indexes let those aggregations seek instead of scanning the corpus.
     await _ensure_index(
         db.notices,

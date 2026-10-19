@@ -1,6 +1,6 @@
 """MongoDB analytics aggregations for company profiles and dashboards.
 
-Absorbs the former ``uvo_api/routers/_agg.py`` firma helpers and adds the
+Absorbs the former ``uvo_api/routers/_agg.py`` company helpers and adds the
 full-corpus dashboard aggregations that replace the old 500-doc sampled
 endpoints (plan §1.3.2). All heavy lifting is a server-side ``$group`` — the
 FastAPI routers only shape the returned rows into response models.
@@ -63,7 +63,7 @@ def _dashboard_match(ico: str | None, entity_type: str | None) -> dict:
     ttl=3600,
     key_from=lambda db, ico: _make_key((ico,), {}),
 )
-async def _firma_core_agg(db, ico: str) -> dict:
+async def _company_core_agg(db, ico: str) -> dict:
     """One-shot $facet pipeline: supplier/procurer stats + top CPVs + spend-by-year."""
     pipeline = [
         {"$match": {"$or": [{"awards.supplier.ico": ico}, {"procurer.ico": ico}]}},
@@ -136,7 +136,7 @@ async def _firma_core_agg(db, ico: str) -> dict:
         (ico, role, sort_by, limit, offset), {}
     ),
 )
-async def _firma_partners_agg(
+async def _company_partners_agg(
     db, ico: str, role: str, sort_by: str, limit: int, offset: int
 ) -> dict:
     """Paginated partner aggregation for a company."""
@@ -578,8 +578,8 @@ async def entity_profile(db, ico: str, role: str, top_n: int = 10) -> dict:
 
 
 _CACHED_AGGREGATES = (
-    _firma_core_agg,
-    _firma_partners_agg,
+    _company_core_agg,
+    _company_partners_agg,
     _market_cpv_agg,
     _spend_by_year_agg,
     _cpv_breakdown_agg,
@@ -597,10 +597,10 @@ class MongoCompanyAnalytics:
         self._db = db
 
     async def core_stats(self, ico: str) -> dict:
-        return await _firma_core_agg(self._db, ico)
+        return await _company_core_agg(self._db, ico)
 
     async def partners(self, ico: str, role: str, sort_by: str, limit: int, offset: int) -> dict:
-        return await _firma_partners_agg(self._db, ico, role, sort_by, limit, offset)
+        return await _company_partners_agg(self._db, ico, role, sort_by, limit, offset)
 
     async def market_cpv(self, limit: int = 20) -> list[dict]:
         return await _market_cpv_agg(self._db, limit)

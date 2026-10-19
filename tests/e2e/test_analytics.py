@@ -50,7 +50,7 @@ SOURCES = {"vestnik", "crz", "ted", "uvo", "itms"}
 MONGO_DB = os.environ.get("API_MONGODB_DATABASE", "uvo_search")
 DEFAULT_FROM = f"{date.today().year - 4}-01-01"
 DEFAULT_TO = date.today().isoformat()
-ANALYTICS_PAGES = ["prehlad", "koncentracia", "cpv", "pokrytie"]
+ANALYTICS_PAGES = ["overview", "concentration", "cpv", "coverage"]
 
 # Metric families that must be exposed (spec 8.1). Worker families are checked
 # on the ingestor, which is running; extractors are not scraped in this suite.
@@ -376,7 +376,7 @@ class TestTop:
         assert len(listing["data"]) > 0
 
     def test_cpv_division_drill_down_has_notices(self, analytics_ready):
-        """A CPV division counted on the CPV page must yield a non-empty /zakazky list."""
+        """A CPV division counted on the CPV page must yield a non-empty /contracts list."""
         window = {"date_from": DEFAULT_FROM, "date_to": DEFAULT_TO}
         cpv = _get(f"{API}/api/analytics/cpv", params={"level": "division", **window}).json()
         top = next(i for i in cpv["items"] if i["contract_count"] > 0)
@@ -567,13 +567,13 @@ class TestMetrics:
 class TestGui:
     @pytest.mark.parametrize("page", ANALYTICS_PAGES)
     def test_analytics_page_serves_spa_shell(self, compose_stack, page):
-        resp = _get(f"{GUI}/analytika/{page}")
+        resp = _get(f"{GUI}/analytics/{page}")
         assert resp.status_code == 200
         assert "text/html" in resp.headers.get("content-type", "")
         assert '<div id="root">' in resp.text
         assert 'lang="sk"' in resp.text
 
     def test_legacy_root_redirects_are_served_by_spa(self, compose_stack):
-        resp = _get(f"{GUI}/analytika", follow_redirects=True)
+        resp = _get(f"{GUI}/analytics", follow_redirects=True)
         assert resp.status_code == 200
         assert '<div id="root">' in resp.text

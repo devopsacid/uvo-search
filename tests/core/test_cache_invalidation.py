@@ -19,8 +19,8 @@ def test_clear_analytics_caches_runs():
 
     analytics.clear_analytics_caches()  # smoke: must not raise
     assert analytics._market_cpv_agg.cache_info()["size"] == 0
-    assert analytics._firma_core_agg.cache_info()["size"] == 0
-    assert analytics._firma_partners_agg.cache_info()["size"] == 0
+    assert analytics._company_core_agg.cache_info()["size"] == 0
+    assert analytics._company_partners_agg.cache_info()["size"] == 0
 
 
 @pytest.mark.asyncio

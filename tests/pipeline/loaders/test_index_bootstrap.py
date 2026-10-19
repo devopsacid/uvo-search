@@ -1,4 +1,4 @@
-"""Index bootstrap coverage for the dashboard / firma query paths (B7, B8)."""
+"""Index bootstrap coverage for the dashboard / company query paths (B7, B8)."""
 
 from unittest.mock import AsyncMock, MagicMock
 

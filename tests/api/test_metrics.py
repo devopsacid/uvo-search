@@ -25,8 +25,8 @@ def _count(method: str, route: str, status: str) -> float:
 def app():
     app = FastAPI()
 
-    @app.get("/api/firma/{ico}")
-    async def firma(ico: str):
+    @app.get("/api/companies/{ico}")
+    async def company(ico: str):
         return {"ico": ico}
 
     @app.get("/api/boom")
@@ -42,12 +42,12 @@ def app():
 
 
 def test_label_uses_route_template_not_raw_path(app):
-    before = _count("GET", "/api/firma/{ico}", "200")
+    before = _count("GET", "/api/companies/{ico}", "200")
     client = TestClient(app)
-    client.get("/api/firma/123")
-    client.get("/api/firma/456")
-    assert _count("GET", "/api/firma/{ico}", "200") == before + 2
-    assert _count("GET", "/api/firma/123", "200") == 0
+    client.get("/api/companies/123")
+    client.get("/api/companies/456")
+    assert _count("GET", "/api/companies/{ico}", "200") == before + 2
+    assert _count("GET", "/api/companies/123", "200") == 0
 
 
 def test_unmatched_path_is_labelled_unmatched(app):
@@ -69,16 +69,16 @@ def test_unhandled_exception_counts_as_500(app):
 
 
 def test_duration_histogram_observed_and_in_progress_returns_to_zero(app):
-    labels = {"method": "GET", "route": "/api/firma/{ico}"}
+    labels = {"method": "GET", "route": "/api/companies/{ico}"}
     before = _val("uvo_api_http_request_duration_seconds_count", labels)
-    TestClient(app).get("/api/firma/1")
+    TestClient(app).get("/api/companies/1")
     assert _val("uvo_api_http_request_duration_seconds_count", labels) == before + 1
     assert _val("uvo_api_http_requests_in_progress") == 0
 
 
 def test_metrics_route_content_type_and_body(app):
     client = TestClient(app)
-    client.get("/api/firma/1")
+    client.get("/api/companies/1")
     response = client.get("/metrics")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain; version=0.0.4")
@@ -100,16 +100,16 @@ def test_build_info_uses_git_sha_env(monkeypatch):
 def test_middleware_overhead_is_small(app):
     plain = FastAPI()
 
-    @plain.get("/api/firma/{ico}")
-    async def firma(ico: str):
+    @plain.get("/api/companies/{ico}")
+    async def company(ico: str):
         return {"ico": ico}
 
     def bench(a: FastAPI) -> float:
         c = TestClient(a)
-        c.get("/api/firma/1")
+        c.get("/api/companies/1")
         start = time.perf_counter()
         for _ in range(300):
-            c.get("/api/firma/1")
+            c.get("/api/companies/1")
         return (time.perf_counter() - start) / 300
 
     # Generous bound (spec: < 0.2 ms); guards against pathological regressions only.

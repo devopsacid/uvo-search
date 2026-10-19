@@ -298,21 +298,21 @@ class WorkerStatusResponse(BaseModel):
     generated_at: str
 
 
-# --- Firma (unified company profile) ---
+# --- Company (unified company profile) ---
 
 
-class FirmaStatsBlock(BaseModel):
+class CompanyStatsBlock(BaseModel):
     contract_count: int
     total_value: float
     last_contract_at: str | None
 
 
-class FirmaStats(BaseModel):
-    as_supplier: FirmaStatsBlock | None
-    as_procurer: FirmaStatsBlock | None
+class CompanyStats(BaseModel):
+    as_supplier: CompanyStatsBlock | None
+    as_procurer: CompanyStatsBlock | None
 
 
-class FirmaTopContract(BaseModel):
+class CompanyTopContract(BaseModel):
     id: str
     title: str
     value: float | None
@@ -322,25 +322,25 @@ class FirmaTopContract(BaseModel):
     role: str  # "supplier" | "procurer"
 
 
-class FirmaTopCpv(BaseModel):
+class CompanyTopCpv(BaseModel):
     code: str
     label: str
     contract_count: int
     total_value: float
 
 
-class FirmaProfile(BaseModel):
+class CompanyProfile(BaseModel):
     ico: str
     name: str
     roles: list[str]
     primary_role: str
-    stats: FirmaStats
-    top_cpvs: list[FirmaTopCpv]
-    top_contracts: list[FirmaTopContract]
+    stats: CompanyStats
+    top_cpvs: list[CompanyTopCpv]
+    top_contracts: list[CompanyTopContract]
     spend_by_year: list[SpendByYear]
 
 
-# --- Firma extensions ---
+# --- Company extensions ---
 
 
 class PartnerRow(BaseModel):
@@ -370,7 +370,7 @@ class CpvProfileResponse(BaseModel):
     market_baseline: list[CpvProfileRow]
 
 
-class FirmaCard(BaseModel):
+class CompanyCard(BaseModel):
     ico: str
     name: str
     roles: list[str]
@@ -378,9 +378,9 @@ class FirmaCard(BaseModel):
     total_value: float
 
 
-class FirmaListResponse(BaseModel):
+class CompanyListResponse(BaseModel):
     total: int
-    items: list[FirmaCard]
+    items: list[CompanyCard]
 
 
 # --- Graph (Cytoscape-compatible) ---

@@ -1,5 +1,5 @@
-# tests/api/test_firma.py
-"""Tests for GET /api/firma/{ico} — unified company profile endpoint."""
+# tests/api/test_companies.py
+"""Tests for GET /api/companies/{ico} — unified company profile endpoint."""
 
 from unittest.mock import AsyncMock, patch
 
@@ -114,11 +114,14 @@ def test_supplier_only_ico_returns_200(client):
     entity = {"supplier": SUPPLIER_RESULT["items"][0], "procurer": None}
 
     with (
-        patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
-        patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
-        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
+        patch("uvo_api.routers.companies.get_entity_by_ico", new=AsyncMock(return_value=entity)),
+        patch("uvo_api.routers.companies.top_contracts_by_value", new=_top_contracts_by_role),
+        patch(
+            "uvo_api.routers.companies._company_core_agg",
+            new=AsyncMock(return_value=CORE_AGG_RESULT),
+        ),
     ):
-        response = client.get(f"/api/firma/{SUPPLIER_ONLY_ICO}")
+        response = client.get(f"/api/companies/{SUPPLIER_ONLY_ICO}")
 
     assert response.status_code == 200
     body = response.json()
@@ -179,11 +182,13 @@ def test_dual_role_ico_returns_200(client):
     entity = {"supplier": dual_supplier["items"][0], "procurer": dual_procurer["items"][0]}
 
     with (
-        patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
-        patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
-        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=dual_core_agg)),
+        patch("uvo_api.routers.companies.get_entity_by_ico", new=AsyncMock(return_value=entity)),
+        patch("uvo_api.routers.companies.top_contracts_by_value", new=_top_contracts_by_role),
+        patch(
+            "uvo_api.routers.companies._company_core_agg", new=AsyncMock(return_value=dual_core_agg)
+        ),
     ):
-        response = client.get(f"/api/firma/{DUAL_ROLE_ICO}")
+        response = client.get(f"/api/companies/{DUAL_ROLE_ICO}")
 
     assert response.status_code == 200
     body = response.json()
@@ -209,14 +214,14 @@ def test_unknown_ico_returns_404(client):
     entity = {"supplier": None, "procurer": None}
 
     with (
-        patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
-        patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
-        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value={})),
+        patch("uvo_api.routers.companies.get_entity_by_ico", new=AsyncMock(return_value=entity)),
+        patch("uvo_api.routers.companies.top_contracts_by_value", new=_top_contracts_by_role),
+        patch("uvo_api.routers.companies._company_core_agg", new=AsyncMock(return_value={})),
     ):
-        response = client.get(f"/api/firma/{UNKNOWN_ICO}")
+        response = client.get(f"/api/companies/{UNKNOWN_ICO}")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Firma nenájdená"
+    assert response.json()["detail"] == "Company not found"
 
 
 def test_top_contracts_use_value_sorted_query_with_nested_supplier(client):
@@ -236,11 +241,11 @@ def test_top_contracts_use_value_sorted_query_with_nested_supplier(client):
     }
     top = AsyncMock(return_value=nested["items"])
     with (
-        patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
-        patch("uvo_api.routers.firma.top_contracts_by_value", new=top),
-        patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value={})),
+        patch("uvo_api.routers.companies.get_entity_by_ico", new=AsyncMock(return_value=entity)),
+        patch("uvo_api.routers.companies.top_contracts_by_value", new=top),
+        patch("uvo_api.routers.companies._company_core_agg", new=AsyncMock(return_value={})),
     ):
-        response = client.get(f"/api/firma/{DUAL_ROLE_ICO}")
+        response = client.get(f"/api/companies/{DUAL_ROLE_ICO}")
 
     assert response.status_code == 200
     assert {c.args[2] for c in top.call_args_list} == {"supplier", "procurer"}

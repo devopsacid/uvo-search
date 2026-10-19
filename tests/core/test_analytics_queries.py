@@ -174,6 +174,6 @@ async def test_partners_agg_all_runs_both_sides(monkeypatch):
     """role=all must issue both aggregations (concurrently) and merge them."""
     db = AsyncMongoMockClient()["partners_all"]
     await db.notices.insert_many([_notice("a", "P1", "S1", 10.0), _notice("b", "S1", "S2", 20.0)])
-    result = await analytics._firma_partners_agg(db, "S1", "all", "value", 25, 0)
+    result = await analytics._company_partners_agg(db, "S1", "all", "value", 25, 0)
     assert result["total"] == 2
     assert {r["role"] for r in result["items"]} == {"procurer", "supplier"}
