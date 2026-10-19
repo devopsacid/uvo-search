@@ -12,9 +12,11 @@ from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
 import pytest
-from mongomock_motor import AsyncMongoMockClient
 
+import uvo_workers.context as context_mod
 import uvo_workers.ingestor as ingestor_mod
+
+from .helpers import fake_clients
 
 
 class _FakeNeo4jSession:
@@ -31,12 +33,6 @@ class _FakeNeo4jDriver:
 
     async def close(self):
         pass
-
-
-class _FakeGraphDatabase:
-    @staticmethod
-    def driver(*args, **kwargs):
-        return _FakeNeo4jDriver()
 
 
 def _good_entry(entry_id: bytes = b"2-0") -> tuple:
@@ -72,10 +68,6 @@ async def _never_returns() -> None:
 async def test_poison_entry_is_acked_immediately(monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
-    monkeypatch.setattr(ingestor_mod, "AsyncIOMotorClient", AsyncMongoMockClient)
-    monkeypatch.setattr(ingestor_mod, "get_redis", AsyncMock(return_value=fake_redis))
-    monkeypatch.setattr(ingestor_mod, "close_redis", AsyncMock())
-    monkeypatch.setattr(ingestor_mod, "AsyncGraphDatabase", _FakeGraphDatabase)
     monkeypatch.setattr(ingestor_mod, "ensure_consumer_group", AsyncMock())
     monkeypatch.setattr(ingestor_mod, "ensure_indexes", AsyncMock())
     monkeypatch.setattr(ingestor_mod, "ensure_constraints", AsyncMock())
@@ -103,9 +95,11 @@ async def test_poison_entry_is_acked_immediately(monkeypatch):
     async def fake_serve_health(port, snapshot, **kwargs):
         await _never_returns()
 
-    monkeypatch.setattr(ingestor_mod, "serve_health", fake_serve_health)
+    monkeypatch.setattr(context_mod, "serve_health", fake_serve_health)
 
-    task = asyncio.create_task(ingestor_mod.run_ingestor())
+    task = asyncio.create_task(
+        ingestor_mod.run_ingestor(fake_clients(fake_redis, neo4j=_FakeNeo4jDriver()))
+    )
     try:
         await asyncio.wait_for(delivered_batch.wait(), timeout=10)
 

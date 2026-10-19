@@ -2,25 +2,18 @@
 
 import asyncio
 import logging
-import signal
 import time
-import uuid
 from collections.abc import Awaitable, Callable
-from functools import lru_cache
-
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic_settings import BaseSettings
 
 from uvo_core.adapters.mongo.dedup import run_cross_source_dedup
 from uvo_core.adapters.mongo.ingestion_log import log_event
 from uvo_core.adapters.mongo.loaders import recompute_entity_stats
-from uvo_core.adapters.redis.client import close_redis, get_redis, get_redis_settings
 from uvo_core.adapters.redis.locks import lock
 from uvo_core.adapters.redis.pubsub import subscribe
-from uvo_pipeline.config import get_pipeline_settings
+from uvo_workers.clients import WorkerClients
+from uvo_workers.context import WorkerContext
 from uvo_workers.errors import redact_exception
-from uvo_workers.health import serve_health
-from uvo_workers.metrics import build_registry
+from uvo_workers.settings import WorkerSettings, settings_factory
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +85,7 @@ def next_debounced_action(
     return "run", None
 
 
-class DedupWorkerSettings(BaseSettings):
+class DedupWorkerSettings(WorkerSettings):
     dedup_interval_seconds: int = 3600
     dedup_debounce_seconds: int = 5
     dedup_window_days: int = 30
@@ -100,84 +93,36 @@ class DedupWorkerSettings(BaseSettings):
     dedup_lock_ttl_seconds: int = 1800
     health_port: int = 8096
 
-    model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
+
+get_settings = settings_factory(DedupWorkerSettings)
 
 
-@lru_cache
-def get_settings() -> DedupWorkerSettings:
-    """One DedupWorkerSettings construction per process (cached factory idiom)."""
-    return DedupWorkerSettings()
-
-
-async def run_dedup_worker() -> None:
+async def run_dedup_worker(clients: WorkerClients | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = get_settings()
-    pipeline_settings = get_pipeline_settings()
-    redis_settings = get_redis_settings()
-    instance_id = uuid.uuid4().hex
 
-    log_mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
-    log_db = log_mongo_client[pipeline_settings.mongodb_database]
+    seed: dict = {"dedup_runs": 0, "last_run_at": None, "last_error": None}
 
-    metrics: dict = {
-        "instance_id": instance_id,
-        "dedup_runs": 0,
-        "last_run_at": None,
-        "last_error": None,
-        "redis_connected": False,
-    }
-
-    try:
-        redis_client = await get_redis(
-            url=redis_settings.redis_url,
-            password=redis_settings.redis_password or None,
-        )
-        await redis_client.ping()
-        metrics["redis_connected"] = True
-    except Exception as exc:
-        logger.critical("Redis connection failed: %s", exc)
-        try:
-            await log_event(
-                log_db,
-                level="critical",
-                event="redis_connect_failed",
-                component="dedup-worker",
-                instance_id=instance_id,
-                message=redact_exception(exc),
-            )
-        except Exception:
-            pass
-        log_mongo_client.close()
-        raise SystemExit(1) from exc
-
-    await log_event(
-        log_db,
-        level="info",
-        event="worker_started",
+    async with WorkerContext(
+        name="dedup",
         component="dedup-worker",
-        instance_id=instance_id,
-        message="dedup worker up",
-        details={"window_days": settings.dedup_window_days},
-    )
+        registry_name="dedup-worker",
+        health_port=settings.health_port,
+        metrics=seed,
+        clients=clients,
+        start_message="dedup worker up",
+        start_details={"window_days": settings.dedup_window_days},
+        stop_message="dedup worker shutting down",
+        stop_details=lambda: {"dedup_runs": wctx.metrics["dedup_runs"]},
+    ) as wctx:
+        await _serve_dedup(wctx, settings)
 
-    stop_event = asyncio.Event()
 
-    def _signal_handler() -> None:
-        logger.info("Shutdown signal received, stopping dedup worker")
-        stop_event.set()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(sig, _signal_handler)
-        except (NotImplementedError, RuntimeError):
-            pass
-
-    metrics_registry = build_registry("dedup-worker")
-    health_task = asyncio.create_task(
-        serve_health(settings.health_port, lambda: dict(metrics), registry=metrics_registry),
-        name="health-dedup",
-    )
+async def _serve_dedup(wctx: WorkerContext, settings: DedupWorkerSettings) -> None:
+    redis_client = wctx.redis
+    metrics = wctx.metrics
+    instance_id = wctx.instance_id
+    stop_event = wctx.stop_event
 
     pending = asyncio.Event()
     trigger_lock = asyncio.Lock()
@@ -195,11 +140,10 @@ async def run_dedup_worker() -> None:
         )
 
     async def _run_dedup_locked() -> None:
-        # Reuse the worker's single long-lived Motor client (log_mongo_client)
-        # instead of opening a fresh one per dedup run (plan §1.3.5) — this
-        # runs on every debounced write and on every interval tick, so a
-        # per-call client was the highest-frequency connection churn here.
-        db = log_db
+        # Reuse the worker's single long-lived Motor client (the context's db)
+        # instead of opening a fresh one per dedup run - this runs on every
+        # debounced write and on every interval tick.
+        db = wctx.db
         try:
             logger.info(
                 "dedup: running cross-source dedup (window=%dd)", settings.dedup_window_days
@@ -305,27 +249,11 @@ async def run_dedup_worker() -> None:
     finally:
         subscriber_task.cancel()
         timer_task.cancel()
-        health_task.cancel()
-        for t in (subscriber_task, timer_task, health_task):
+        for t in (subscriber_task, timer_task):
             try:
                 await t
             except (asyncio.CancelledError, Exception):
                 pass
-        await close_redis(redis_client)
-        try:
-            await log_event(
-                log_db,
-                level="info",
-                event="worker_stopped",
-                component="dedup-worker",
-                instance_id=instance_id,
-                message="dedup worker shutting down",
-                details={"dedup_runs": metrics["dedup_runs"]},
-            )
-        except Exception:
-            pass
-        log_mongo_client.close()
-        logger.info("dedup worker stopped")
 
 
 if __name__ == "__main__":
