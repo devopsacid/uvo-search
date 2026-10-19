@@ -17,7 +17,14 @@ import { IngestionLogPanel } from '@/components/ingestion/IngestionLogPanel'
 import { WorkerStatusTable } from '@/components/ingestion/WorkerStatusTable'
 import type { IngestionSource, IngestionSourceStatus } from '@/api/types'
 import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton'
-import { cn, formatBytes, formatNumber } from '@/lib/utils'
+import {
+  cn,
+  formatAge,
+  formatBytes,
+  formatDateTime,
+  formatNumber,
+  formatShortDate,
+} from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -34,36 +41,6 @@ const SOURCE_COLORS: Record<SourceName, string> = {
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
-
-function formatSlovakDateTime(isoString: string): string {
-  return new Intl.DateTimeFormat('sk-SK', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(isoString))
-}
-
-function formatShortDate(isoDate: string): string {
-  const [, month, day] = isoDate.split('-')
-  return `${day}.${month}.`
-}
-
-function formatAge(seconds: number | null): string {
-  if (seconds === null) return sk.ingestion.ageNever
-  const mins = Math.floor(seconds / 60)
-  const hours = Math.floor(mins / 60)
-  const days = Math.floor(hours / 24)
-  if (days >= 2) return `pred ${days} dňami`
-  if (days === 1) return `pred 1 dňom`
-  if (hours >= 1) {
-    const remMins = mins % 60
-    return remMins > 0 ? `pred ${hours} h ${remMins} min` : `pred ${hours} h`
-  }
-  if (mins >= 1) return `pred ${mins} min`
-  return 'práve teraz'
-}
 
 function formatPercent(rate: number): string {
   return new Intl.NumberFormat('sk-SK', {
@@ -210,9 +187,9 @@ function SourceTable({ sources }: { sources: IngestionSource[] }) {
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(src.skips)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatBytes(src.disk_bytes)}</td>
               <td className="px-3 py-2 text-muted-foreground">
-                {src.last_ingest_at ? formatSlovakDateTime(src.last_ingest_at) : '—'}
+                {src.last_ingest_at ? formatDateTime(src.last_ingest_at) : '—'}
               </td>
-              <td className="px-3 py-2 text-muted-foreground">{formatAge(src.age_seconds)}</td>
+              <td className="px-3 py-2 text-muted-foreground">{formatAge(src.age_seconds, sk.ingestion.ageNever)}</td>
             </tr>
           ))}
         </tbody>
@@ -325,7 +302,7 @@ export function IngestionPage() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">{sk.ingestion.title}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {sk.ingestion.subtitle}: {formatSlovakDateTime(generated_at)}
+            {sk.ingestion.subtitle}: {formatDateTime(generated_at)}
           </p>
         </div>
         <button
@@ -355,7 +332,7 @@ export function IngestionPage() {
         />
         <KpiTile
           label={sk.ingestion.kpiLastRunAge}
-          value={formatAge(totals.last_run_age_seconds)}
+          value={formatAge(totals.last_run_age_seconds, sk.ingestion.ageNever)}
         />
         <KpiTile
           label={sk.ingestion.kpiDedupRate}
@@ -398,7 +375,7 @@ export function IngestionPage() {
             <span key={s.name}>
               {i > 0 && ', '}
               <span className="font-mono">{s.name}</span>
-              {s.age_seconds !== null && ` (${formatAge(s.age_seconds)})`}
+              {s.age_seconds !== null && ` (${formatAge(s.age_seconds, sk.ingestion.ageNever)})`}
             </span>
           ))}
         </div>
@@ -529,14 +506,14 @@ export function IngestionPage() {
           <div>
             <dt className="text-xs text-muted-foreground">{sk.ingestion.latestRunStarted}</dt>
             <dd className="mt-0.5 text-xs text-foreground">
-              {latest_run.started_at ? formatSlovakDateTime(latest_run.started_at) : '—'}
+              {latest_run.started_at ? formatDateTime(latest_run.started_at) : '—'}
             </dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">{sk.ingestion.latestRunFinished}</dt>
             <dd className="mt-0.5 text-xs text-foreground">
               {latest_run.finished_at
-                ? formatSlovakDateTime(latest_run.finished_at)
+                ? formatDateTime(latest_run.finished_at)
                 : sk.ingestion.latestRunFinishedNever}
             </dd>
           </div>

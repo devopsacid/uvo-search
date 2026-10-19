@@ -118,14 +118,14 @@ export function HladajPage() {
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{f.name}</p>
-                        <p className="text-xs text-muted-foreground">IČO {f.ico}</p>
+                        <p className="text-xs text-muted-foreground">{sk.common.ico} {f.ico}</p>
                       </div>
                       <div className="ml-4 flex shrink-0 items-center gap-2">
                         {f.roles.map((r) => (
                           <RoleBadge key={r} role={r} />
                         ))}
                         <span className="text-xs text-muted-foreground">
-                          {f.contract_count} zákaziek
+                          {f.contract_count} {sk.firma.contractsUnit}
                         </span>
                       </div>
                     </Link>

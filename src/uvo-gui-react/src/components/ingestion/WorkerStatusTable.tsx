@@ -1,31 +1,9 @@
 import { useWorkerStatus } from '@/api/queries/workerStatus'
 import type { WorkerStatusValue } from '@/api/types'
 import sk from '@/i18n/sk'
-import { cn } from '@/lib/utils'
+import { cn, formatAge } from '@/lib/utils'
 
-const NAME: Record<string, string> = {
-  'extractor:vestnik': 'Vestník extraktor',
-  'extractor:crz': 'CRZ extraktor',
-  'extractor:ted': 'TED extraktor',
-  'extractor:itms': 'ITMS extraktor',
-  'ingestor': 'Ingestor',
-  'dedup-worker': 'Dedup worker',
-}
-
-function formatAge(seconds: number | null): string {
-  if (seconds === null) return '—'
-  const mins = Math.floor(seconds / 60)
-  const hours = Math.floor(mins / 60)
-  const days = Math.floor(hours / 24)
-  if (days >= 2) return `pred ${days} dňami`
-  if (days === 1) return `pred 1 dňom`
-  if (hours >= 1) {
-    const remMins = mins % 60
-    return remMins > 0 ? `pred ${hours} h ${remMins} min` : `pred ${hours} h`
-  }
-  if (mins >= 1) return `pred ${mins} min`
-  return 'práve teraz'
-}
+const NAME: Record<string, string> = sk.workerStatus.names
 
 function statusLabel(status: WorkerStatusValue): string {
   switch (status) {

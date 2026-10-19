@@ -1,3 +1,4 @@
+import sk from '@/i18n/sk'
 import { cn } from '@/lib/utils'
 
 interface FilterInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -35,7 +36,7 @@ export function FilterSelect({ label, options, className, ...props }: FilterSele
           className,
         )}
       >
-        <option value="">Všetky</option>
+        <option value="">{sk.common.all}</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

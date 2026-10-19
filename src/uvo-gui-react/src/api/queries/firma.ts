@@ -1,5 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
-import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { apiClient } from '../client'
+
+export const firmaKeys = {
+  all: ['firma'] as const,
+  list: (params: object) => [...firmaKeys.all, 'list', params] as const,
+  profile: (ico: string) => [...firmaKeys.all, 'profile', ico] as const,
+  partneri: (ico: string, params: object) => [...firmaKeys.all, 'partneri', ico, params] as const,
+  cpv: (ico: string) => [...firmaKeys.all, 'cpv', ico] as const,
+}
 
 export interface FirmaStatsBlock {
   contract_count: number
@@ -65,20 +74,17 @@ export function useFirmaPartneri(
   params: { role: string; sort: string; limit: number; offset: number },
 ) {
   return useQuery({
-    queryKey: ['firma', ico, 'partneri', params],
-    queryFn: async (): Promise<PartnerListResponse> => {
+    queryKey: firmaKeys.partneri(ico, params),
+    queryFn: ({ signal }) => {
       const sp = new URLSearchParams({
         role: params.role,
         sort: params.sort,
         limit: String(params.limit),
         offset: String(params.offset),
       })
-      const res = await fetch(`/api/firma/${ico}/partneri?${sp}`)
-      if (!res.ok) throw new Error('fetch failed')
-      return res.json()
+      return apiClient.get<PartnerListResponse>(`/firma/${ico}/partneri?${sp}`, { signal })
     },
     enabled: !!ico,
-    staleTime: 5 * 60 * 1000,
     placeholderData: (prev) => prev,
   })
 }
@@ -98,14 +104,11 @@ export interface CpvProfileResponse {
 
 export function useFirmaCpvProfile(ico: string) {
   return useQuery({
-    queryKey: ['firma', ico, 'cpv'],
-    queryFn: async (): Promise<CpvProfileResponse> => {
-      const res = await fetch(`/api/firma/${ico}/cpv-profile`)
-      if (!res.ok) throw new Error('fetch failed')
-      return res.json()
-    },
+    queryKey: firmaKeys.cpv(ico),
+    queryFn: ({ signal }) =>
+      apiClient.get<CpvProfileResponse>(`/firma/${ico}/cpv-profile`, { signal }),
     enabled: !!ico,
-    staleTime: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
   })
 }
 
@@ -123,36 +126,27 @@ export interface FirmaListResponse {
 }
 
 export function useFirmyList(params: { q: string; role: string; limit: number; offset: number }) {
-  const debouncedQ = useDebouncedValue(params.q, 300)
+  const debouncedQ = useDebouncedValue(params.q, SEARCH_DEBOUNCE_MS)
   return useQuery({
-    queryKey: ['firmy', { ...params, q: debouncedQ }],
-    queryFn: async (): Promise<FirmaListResponse> => {
+    queryKey: firmaKeys.list({ ...params, q: debouncedQ }),
+    queryFn: ({ signal }) => {
       const sp = new URLSearchParams({
         q: debouncedQ,
         role: params.role,
         limit: String(params.limit),
         offset: String(params.offset),
       })
-      const res = await fetch(`/api/firmy?${sp}`)
-      if (!res.ok) throw new Error('fetch failed')
-      return res.json()
+      return apiClient.get<FirmaListResponse>(`/firmy?${sp}`, { signal })
     },
     placeholderData: (prev) => prev,
-    staleTime: 60_000,
   })
 }
 
 export function useFirmaProfile(ico: string) {
   return useQuery({
-    queryKey: ['firma', ico, 'profile'],
-    queryFn: async (): Promise<FirmaProfile> => {
-      const res = await fetch(`/api/firma/${ico}`)
-      if (res.status === 404) throw Object.assign(new Error('not found'), { status: 404 })
-      if (!res.ok) throw new Error('fetch failed')
-      return res.json()
-    },
+    queryKey: firmaKeys.profile(ico),
+    // HttpError carries .status, so FirmaPage can tell 404 from other failures.
+    queryFn: ({ signal }) => apiClient.get<FirmaProfile>(`/firma/${ico}`, { signal }),
     enabled: !!ico,
-    staleTime: 5 * 60 * 1000,
-    retry: false,
   })
 }

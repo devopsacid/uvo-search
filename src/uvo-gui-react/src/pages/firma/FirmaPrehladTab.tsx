@@ -3,7 +3,7 @@ import { useFirmaProfile } from '@/api/queries/firma'
 import { SpendByYearChart } from '@/components/charts/SpendByYearChart'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 import { Skeleton, SkeletonRow } from '@/components/ui/Skeleton'
-import { formatCurrency, formatNumber } from '@/lib/utils'
+import { formatCurrency, formatDate, formatNumber } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 function KpiCard({ label, value }: { label: string; value: string }) {
@@ -37,9 +37,6 @@ export function FirmaPrehladTab() {
         ? lastSupplier
         : lastProcurer
       : (lastSupplier ?? lastProcurer)
-
-  const formatDate = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleDateString('sk-SK') : '—'
 
   // Derive unique top partners from top_contracts counterparty data
   const topPartners = (() => {
@@ -107,7 +104,7 @@ export function FirmaPrehladTab() {
               <TableHead>{sk.search.colTitle}</TableHead>
               <TableHead className="text-right">{sk.search.colValue}</TableHead>
               <TableHead>{sk.search.colYear}</TableHead>
-              <TableHead>Protistrana</TableHead>
+              <TableHead>{sk.firma.colCounterparty}</TableHead>
             </tr>
           </TableHeader>
           <TableBody>
@@ -158,7 +155,7 @@ export function FirmaPrehladTab() {
                   {p.name}
                 </Link>
                 <span className="text-sm tabular-nums text-muted-foreground">
-                  {formatNumber(p.count)} zákazok
+                  {formatNumber(p.count)} {sk.firma.contractsUnit}
                 </span>
               </div>
             ))}

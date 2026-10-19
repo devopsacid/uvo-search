@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Outlet, useNavigate, useSearchParams } from 'react-router-dom'
 import { Header } from './Header'
+import { RouteFallback } from './RouteFallback'
 
 function PinIcoRedirect() {
   const [searchParams] = useSearchParams()
@@ -21,7 +22,9 @@ export function Layout() {
       <Header />
       <PinIcoRedirect />
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
-        <Outlet />
+        <Suspense fallback={<RouteFallback />}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   )

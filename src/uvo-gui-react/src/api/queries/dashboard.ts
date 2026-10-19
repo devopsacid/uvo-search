@@ -3,7 +3,6 @@ import { apiClient } from '../client'
 import type {
   CpvShare,
   DashboardSummary,
-  MonthBucket,
   RecentContract,
   SpendByYear,
   TopProcurer,
@@ -22,50 +21,45 @@ export const dashboardKeys = {
     [...dashboardKeys.all, 'cpvShare', yearFrom, yearTo, ico, entityType] as const,
   recent: (limit?: number, ico?: string, entityType?: string) =>
     [...dashboardKeys.all, 'recent', limit, ico, entityType] as const,
-  byMonth: (year: number) => [...dashboardKeys.all, 'byMonth', year] as const,
 }
 
 export function useDashboardSummary(ico?: string, entityType?: string) {
   return useQuery({
     queryKey: dashboardKeys.summary(ico, entityType),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const params = new URLSearchParams()
       if (ico) params.set('ico', ico)
       if (entityType) params.set('entity_type', entityType)
       const qs = params.toString()
-      return apiClient.get<DashboardSummary>(`/dashboard/summary${qs ? `?${qs}` : ''}`)
+      return apiClient.get<DashboardSummary>(`/dashboard/summary${qs ? `?${qs}` : ''}`, { signal })
     },
-    staleTime: 5 * 60 * 1000,
   })
 }
 
 export function useSpendByYear(ico?: string, entityType?: string) {
   return useQuery({
     queryKey: dashboardKeys.spendByYear(ico, entityType),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const params = new URLSearchParams()
       if (ico) params.set('ico', ico)
       if (entityType) params.set('entity_type', entityType)
       const qs = params.toString()
-      return apiClient.get<SpendByYear[]>(`/dashboard/spend-by-year${qs ? `?${qs}` : ''}`)
+      return apiClient.get<SpendByYear[]>(`/dashboard/spend-by-year${qs ? `?${qs}` : ''}`, { signal })
     },
-    staleTime: 5 * 60 * 1000,
   })
 }
 
 export function useTopSuppliers(n = 10) {
   return useQuery({
     queryKey: dashboardKeys.topSuppliers(n),
-    queryFn: () => apiClient.get<TopSupplier[]>(`/dashboard/top-suppliers?n=${n}`),
-    staleTime: 5 * 60 * 1000,
+    queryFn: ({ signal }) => apiClient.get<TopSupplier[]>(`/dashboard/top-suppliers?n=${n}`, { signal }),
   })
 }
 
 export function useTopProcurers(n = 10) {
   return useQuery({
     queryKey: dashboardKeys.topProcurers(n),
-    queryFn: () => apiClient.get<TopProcurer[]>(`/dashboard/top-procurers?n=${n}`),
-    staleTime: 5 * 60 * 1000,
+    queryFn: ({ signal }) => apiClient.get<TopProcurer[]>(`/dashboard/top-procurers?n=${n}`, { signal }),
   })
 }
 
@@ -77,37 +71,27 @@ export function useCpvShare(
 ) {
   return useQuery({
     queryKey: dashboardKeys.cpvShare(yearFrom, yearTo, ico, entityType),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const params = new URLSearchParams()
       if (yearFrom != null) params.set('year_from', String(yearFrom))
       if (yearTo != null) params.set('year_to', String(yearTo))
       if (ico) params.set('ico', ico)
       if (entityType) params.set('entity_type', entityType)
       const qs = params.toString()
-      return apiClient.get<CpvShare[]>(`/dashboard/by-cpv${qs ? `?${qs}` : ''}`)
+      return apiClient.get<CpvShare[]>(`/dashboard/by-cpv${qs ? `?${qs}` : ''}`, { signal })
     },
-    staleTime: 5 * 60 * 1000,
   })
 }
 
 export function useRecent(limit = 10, ico?: string, entityType?: string) {
   return useQuery({
     queryKey: dashboardKeys.recent(limit, ico, entityType),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const params = new URLSearchParams({ limit: String(limit) })
       if (ico) params.set('ico', ico)
       if (entityType) params.set('entity_type', entityType)
-      return apiClient.get<RecentContract[]>(`/dashboard/recent?${params.toString()}`)
+      return apiClient.get<RecentContract[]>(`/dashboard/recent?${params.toString()}`, { signal })
     },
     staleTime: 60 * 1000,
-  })
-}
-
-export function useByMonth(year: number) {
-  return useQuery({
-    queryKey: dashboardKeys.byMonth(year),
-    queryFn: () => apiClient.get<MonthBucket[]>(`/dashboard/by-month?year=${year}`),
-    staleTime: 5 * 60 * 1000,
-    enabled: year > 0,
   })
 }

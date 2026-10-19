@@ -53,7 +53,7 @@ export function FirmyPage() {
       <Sidebar>
         <SidebarSection title={sk.firmy.title}>
           <FilterInput
-            label="Hľadať"
+            label={sk.common.searchAction}
             value={q}
             onChange={(e) => setParam('q', e.target.value)}
             placeholder={sk.firmy.searchPlaceholder}

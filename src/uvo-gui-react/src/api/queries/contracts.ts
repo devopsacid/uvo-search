@@ -45,9 +45,9 @@ function buildContractParams(filters: ContractFilters): string {
 export function useContractSearch(filters: ContractFilters) {
   return useQuery({
     queryKey: contractKeys.list(filters),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const qs = buildContractParams(filters)
-      return apiClient.get<ContractListResponse>(`/contracts${qs ? `?${qs}` : ''}`)
+      return apiClient.get<ContractListResponse>(`/contracts${qs ? `?${qs}` : ''}`, { signal })
     },
     staleTime: 60 * 1000,
     placeholderData: (prev) => prev,
@@ -57,7 +57,7 @@ export function useContractSearch(filters: ContractFilters) {
 export function useContractDetail(id: string) {
   return useQuery({
     queryKey: contractKeys.detail(id),
-    queryFn: () => apiClient.get<ContractDetail>(`/contracts/${id}`),
+    queryFn: ({ signal }) => apiClient.get<ContractDetail>(`/contracts/${id}`, { signal }),
     staleTime: 5 * 60 * 1000,
     enabled: Boolean(id),
   })

@@ -40,6 +40,12 @@ export function isApiError(err: unknown): err is ApiError {
   return err instanceof HttpError
 }
 
+export interface RequestOptions {
+  /** Pass the AbortSignal from the TanStack Query queryFn context so superseded requests are cancelled. */
+  signal?: AbortSignal
+}
+
 export const apiClient = {
-  get: <T>(path: string) => apiFetch<T>(path),
+  get: <T>(path: string, options: RequestOptions = {}) =>
+    apiFetch<T>(path, { signal: options.signal }),
 }

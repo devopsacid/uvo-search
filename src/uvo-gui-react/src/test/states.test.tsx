@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderWithProviders, screen, waitFor } from './utils'
-import { SearchPage } from '../pages/SearchPage'
+import { ZakazkyPage } from '../pages/ZakazkyPage'
 import sk from '../i18n/sk'
 
 describe('Loading + Empty + Error States', () => {
@@ -16,7 +16,7 @@ describe('Loading + Empty + Error States', () => {
     it('shows skeleton rows while contracts are loading', async () => {
       global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
 
-      renderWithProviders(<SearchPage />, { route: '/search?q=test' })
+      renderWithProviders(<ZakazkyPage />, { route: '/search?q=test' })
 
       await waitFor(() => {
         const skeletons = screen.getAllByTestId('skeleton-row')
@@ -52,7 +52,7 @@ describe('Loading + Empty + Error States', () => {
         } as Response
       }) as typeof fetch
 
-      renderWithProviders(<SearchPage />, { route: '/search' })
+      renderWithProviders(<ZakazkyPage />, { route: '/search' })
 
       const firstRow = await screen.findByText('Test')
       firstRow.parentElement?.parentElement?.click()
@@ -78,7 +78,7 @@ describe('Loading + Empty + Error States', () => {
     })
 
     it('shows empty state title for contracts with no results', async () => {
-      renderWithProviders(<SearchPage />, { route: '/search?q=nonexistent' })
+      renderWithProviders(<ZakazkyPage />, { route: '/search?q=nonexistent' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.search.noResults)).toBeInTheDocument()
@@ -86,7 +86,7 @@ describe('Loading + Empty + Error States', () => {
     })
 
     it('shows empty state description for contracts', async () => {
-      renderWithProviders(<SearchPage />, { route: '/search?q=nonexistent' })
+      renderWithProviders(<ZakazkyPage />, { route: '/search?q=nonexistent' })
 
       await waitFor(() => {
         expect(screen.getByText(sk.search.noResultsHint)).toBeInTheDocument()
@@ -94,7 +94,7 @@ describe('Loading + Empty + Error States', () => {
     })
 
     it('shows clear filters action button in empty state when filters exist', async () => {
-      renderWithProviders(<SearchPage />, { route: '/search?q=test' })
+      renderWithProviders(<ZakazkyPage />, { route: '/search?q=test' })
 
       await waitFor(() => {
         const clearButton = screen.getByRole('button', { name: sk.common.clearFilters })
@@ -103,7 +103,7 @@ describe('Loading + Empty + Error States', () => {
     })
 
     it('does not show clear filters action when no filters are applied', async () => {
-      renderWithProviders(<SearchPage />, { route: '/search' })
+      renderWithProviders(<ZakazkyPage />, { route: '/search' })
 
       // Wait for empty state to load (no filters → empty results but no clearFilters button)
       await waitFor(() => {
@@ -128,7 +128,7 @@ describe('Loading + Empty + Error States', () => {
     })
 
     it('shows error message when search fails', async () => {
-      renderWithProviders(<SearchPage />, { route: '/search?q=test' })
+      renderWithProviders(<ZakazkyPage />, { route: '/search?q=test' })
 
       await waitFor(() => {
         expect(screen.getByText(new RegExp(sk.common.error))).toBeInTheDocument()
@@ -142,7 +142,7 @@ describe('Loading + Empty + Error States', () => {
     it('maintains table header while loading results', async () => {
       global.fetch = vi.fn(async (): Promise<Response> => new Promise(() => {})) as typeof fetch
 
-      renderWithProviders(<SearchPage />, { route: '/search?q=test' })
+      renderWithProviders(<ZakazkyPage />, { route: '/search?q=test' })
 
       const headers = screen.getAllByRole('columnheader')
       expect(headers.length).toBeGreaterThan(0)

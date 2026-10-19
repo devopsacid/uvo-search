@@ -6,7 +6,7 @@ interface SidebarProps {
 }
 
 /**
- * Sticky left-column filter shell. Used by SearchPage and directory pages.
+ * Sticky left-column filter shell. Used by ZakazkyPage and directory pages.
  */
 export function Sidebar({ children, className }: SidebarProps) {
   return (

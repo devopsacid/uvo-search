@@ -1,6 +1,7 @@
 import { ReactElement } from 'react'
 import { render, RenderOptions, screen, fireEvent, within, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createQueryClient } from '@/api/queryClient'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 
@@ -16,14 +17,7 @@ export function renderWithProviders(
   {
     route = '/',
     routePattern,
-    queryClient = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-          staleTime: Infinity,
-        },
-      },
-    }),
+    queryClient = createQueryClient({ retry: false, staleTime: Infinity }),
     ...renderOptions
   }: RenderWithProvidersOptions = {},
 ) {

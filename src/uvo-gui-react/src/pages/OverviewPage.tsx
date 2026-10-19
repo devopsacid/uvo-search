@@ -11,7 +11,7 @@ import { Skeleton, SkeletonRow } from '@/components/ui/Skeleton'
 import { SpendByYearChart } from '@/components/charts/SpendByYearChart'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 import { EntityLink } from '@/components/entity/EntityLink'
-import { formatCurrency, formatNumber } from '@/lib/utils'
+import { formatCurrency, formatMillions, formatNumber } from '@/lib/utils'
 import sk from '@/i18n/sk'
 import {
   Bar,
@@ -33,12 +33,6 @@ function SectionCard({ children, className }: { children: React.ReactNode; class
       {children}
     </div>
   )
-}
-
-function formatMillions(v: number) {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)} M`
-  if (v >= 1_000) return `${(v / 1_000).toFixed(0)} tis.`
-  return String(v)
 }
 
 export function OverviewPage() {
