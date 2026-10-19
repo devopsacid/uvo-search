@@ -92,7 +92,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         health_check_interval=30,
     )
     invalidator = asyncio.create_task(
-        run_cache_invalidator(subscriber_redis), name="cache-invalidator"
+        run_cache_invalidator(
+            subscriber_redis,
+            # Re-warm the landing-page aggregates right after each clear (spec §7.3).
+            after_clear=lambda: _warm_dashboards(resources.db, delay=0),
+        ),
+        name="cache-invalidator",
     )
     warmup = asyncio.create_task(_warm_dashboards(resources.db), name="dashboard-warmup")
     metrics_tasks = start_background(app)
