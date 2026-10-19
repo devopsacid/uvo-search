@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.api._deps import deps
 from uvo_api.app import create_app
+from uvo_api.db import get_analytics
 from uvo_core.testing import InMemoryCompanyAnalytics
 
 # Full-corpus dashboard endpoints now aggregate server-side; the tests drive the
@@ -76,8 +78,7 @@ def fake_analytics():
 
 def test_dashboard_summary(client, fake_analytics):
     with (
-        patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics),
-        patch("uvo_api.routers.dashboard.get_db", return_value=MagicMock()),
+        deps(client, get_analytics, fake_analytics),
         patch(
             "uvo_api.routers.dashboard.entity_totals",
             new=AsyncMock(return_value={"suppliers": 2, "procurers": 1}),
@@ -94,8 +95,7 @@ def test_dashboard_summary(client, fake_analytics):
 
 def test_dashboard_summary_never_reports_procurer_count_as_suppliers(client, fake_analytics):
     with (
-        patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics),
-        patch("uvo_api.routers.dashboard.get_db", return_value=MagicMock()),
+        deps(client, get_analytics, fake_analytics),
         patch(
             "uvo_api.routers.dashboard.entity_totals",
             new=AsyncMock(return_value={"suppliers": 0, "procurers": 9}),
@@ -106,7 +106,7 @@ def test_dashboard_summary_never_reports_procurer_count_as_suppliers(client, fak
 
 
 def test_dashboard_spend_by_year(client, fake_analytics):
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
+    with deps(client, get_analytics, fake_analytics):
         response = client.get("/api/dashboard/spend-by-year")
     assert response.status_code == 200
     body = response.json()
@@ -132,7 +132,7 @@ def test_dashboard_top_suppliers(client):
     ]
     analytics = MagicMock()
     analytics.top_suppliers = AsyncMock(return_value=rows)
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=analytics):
+    with deps(client, get_analytics, analytics):
         response = client.get("/api/dashboard/top-suppliers")
 
     assert response.status_code == 200
@@ -149,7 +149,7 @@ def test_dashboard_top_procurers(client):
     rows = [{"_id": "12345678", "name": "Ministry", "total_value": 8000000.0, "contract_count": 15}]
     analytics = MagicMock()
     analytics.top_procurers = AsyncMock(return_value=rows)
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=analytics):
+    with deps(client, get_analytics, analytics):
         response = client.get("/api/dashboard/top-procurers")
     assert response.status_code == 200
     body = response.json()
@@ -158,7 +158,7 @@ def test_dashboard_top_procurers(client):
 
 
 def test_dashboard_by_cpv(client, fake_analytics):
-    with patch("uvo_api.routers.dashboard.get_analytics", return_value=fake_analytics):
+    with deps(client, get_analytics, fake_analytics):
         response = client.get("/api/dashboard/by-cpv")
     assert response.status_code == 200
     body = response.json()
@@ -168,7 +168,10 @@ def test_dashboard_by_cpv(client, fake_analytics):
 
 
 def test_dashboard_recent(client):
-    with patch("uvo_api.routers.dashboard.run_query", new=AsyncMock(return_value=SAMPLE_CONTRACTS)):
+    with patch(
+        "uvo_api.routers.dashboard.search_procurements",
+        new=AsyncMock(return_value=SAMPLE_CONTRACTS),
+    ):
         response = client.get("/api/dashboard/recent")
     assert response.status_code == 200
     body = response.json()

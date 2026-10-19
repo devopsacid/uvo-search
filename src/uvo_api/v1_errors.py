@@ -3,8 +3,12 @@
 The public surface uses a documented error model: ``{"error": {"code", "message"}}``.
 """
 
+import logging
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 
 class ApiV1Error(Exception):
@@ -30,3 +34,10 @@ class ApiV1Error(Exception):
 async def api_v1_error_handler(_: Request, exc: ApiV1Error) -> JSONResponse:
     body = {"error": {"code": exc.code, "message": exc.message, **exc.extra}}
     return JSONResponse(status_code=exc.status_code, content=body, headers=exc.headers)
+
+
+async def backend_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
+    """503 in the public error envelope for a backend outage; detail stays in the log."""
+    logger.error("Backend unavailable for %s: %s", request.url.path, exc, exc_info=True)
+    body = {"error": {"code": "backend_unavailable", "message": "Backend temporarily unavailable."}}
+    return JSONResponse(status_code=503, content=body)

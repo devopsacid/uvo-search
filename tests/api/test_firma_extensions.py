@@ -1,7 +1,8 @@
 # tests/api/test_firma_extensions.py
 """Tests for the three firma extension endpoints: partneri, cpv-profile, firmy."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -190,7 +191,6 @@ MARKET_AGG_RESULT = [
 
 def test_partneri_returns_correct_shape(client):
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch(
             "uvo_api.routers.firma._firma_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_RESULT),
@@ -212,7 +212,6 @@ def test_partneri_returns_correct_shape(client):
 def test_partneri_role_filter_supplier(client):
     """role=supplier returns only counterparties that acted as suppliers."""
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch(
             "uvo_api.routers.firma._firma_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_SUPPLIER_ONLY),
@@ -229,7 +228,6 @@ def test_partneri_role_filter_supplier(client):
 def test_partneri_role_filter_procurer(client):
     """role=procurer returns only counterparties that acted as procurers."""
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch(
             "uvo_api.routers.firma._firma_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_PROCURER_ONLY),
@@ -246,7 +244,6 @@ def test_partneri_role_filter_procurer(client):
 def test_partneri_all_has_both_roles(client):
     """role=all (default) returns counterparties from both sides."""
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch(
             "uvo_api.routers.firma._firma_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_RESULT),
@@ -263,7 +260,6 @@ def test_partneri_all_has_both_roles(client):
 def test_partneri_sort_by_count(client):
     """sort=count orders by contract_count desc."""
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch(
             "uvo_api.routers.firma._firma_partners_agg",
             new=AsyncMock(return_value=PARTNERS_AGG_RESULT),
@@ -283,7 +279,6 @@ def test_partneri_sort_by_count(client):
 
 def test_cpv_profile_shape(client):
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
         patch(
             "uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)
@@ -304,7 +299,6 @@ def test_cpv_profile_shape(client):
 
 def test_cpv_profile_percentages_sum_to_100(client):
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
         patch(
             "uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)
@@ -321,7 +315,6 @@ def test_cpv_profile_percentages_sum_to_100(client):
 def test_cpv_profile_market_only_has_matching_codes(client):
     """market_baseline only contains CPV codes present in for_company."""
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
         patch(
             "uvo_api.routers.firma._market_cpv_agg", new=AsyncMock(return_value=MARKET_AGG_RESULT)
@@ -340,11 +333,24 @@ def test_cpv_profile_market_only_has_matching_codes(client):
 # ---------------------------------------------------------------------------
 
 
-def test_firmy_returns_merged_list(client):
-    with patch(
-        "uvo_api.routers.firma.run_query",
-        new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT, PROCURER_FIND_RESULT]),
+@contextmanager
+def _firmy_patches(*, supplier, procurer):
+    """Patch the two typed lookups; ``None`` means the role is filtered out and must not run."""
+
+    def _mock(result):
+        if result is None:
+            return AsyncMock(side_effect=AssertionError("role-filtered lookup must not be queried"))
+        return AsyncMock(return_value=result)
+
+    with (
+        patch("uvo_api.routers.firma.find_suppliers", new=_mock(supplier)),
+        patch("uvo_api.routers.firma.find_procurers", new=_mock(procurer)),
     ):
+        yield
+
+
+def test_firmy_returns_merged_list(client):
+    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
         response = client.get("/api/firmy")
 
     assert response.status_code == 200
@@ -360,10 +366,7 @@ def test_firmy_returns_merged_list(client):
 
 def test_firmy_merges_dual_role_ico(client):
     """AAA00001 appears in both supplier and procurer results — must be merged."""
-    with patch(
-        "uvo_api.routers.firma.run_query",
-        new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT, PROCURER_FIND_RESULT]),
-    ):
+    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
         response = client.get("/api/firmy")
 
     body = response.json()
@@ -375,10 +378,7 @@ def test_firmy_merges_dual_role_ico(client):
 
 
 def test_firmy_role_filter_supplier_only(client):
-    with patch(
-        "uvo_api.routers.firma.run_query",
-        new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT]),
-    ):
+    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=None):
         response = client.get("/api/firmy?role=supplier")
 
     body = response.json()
@@ -387,10 +387,7 @@ def test_firmy_role_filter_supplier_only(client):
 
 
 def test_firmy_role_filter_procurer_only(client):
-    with patch(
-        "uvo_api.routers.firma.run_query",
-        new=AsyncMock(side_effect=[PROCURER_FIND_RESULT]),
-    ):
+    with _firmy_patches(supplier=None, procurer=PROCURER_FIND_RESULT):
         response = client.get("/api/firmy?role=procurer")
 
     body = response.json()
@@ -399,10 +396,7 @@ def test_firmy_role_filter_procurer_only(client):
 
 
 def test_firmy_sorted_by_contract_count_desc(client):
-    with patch(
-        "uvo_api.routers.firma.run_query",
-        new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT, PROCURER_FIND_RESULT]),
-    ):
+    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
         response = client.get("/api/firmy")
 
     body = response.json()
@@ -411,10 +405,7 @@ def test_firmy_sorted_by_contract_count_desc(client):
 
 
 def test_firmy_pagination(client):
-    with patch(
-        "uvo_api.routers.firma.run_query",
-        new=AsyncMock(side_effect=[SUPPLIER_FIND_RESULT, PROCURER_FIND_RESULT]),
-    ):
+    with _firmy_patches(supplier=SUPPLIER_FIND_RESULT, procurer=PROCURER_FIND_RESULT):
         response = client.get("/api/firmy?limit=1&offset=0")
 
     assert response.status_code == 200

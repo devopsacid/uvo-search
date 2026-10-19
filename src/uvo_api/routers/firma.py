@@ -6,7 +6,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query
 
 from uvo_api._schema import award_supplier, contract_date, contract_value, year_from_date
-from uvo_api.db import get_db
+from uvo_api.db import Db
 from uvo_api.models import (
     CpvProfileResponse,
     CpvProfileRow,
@@ -21,7 +21,6 @@ from uvo_api.models import (
     PartnerRow,
     SpendByYear,
 )
-from uvo_api.services import run_query
 from uvo_core.adapters.mongo.analytics import (
     _firma_core_agg,
     _firma_partners_agg,
@@ -32,6 +31,7 @@ from uvo_core.adapters.mongo.entities import entity_roles, get_entity_by_ico
 from uvo_core.domain.companies import merge_companies_by_ico, primary_role
 from uvo_core.domain.cpv import cpv_prefix as _cpv_prefix
 from uvo_core.domain.cpv import load_cpv_labels as _load_cpv_labels
+from uvo_core.services.search import find_procurers, find_suppliers
 
 router = APIRouter(prefix="/api/firma", tags=["firma"])
 firmy_router = APIRouter(prefix="/api/firmy", tags=["firmy"])
@@ -49,8 +49,7 @@ def _first_award(item: dict) -> dict:
 
 
 @router.get("/{ico}", response_model=FirmaProfile)
-async def get_firma_profile(ico: str) -> FirmaProfile:
-    db = get_db()
+async def get_firma_profile(ico: str, db: Db) -> FirmaProfile:
 
     # Identity (point lookups), aggregate stats and both top-contract lists are
     # independent, so run them concurrently; top lists are ignored for absent roles.
@@ -171,12 +170,12 @@ async def get_firma_profile(ico: str) -> FirmaProfile:
 @router.get("/{ico}/partneri", response_model=PartnerListResponse)
 async def get_firma_partneri(
     ico: str,
+    db: Db,
     role: str = Query("all"),
     sort: str = Query("value"),
     limit: int = Query(25, ge=1, le=100),
     offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> PartnerListResponse:
-    db = get_db()
     result = await _firma_partners_agg(db, ico, role, sort, limit, offset)
     return PartnerListResponse(
         total=result["total"],
@@ -185,8 +184,7 @@ async def get_firma_partneri(
 
 
 @router.get("/{ico}/cpv-profile", response_model=CpvProfileResponse)
-async def get_firma_cpv_profile(ico: str) -> CpvProfileResponse:
-    db = get_db()
+async def get_firma_cpv_profile(ico: str, db: Db) -> CpvProfileResponse:
     core, market_rows = await asyncio.gather(
         _firma_core_agg(db, ico),
         _market_cpv_agg(db, limit=20),
@@ -234,22 +232,21 @@ async def get_firma_cpv_profile(ico: str) -> CpvProfileResponse:
 
 @firmy_router.get("", response_model=FirmaListResponse)
 async def list_firmy(
+    db: Db,
     q: str | None = Query(None),
     role: str = Query("all"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> FirmaListResponse:
-    search_args: dict = {}
-    if q:
-        search_args["name_query"] = q
+    name_query = q or None
 
     supplier_coro = (
-        run_query("find_supplier", {**search_args, "limit": 100})
+        find_suppliers(db, name_query=name_query, limit=100)
         if role in ("supplier", "all")
         else _empty()
     )
     procurer_coro = (
-        run_query("find_procurer", {**search_args, "limit": 100})
+        find_procurers(db, name_query=name_query, limit=100)
         if role in ("procurer", "all")
         else _empty()
     )

@@ -1,7 +1,7 @@
 # tests/api/test_firma.py
 """Tests for GET /api/firma/{ico} — unified company profile endpoint."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -114,7 +114,6 @@ def test_supplier_only_ico_returns_200(client):
     entity = {"supplier": SUPPLIER_RESULT["items"][0], "procurer": None}
 
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
         patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=CORE_AGG_RESULT)),
@@ -180,7 +179,6 @@ def test_dual_role_ico_returns_200(client):
     entity = {"supplier": dual_supplier["items"][0], "procurer": dual_procurer["items"][0]}
 
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
         patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value=dual_core_agg)),
@@ -211,7 +209,6 @@ def test_unknown_ico_returns_404(client):
     entity = {"supplier": None, "procurer": None}
 
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
         patch("uvo_api.routers.firma.top_contracts_by_value", new=_top_contracts_by_role),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value={})),
@@ -239,7 +236,6 @@ def test_top_contracts_use_value_sorted_query_with_nested_supplier(client):
     }
     top = AsyncMock(return_value=nested["items"])
     with (
-        patch("uvo_api.routers.firma.get_db", return_value=MagicMock()),
         patch("uvo_api.routers.firma.get_entity_by_ico", new=AsyncMock(return_value=entity)),
         patch("uvo_api.routers.firma.top_contracts_by_value", new=top),
         patch("uvo_api.routers.firma._firma_core_agg", new=AsyncMock(return_value={})),

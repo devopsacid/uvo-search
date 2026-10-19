@@ -6,7 +6,7 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query
 
 from uvo_api._schema import map_contract_row
-from uvo_api.db import get_db
+from uvo_api.db import Db
 from uvo_api.models import (
     ConcentrationResponse,
     ContractRow,
@@ -19,27 +19,24 @@ from uvo_api.models import (
     SupplierRelation,
     SupplierShare,
 )
-from uvo_api.services import run_query
 from uvo_core.adapters.mongo.analytics import entity_profile
 from uvo_core.adapters.mongo.entities import get_entity_by_ico
+from uvo_core.services.search import find_procurers, search_procurements
 
 router = APIRouter(prefix="/api/procurers", tags=["procurers"])
 
 
 @router.get("", response_model=ProcurerListResponse)
 async def list_procurers(
+    db: Db,
     q: str | None = Query(None),
     ico: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> ProcurerListResponse:
-    args: dict = {"limit": limit, "offset": offset}
-    if q:
-        args["name_query"] = q
-    if ico:
-        args["ico"] = ico
-
-    result = await run_query("find_procurer", args)
+    result = await find_procurers(
+        db, name_query=q or None, ico=ico or None, limit=limit, offset=offset
+    )
     items = result.get("items", [])
     total = int(result.get("total") or len(items))
 
@@ -58,9 +55,9 @@ async def list_procurers(
     )
 
 
-async def _require_procurer(ico: str) -> dict:
+async def _require_procurer(db, ico: str) -> dict:
     """Identity record for a procurer (cached point lookup); 404 when unknown."""
-    entity = await get_entity_by_ico(get_db(), ico)
+    entity = await get_entity_by_ico(db, ico)
     procurer = entity["procurer"]
     if not procurer:
         raise HTTPException(status_code=404, detail=f"Procurer {ico} not found")
@@ -74,9 +71,9 @@ def _spend_by_year(profile: dict) -> list[SpendByYear]:
 
 
 @router.get("/{ico}/summary", response_model=ProcurerSummary)
-async def get_procurer_summary(ico: str) -> ProcurerSummary:
+async def get_procurer_summary(ico: str, db: Db) -> ProcurerSummary:
     procurer, profile = await asyncio.gather(
-        _require_procurer(ico), entity_profile(get_db(), ico, "procurer")
+        _require_procurer(db, ico), entity_profile(db, ico, "procurer")
     )
 
     total_spend = float(procurer.get("total_value") or profile["total_value"])
@@ -93,13 +90,13 @@ async def get_procurer_summary(ico: str) -> ProcurerSummary:
 
 
 @router.get("/{ico}", response_model=ProcurerDetail)
-async def get_procurer_detail(ico: str) -> ProcurerDetail:
+async def get_procurer_detail(ico: str, db: Db) -> ProcurerDetail:
     procurer, profile, contracts_result = await asyncio.gather(
-        _require_procurer(ico),
-        entity_profile(get_db(), ico, "procurer"),
+        _require_procurer(db, ico),
+        entity_profile(db, ico, "procurer"),
         # Only the displayed contract rows come from the (paged) search; every
         # aggregate figure below is computed over the full population.
-        run_query("search_completed_procurements", {"procurer_id": ico, "limit": 100}),
+        search_procurements(db, procurer_id=ico, limit=100),
     )
     rows: list[ContractRow] = [map_contract_row(c) for c in contracts_result.get("items", [])]
 
@@ -131,11 +128,12 @@ async def get_procurer_detail(ico: str) -> ProcurerDetail:
 @router.get("/{ico}/concentration", response_model=ConcentrationResponse)
 async def get_procurer_concentration(
     ico: str,
+    db: Db,
     top_n: int = Query(10, ge=1, le=50),
 ) -> ConcentrationResponse:
     """Supplier concentration for a procurer with HHI computed over all suppliers."""
     procurer, profile = await asyncio.gather(
-        _require_procurer(ico), entity_profile(get_db(), ico, "procurer", top_n)
+        _require_procurer(db, ico), entity_profile(db, ico, "procurer", top_n)
     )
     procurer_name = procurer.get("name") or ""
     total_spend = profile["partner_total_value"]

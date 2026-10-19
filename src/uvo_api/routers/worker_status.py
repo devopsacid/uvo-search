@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends
 
 from uvo_api.auth import require_ops_token
-from uvo_api.db import get_db
+from uvo_api.db import Db
 from uvo_api.models import WorkerStatus, WorkerStatusResponse
 
 router = APIRouter(
@@ -69,8 +69,7 @@ def _derive_status(
 
 
 @router.get("/worker-status", response_model=WorkerStatusResponse)
-async def get_worker_status() -> WorkerStatusResponse:
-    db = get_db()
+async def get_worker_status(db: Db) -> WorkerStatusResponse:
     now = datetime.now(UTC)
     cutoff_24h = now - timedelta(hours=24)
 

@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, Query
 
 from uvo_api.auth import require_ops_token
-from uvo_api.db import get_db
+from uvo_api.db import Db
 from uvo_api.models import IngestionLogItem, IngestionLogResponse
 
 router = APIRouter(
@@ -28,6 +28,7 @@ def _to_iso_z(value) -> str:
 
 @router.get("/ingestion-log", response_model=IngestionLogResponse)
 async def get_ingestion_log(
+    db: Db,
     level: str | None = Query(None, pattern="^(info|warning|error|critical)$"),
     source: str | None = Query(None),
     event: str | None = Query(None),
@@ -35,7 +36,6 @@ async def get_ingestion_log(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> IngestionLogResponse:
-    db = get_db()
     query: dict = {}
     if level:
         query["level"] = level

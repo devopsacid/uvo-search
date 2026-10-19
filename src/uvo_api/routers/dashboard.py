@@ -9,11 +9,12 @@ aggregated a 500-doc MCP-paged sample, which silently truncated every number
 
 import asyncio
 from collections import defaultdict
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from uvo_api._schema import contract_date, contract_value, year_from_date
-from uvo_api.db import get_analytics, get_db
+from uvo_api.db import Db, get_analytics
 from uvo_api.models import (
     CpvShare,
     DashboardDelta,
@@ -24,11 +25,14 @@ from uvo_api.models import (
     TopProcurer,
     TopSupplier,
 )
-from uvo_api.services import run_query
 from uvo_core.adapters.mongo.entities import entity_totals
 from uvo_core.domain.cpv import cpv_prefix, load_cpv_labels
+from uvo_core.ports import CompanyAnalytics
+from uvo_core.services.search import search_procurements
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
+Analytics = Annotated[CompanyAnalytics, Depends(get_analytics)]
 
 
 def _status_from_year(year: int) -> str:
@@ -37,13 +41,14 @@ def _status_from_year(year: int) -> str:
 
 @router.get("/summary", response_model=DashboardSummary)
 async def dashboard_summary(
+    db: Db,
+    analytics: Analytics,
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
 ) -> DashboardSummary:
-    analytics = get_analytics()
     year_rows, totals = await asyncio.gather(
         analytics.spend_by_year(ico, entity_type),
-        entity_totals(get_db()),
+        entity_totals(db),
     )
 
     total_value = sum(float(r.get("total") or 0.0) for r in year_rows)
@@ -94,10 +99,11 @@ async def dashboard_summary(
 
 @router.get("/spend-by-year", response_model=list[SpendByYear])
 async def spend_by_year(
+    analytics: Analytics,
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
 ) -> list[SpendByYear]:
-    rows = await get_analytics().spend_by_year(ico, entity_type)
+    rows = await analytics.spend_by_year(ico, entity_type)
 
     by_year: dict[int, float] = {}
     for r in rows:
@@ -110,9 +116,10 @@ async def spend_by_year(
 
 @router.get("/top-suppliers", response_model=list[TopSupplier])
 async def top_suppliers(
+    analytics: Analytics,
     n: int = Query(10, ge=1, le=20),
 ) -> list[TopSupplier]:
-    rows = await get_analytics().top_suppliers(n)
+    rows = await analytics.top_suppliers(n)
     return [
         TopSupplier(
             ico=str(r["_id"]),
@@ -126,9 +133,10 @@ async def top_suppliers(
 
 @router.get("/top-procurers", response_model=list[TopProcurer])
 async def top_procurers(
+    analytics: Analytics,
     n: int = Query(10, ge=1, le=20),
 ) -> list[TopProcurer]:
-    rows = await get_analytics().top_procurers(n)
+    rows = await analytics.top_procurers(n)
     return [
         TopProcurer(
             ico=str(r["_id"]),
@@ -142,12 +150,13 @@ async def top_procurers(
 
 @router.get("/by-cpv", response_model=list[CpvShare])
 async def by_cpv(
+    analytics: Analytics,
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
     year_from: int | None = Query(None),
     year_to: int | None = Query(None),
 ) -> list[CpvShare]:
-    rows = await get_analytics().cpv_breakdown(ico, entity_type, year_from, year_to)
+    rows = await analytics.cpv_breakdown(ico, entity_type, year_from, year_to)
     labels = load_cpv_labels()
 
     buckets: dict[str, float] = defaultdict(float)
@@ -172,10 +181,11 @@ async def by_cpv(
 
 @router.get("/by-month", response_model=list[MonthBucket])
 async def by_month(
+    analytics: Analytics,
     year: int = Query(..., ge=2010, le=2100),
 ) -> list[MonthBucket]:
     """Monthly contract count + value for a given year, over the full corpus."""
-    rows = await get_analytics().monthly_buckets(year)
+    rows = await analytics.monthly_buckets(year)
     by_m = {int(r["_id"]): r for r in rows if r.get("_id") is not None}
 
     return [
@@ -190,16 +200,17 @@ async def by_month(
 
 @router.get("/recent", response_model=list[RecentContract])
 async def recent_contracts(
+    db: Db,
     limit: int = Query(10, ge=1, le=50),
     ico: str | None = Query(None),
     entity_type: str | None = Query(None),
 ) -> list[RecentContract]:
-    args: dict = {"limit": limit}
-    if ico and entity_type == "supplier":
-        args["supplier_ico"] = ico
-    elif ico and entity_type == "procurer":
-        args["procurer_id"] = ico
-    result = await run_query("search_completed_procurements", args)
+    result = await search_procurements(
+        db,
+        supplier_ico=ico if ico and entity_type == "supplier" else None,
+        procurer_id=ico if ico and entity_type == "procurer" else None,
+        limit=limit,
+    )
     contracts = result.get("items", [])
 
     rows: list[RecentContract] = []

@@ -1,17 +1,23 @@
 # src/uvo_api/routers/contracts.py
 """Contracts endpoints — list and detail."""
 
-from fastapi import APIRouter, HTTPException, Query
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from uvo_api._schema import map_contract_detail, map_contract_row
 from uvo_api.db import get_notice_repo
 from uvo_api.models import ContractDetail, ContractListResponse, PaginationMeta
+from uvo_core.ports import NoticeRepository
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
+
+NoticeRepo = Annotated[NoticeRepository, Depends(get_notice_repo)]
 
 
 @router.get("", response_model=ContractListResponse)
 async def list_contracts(
+    repo: NoticeRepo,
     q: str | None = Query(None),
     cpv: str | None = Query(None),
     date_from: str | None = Query(None),
@@ -26,7 +32,7 @@ async def list_contracts(
 ) -> ContractListResponse:
     # `ico` is legacy; prefer explicit supplier_ico / procurer_ico.
     eff_supplier = supplier_ico or ico
-    result = await get_notice_repo().search(
+    result = await repo.search(
         text_query=q or None,
         cpv_codes=[cpv] if cpv else None,
         procurer_id=procurer_ico,
@@ -50,8 +56,8 @@ async def list_contracts(
 
 
 @router.get("/{contract_id}", response_model=ContractDetail)
-async def get_contract(contract_id: str) -> ContractDetail:
-    result = await get_notice_repo().get_by_source_id(contract_id)
+async def get_contract(contract_id: str, repo: NoticeRepo) -> ContractDetail:
+    result = await repo.get_by_source_id(contract_id)
     if "error" in result:
         raise HTTPException(status_code=result.get("status_code", 404), detail=result["error"])
 

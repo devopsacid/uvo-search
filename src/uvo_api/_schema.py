@@ -1,6 +1,6 @@
-"""Mapping helpers between MCP English schema and API response models.
+"""Mapping helpers between the stored notice schema and API response models.
 
-MCP tools return:
+The uvo_core services return:
 - list data under `items` (not `data`)
 - contracts with fields: `_id`, `title`, `procurer.{ico,name}`, `final_value`,
   `estimated_value`, `cpv_code`, `publication_date`, `award_date`, `awards[]`, `status`
