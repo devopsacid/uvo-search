@@ -9,7 +9,7 @@ import {
   resolveFilters,
   validateRange,
 } from '@/lib/analyticsFilters'
-import { analyticsLink, firmaLink, zakazkyLink, zakazkyPeriodLink } from '@/lib/analyticsLinks'
+import { analyticsLink, companyLink, contractsLink, contractsPeriodLink } from '@/lib/analyticsLinks'
 
 const TODAY = new Date(2026, 9, 19) // 2026-10-19
 
@@ -86,10 +86,10 @@ describe('periodRange', () => {
 describe('links', () => {
   const filters = resolveFilters(new URLSearchParams('cpv=45&source=vestnik'), TODAY)
 
-  it('zakazkyLink copies the effective filters and adds the clicked entity', () => {
-    const href = zakazkyLink(filters, { supplier_ico: '36396567' })
+  it('contractsLink copies the effective filters and adds the clicked entity', () => {
+    const href = contractsLink(filters, { supplier_ico: '36396567' })
     const url = new URL(href, 'http://x')
-    expect(url.pathname).toBe('/zakazky')
+    expect(url.pathname).toBe('/contracts')
     expect(url.searchParams.get('date_from')).toBe('2022-01-01')
     expect(url.searchParams.get('date_to')).toBe('2026-10-19')
     expect(url.searchParams.get('cpv')).toBe('45')
@@ -98,22 +98,22 @@ describe('links', () => {
   })
 
   it('extra overrides and can remove a filter', () => {
-    const href = zakazkyLink(filters, { cpv: '71', source: undefined })
+    const href = contractsLink(filters, { cpv: '71', source: undefined })
     const url = new URL(href, 'http://x')
     expect(url.searchParams.get('cpv')).toBe('71')
     expect(url.searchParams.has('source')).toBe(false)
   })
 
-  it('zakazkyPeriodLink narrows the dates to the bucket', () => {
-    const url = new URL(zakazkyPeriodLink(filters, '2024-Q1'), 'http://x')
+  it('contractsPeriodLink narrows the dates to the bucket', () => {
+    const url = new URL(contractsPeriodLink(filters, '2024-Q1'), 'http://x')
     expect(url.searchParams.get('date_from')).toBe('2024-01-01')
     expect(url.searchParams.get('date_to')).toBe('2024-03-31')
   })
 
-  it('firmaLink and analyticsLink', () => {
-    expect(firmaLink('123')).toBe('/firma/123')
-    expect(analyticsLink('prehlad', { procurer_ico: '123' })).toBe('/analytika/prehlad?procurer_ico=123')
-    expect(analyticsLink('cpv')).toBe('/analytika/cpv')
+  it('companyLink and analyticsLink', () => {
+    expect(companyLink('123')).toBe('/company/123')
+    expect(analyticsLink('overview', { procurer_ico: '123' })).toBe('/analytics/overview?procurer_ico=123')
+    expect(analyticsLink('cpv')).toBe('/analytics/cpv')
   })
 
   it('filtersToParams skips unset values', () => {

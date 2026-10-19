@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderWithProviders, screen, fireEvent, waitFor } from './utils'
-import { ZakazkyPage } from '../pages/ZakazkyPage'
+import { ContractsPage } from '../pages/ContractsPage'
 import { makeAnalyticsFetch } from './fixtures/analytics'
 import sk from '../i18n/sk'
 
@@ -10,7 +10,7 @@ function lastContractsUrl(calls: string[]): URL {
   return new URL(url, 'http://localhost')
 }
 
-describe('ZakazkyPage as drill-down target', () => {
+describe('ContractsPage as drill-down target', () => {
   let calls: string[]
 
   beforeEach(() => {
@@ -20,8 +20,8 @@ describe('ZakazkyPage as drill-down target', () => {
   })
 
   it('sends procurer_ico, supplier_ico, source, cpv and the date range to the API', async () => {
-    renderWithProviders(<ZakazkyPage />, {
-      route: '/zakazky?date_from=2023-01-01&date_to=2023-12-31&cpv=45&source=crz&procurer_ico=111&supplier_ico=222',
+    renderWithProviders(<ContractsPage />, {
+      route: '/contracts?date_from=2023-01-01&date_to=2023-12-31&cpv=45&source=crz&procurer_ico=111&supplier_ico=222',
     })
     await waitFor(() => expect(calls.some((c) => c.includes('/contracts?'))).toBe(true))
     const p = lastContractsUrl(calls).searchParams
@@ -35,8 +35,8 @@ describe('ZakazkyPage as drill-down target', () => {
   })
 
   it('lets date_from/date_to take precedence over year', async () => {
-    renderWithProviders(<ZakazkyPage />, {
-      route: '/zakazky?year=2020&date_from=2023-02-01&date_to=2023-03-31',
+    renderWithProviders(<ContractsPage />, {
+      route: '/contracts?year=2020&date_from=2023-02-01&date_to=2023-03-31',
     })
     await waitFor(() => expect(calls.some((c) => c.includes('/contracts?'))).toBe(true))
     const p = lastContractsUrl(calls).searchParams
@@ -45,7 +45,7 @@ describe('ZakazkyPage as drill-down target', () => {
   })
 
   it('still derives the range from year when no explicit dates are given', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/zakazky?year=2021' })
+    renderWithProviders(<ContractsPage />, { route: '/contracts?year=2021' })
     await waitFor(() => expect(calls.some((c) => c.includes('/contracts?'))).toBe(true))
     const p = lastContractsUrl(calls).searchParams
     expect(p.get('date_from')).toBe('2021-01-01')
@@ -53,8 +53,8 @@ describe('ZakazkyPage as drill-down target', () => {
   })
 
   it('shows removable chips for the active drill-down filters', async () => {
-    renderWithProviders(<ZakazkyPage />, {
-      route: '/zakazky?date_from=2023-01-01&date_to=2023-12-31&source=crz&procurer_ico=111',
+    renderWithProviders(<ContractsPage />, {
+      route: '/contracts?date_from=2023-01-01&date_to=2023-12-31&source=crz&procurer_ico=111',
     })
     const chips = await screen.findByRole('list', { name: sk.analytics.activeFilters })
     expect(chips).toHaveTextContent(sk.analytics.filters.sources.crz)
@@ -68,7 +68,7 @@ describe('ZakazkyPage as drill-down target', () => {
   })
 
   it('offers a source select', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/zakazky?source=itms' })
+    renderWithProviders(<ContractsPage />, { route: '/contracts?source=itms' })
     const select = await screen.findByLabelText(sk.analytics.filters.source)
     expect(select).toHaveValue('itms')
   })

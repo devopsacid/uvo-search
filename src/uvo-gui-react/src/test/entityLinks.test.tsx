@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { renderWithProviders, screen } from './utils'
 import { EntityLink } from '../components/entity/EntityLink'
-import { ZakazkyPage } from '../pages/ZakazkyPage'
+import { ContractsPage } from '../pages/ContractsPage'
 import { vi } from 'vitest'
 
 global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
@@ -59,7 +59,7 @@ describe('Entity Linking', () => {
       <EntityLink ico="87654321" name="Supplier A" type="supplier" />
     )
     const link = screen.getByRole('link', { name: 'Supplier A' })
-    expect(link).toHaveAttribute('href', '/firma/87654321')
+    expect(link).toHaveAttribute('href', '/company/87654321')
   })
 
   it('renders procurer link with correct href', () => {
@@ -67,7 +67,7 @@ describe('Entity Linking', () => {
       <EntityLink ico="12345678" name="Procurer A" type="procurer" />
     )
     const link = screen.getByRole('link', { name: 'Procurer A' })
-    expect(link).toHaveAttribute('href', '/firma/12345678')
+    expect(link).toHaveAttribute('href', '/company/12345678')
   })
 
   it('uses ico as fallback when name is empty', () => {
@@ -107,17 +107,17 @@ describe('Entity Linking', () => {
   })
 
   it('search results render supplier names as links', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search' })
+    renderWithProviders(<ContractsPage />, { route: '/search' })
 
     const supplierLink = await screen.findByRole('link', { name: 'Supplier A' })
-    expect(supplierLink).toHaveAttribute('href', '/firma/87654321')
+    expect(supplierLink).toHaveAttribute('href', '/company/87654321')
   })
 
   it('search results render procurer names as links', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search' })
+    renderWithProviders(<ContractsPage />, { route: '/search' })
 
     const procurerLink = await screen.findByRole('link', { name: 'Procurer A' })
-    expect(procurerLink).toHaveAttribute('href', '/firma/12345678')
+    expect(procurerLink).toHaveAttribute('href', '/company/12345678')
   })
 
 })

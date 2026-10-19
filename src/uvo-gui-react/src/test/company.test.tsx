@@ -3,11 +3,11 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { createQueryClient } from '@/api/queryClient'
-import { FirmaPage } from '@/pages/FirmaPage'
-import { FirmaPrehladTab } from '@/pages/firma/FirmaPrehladTab'
-import { FirmaPartneriTab } from '@/pages/firma/FirmaPartneriTab'
-import { FirmaCpvTab } from '@/pages/firma/FirmaCpvTab'
-import { FirmaZakazkyTab } from '@/pages/firma/FirmaZakazkyTab'
+import { CompanyPage } from '@/pages/CompanyPage'
+import { CompanyOverviewTab } from '@/pages/company/CompanyOverviewTab'
+import { CompanyPartnersTab } from '@/pages/company/CompanyPartnersTab'
+import { CompanyCpvTab } from '@/pages/company/CompanyCpvTab'
+import { CompanyContractsTab } from '@/pages/company/CompanyContractsTab'
 import sk from '@/i18n/sk'
 import { setupFetch } from './utils'
 
@@ -35,7 +35,7 @@ const PROFILE = {
   spend_by_year: [],
 }
 
-const PARTNERI = {
+const PARTNERS = {
   total: 1,
   items: [
     {
@@ -60,23 +60,23 @@ const CONTRACTS = { data: [], pagination: { total: 0, limit: 20, offset: 0 } }
 
 // More specific paths first: setupFetch matches the first key contained in the URL.
 const ROUTES = {
-  '/partneri': { body: PARTNERI },
+  '/partners': { body: PARTNERS },
   '/cpv-profile': { body: CPV },
   '/contracts': { body: CONTRACTS },
-  '/api/firma/12345678': { body: PROFILE },
+  '/api/companies/12345678': { body: PROFILE },
 }
 
-function renderFirma(path: string) {
+function renderCompany(path: string) {
   const router = createMemoryRouter(
     [
       {
-        path: '/firma/:ico',
-        element: <FirmaPage />,
+        path: '/company/:ico',
+        element: <CompanyPage />,
         children: [
-          { path: 'prehlad', element: <FirmaPrehladTab /> },
-          { path: 'zakazky', element: <FirmaZakazkyTab /> },
-          { path: 'partneri', element: <FirmaPartneriTab /> },
-          { path: 'cpv', element: <FirmaCpvTab /> },
+          { path: 'overview', element: <CompanyOverviewTab /> },
+          { path: 'contracts', element: <CompanyContractsTab /> },
+          { path: 'partners', element: <CompanyPartnersTab /> },
+          { path: 'cpv', element: <CompanyCpvTab /> },
         ],
       },
     ],
@@ -89,43 +89,43 @@ function renderFirma(path: string) {
   )
 }
 
-describe('Firma workspace routes', () => {
+describe('Company workspace routes', () => {
   let restore: () => void
   afterEach(() => restore?.())
 
   it('renders the header, labelled section nav and the Prehľad tab', async () => {
     restore = setupFetch(ROUTES)
-    renderFirma('/firma/12345678/prehlad')
+    renderCompany('/company/12345678/overview')
     expect(await screen.findByRole('heading', { name: 'Acme s.r.o.' })).toBeTruthy()
-    expect(screen.getByRole('navigation', { name: sk.firma.sectionsLabel })).toBeTruthy()
-    expect(await screen.findByText(sk.firma.colCounterparty)).toBeTruthy()
+    expect(screen.getByRole('navigation', { name: sk.company.sectionsLabel })).toBeTruthy()
+    expect(await screen.findByText(sk.company.colCounterparty)).toBeTruthy()
     expect(screen.getAllByText('Mesto Žilina').length).toBeGreaterThan(0)
   })
 
-  it('renders partner rows on the Partneri tab', async () => {
+  it('renders partner rows on the Partners tab', async () => {
     restore = setupFetch(ROUTES)
-    renderFirma('/firma/12345678/partneri')
+    renderCompany('/company/12345678/partners')
     expect(await screen.findByText('Mesto Žilina')).toBeTruthy()
-    expect(screen.getByText(sk.firma.roleProcurer)).toBeTruthy()
+    expect(screen.getByText(sk.company.roleProcurer)).toBeTruthy()
   })
 
   it('renders CPV rows on the CPV tab', async () => {
     restore = setupFetch(ROUTES)
-    renderFirma('/firma/12345678/cpv')
+    renderCompany('/company/12345678/cpv')
     expect(await screen.findByText('Stavebné práce')).toBeTruthy()
-    expect(screen.getByText(sk.firma.colShare)).toBeTruthy()
+    expect(screen.getByText(sk.company.colShare)).toBeTruthy()
   })
 
   it('shows the empty state on the Zákazky tab when there are no contracts', async () => {
     restore = setupFetch(ROUTES)
-    renderFirma('/firma/12345678/zakazky')
-    expect(await screen.findByText(sk.firma.zakazkyEmpty)).toBeTruthy()
+    renderCompany('/company/12345678/contracts')
+    expect(await screen.findByText(sk.company.contractsEmpty)).toBeTruthy()
   })
 
   it('shows not-found for a 404 profile', async () => {
-    restore = setupFetch({ '/api/firma/': { status: 404, body: { detail: 'nope' } } })
-    renderFirma('/firma/99999999/prehlad')
-    await waitFor(() => expect(screen.getByText(sk.firma.notFound)).toBeTruthy())
-    expect(screen.getByText(sk.firma.notFoundDetail.replace('{ico}', '99999999'))).toBeTruthy()
+    restore = setupFetch({ '/api/companies/': { status: 404, body: { detail: 'nope' } } })
+    renderCompany('/company/99999999/overview')
+    await waitFor(() => expect(screen.getByText(sk.company.notFound)).toBeTruthy())
+    expect(screen.getByText(sk.company.notFoundDetail.replace('{ico}', '99999999'))).toBeTruthy()
   })
 })

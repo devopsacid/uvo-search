@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderWithProviders, screen, fireEvent, waitFor } from './utils'
-import { ZakazkyPage } from '../pages/ZakazkyPage'
+import { ContractsPage } from '../pages/ContractsPage'
 import sk from '../i18n/sk'
 
 global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
@@ -54,28 +54,28 @@ describe('URL-as-State Filters', () => {
   })
 
   it('initializes with URL query parameters', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search?q=foo' })
+    renderWithProviders(<ContractsPage />, { route: '/search?q=foo' })
 
     const input = await screen.findByPlaceholderText(sk.search.placeholder)
     expect((input as HTMLInputElement).value).toBe('foo')
   })
 
   it('preserves year filter from URL on mount', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search?year=2023' })
+    renderWithProviders(<ContractsPage />, { route: '/search?year=2023' })
 
     const select = await screen.findByDisplayValue('2023')
     expect(select).toBeInTheDocument()
   })
 
   it('preserves CPV filter from URL', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search?cpv=45000000' })
+    renderWithProviders(<ContractsPage />, { route: '/search?cpv=45000000' })
 
     const input = await screen.findByPlaceholderText('napr. 45000000')
     expect((input as HTMLInputElement).value).toBe('45000000')
   })
 
   it('updates filter when form input changes', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search' })
+    renderWithProviders(<ContractsPage />, { route: '/search' })
     const input = await screen.findByPlaceholderText(sk.search.placeholder) as HTMLInputElement
 
     fireEvent.change(input, { target: { value: 'test query' } })
@@ -86,7 +86,7 @@ describe('URL-as-State Filters', () => {
   })
 
   it('preserves multiple filters in URL', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search?q=test&year=2023&cpv=45000000' })
+    renderWithProviders(<ContractsPage />, { route: '/search?q=test&year=2023&cpv=45000000' })
 
     const qInput = await screen.findByPlaceholderText(sk.search.placeholder)
     const yearSelect = await screen.findByDisplayValue('2023')
@@ -98,7 +98,7 @@ describe('URL-as-State Filters', () => {
   })
 
   it('clear filters button resets all filter inputs', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search?q=test&year=2023' })
+    renderWithProviders(<ContractsPage />, { route: '/search?q=test&year=2023' })
 
     const clearButton = await screen.findByRole('button', { name: sk.common.clearFilters })
     fireEvent.click(clearButton)
@@ -110,7 +110,7 @@ describe('URL-as-State Filters', () => {
   })
 
   it('year filter select shows all years as options', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search' })
+    renderWithProviders(<ContractsPage />, { route: '/search' })
 
     const select = await screen.findByDisplayValue('Všetky')
     const options = (select as HTMLSelectElement).options
@@ -119,7 +119,7 @@ describe('URL-as-State Filters', () => {
   })
 
   it('removing year filter shows blank selection', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search?year=2023' })
+    renderWithProviders(<ContractsPage />, { route: '/search?year=2023' })
 
     const yearSelect = await screen.findByDisplayValue('2023') as HTMLSelectElement
     fireEvent.change(yearSelect, { target: { value: '' } })
@@ -130,14 +130,14 @@ describe('URL-as-State Filters', () => {
   })
 
   it('supplier and procurer ico filters can be set from URL', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search?supplier_ico=87654321' })
+    renderWithProviders(<ContractsPage />, { route: '/search?supplier_ico=87654321' })
 
     const inputs = screen.getAllByPlaceholderText('IČO')
     expect(inputs.length).toBeGreaterThanOrEqual(1)
   })
 
   it('changing filter resets form to show updated value', async () => {
-    renderWithProviders(<ZakazkyPage />, { route: '/search?q=original' })
+    renderWithProviders(<ContractsPage />, { route: '/search?q=original' })
 
     const input = await screen.findByPlaceholderText(sk.search.placeholder) as HTMLInputElement
     expect(input.value).toBe('original')
