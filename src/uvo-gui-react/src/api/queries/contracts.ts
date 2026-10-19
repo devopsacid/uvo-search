@@ -44,7 +44,7 @@ function buildContractParams(filters: ContractFilters): string {
   return params.toString()
 }
 
-export function useContractSearch(filters: ContractFilters) {
+export function useContractSearch(filters: ContractFilters, opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: contractKeys.list(filters),
     queryFn: ({ signal }) => {
@@ -53,6 +53,7 @@ export function useContractSearch(filters: ContractFilters) {
     },
     staleTime: 60 * 1000,
     placeholderData: (prev) => prev,
+    enabled: opts.enabled ?? true,
   })
 }
 

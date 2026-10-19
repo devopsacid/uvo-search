@@ -3,6 +3,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { DataTableToggle } from '@/components/analytics/DataTableToggle'
 import { useAnalyticsFilters } from '@/hooks/useAnalyticsFilters'
+import { validateRange } from '@/lib/analyticsFilters'
 import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
@@ -59,6 +60,18 @@ export function ErrorPanel({ error, onRetry }: { error: unknown; onRetry: () => 
   )
 }
 
+/** Replaces a chart while the period filter is invalid and queries are paused (the filter bar holds the alert). */
+export function InvalidRangeNotice({ problem }: { problem: 'reversed' | 'span' }) {
+  return (
+    <div data-testid="invalid-range" className="rounded-md border border-border bg-muted/40 p-4 text-sm">
+      <p className="font-medium text-foreground">{sk.analytics.charts.invalidFilterTitle}</p>
+      <p className="mt-1 text-muted-foreground">
+        {problem === 'reversed' ? sk.analytics.filters.rangeReversed : sk.analytics.filters.rangeSpan}
+      </p>
+    </div>
+  )
+}
+
 function EmptyBody({ hideAction }: { hideAction: boolean }) {
   const { isDefault, preset, applyPreset, reset, filters } = useAnalyticsFilters()
   const hasEntityFilters = Boolean(filters.cpv || filters.source || filters.procurer_ico || filters.supplier_ico)
@@ -103,12 +116,17 @@ export function ChartCard({
 }: ChartCardProps) {
   const [showTable, setShowTable] = useState(false)
   const bodyId = useId()
-  const loading = status.isLoading
-  const hasData = !loading && !status.isError && !isEmpty
-  const refreshing = Boolean(status.isFetching) && !loading
+  const { filters } = useAnalyticsFilters()
+  // Cards that ignore filters (hideEmptyAction) never depend on the period.
+  const rangeProblem = hideEmptyAction ? null : validateRange(filters)
+  const loading = status.isLoading && !rangeProblem
+  const hasData = !rangeProblem && !loading && !status.isError && !isEmpty
+  const refreshing = Boolean(status.isFetching) && !loading && !rangeProblem
 
   let body: React.ReactNode
-  if (loading) {
+  if (rangeProblem) {
+    body = <InvalidRangeNotice problem={rangeProblem} />
+  } else if (loading) {
     body = (
       <div role="status" aria-label={sk.analytics.charts.loading}>
         <Skeleton className={cn('w-full', skeletonClassName)} />

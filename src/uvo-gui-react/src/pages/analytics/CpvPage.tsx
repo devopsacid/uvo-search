@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useAnalyticsCpv, useAnalyticsTimeseries } from '@/api/queries/analytics'
 import type { CpvBucket } from '@/api/types'
-import { ChartCard, ErrorPanel } from '@/components/analytics/ChartCard'
+import { ChartCard, ErrorPanel, InvalidRangeNotice } from '@/components/analytics/ChartCard'
 import { SimpleDataTable, TableLink } from '@/components/analytics/DataTableToggle'
 import { StackedPeriodChart } from '@/components/analytics/StackedPeriodChart'
 import { TopBarChart, type TopBarRow } from '@/components/analytics/TopBarChart'
@@ -20,7 +20,7 @@ export function CpvPage() {
   return (
     <div className="space-y-5">
       <p className="max-w-3xl text-sm text-muted-foreground">{sk.analytics.cpv.intro}</p>
-      {!rangeProblem && <Body filters={filters} />}
+      {rangeProblem ? <InvalidRangeNotice problem={rangeProblem} /> : <Body filters={filters} />}
     </div>
   )
 }

@@ -78,3 +78,15 @@ describe('Layout + Routing', () => {
     expect(nav).toBeInTheDocument()
   })
 })
+
+describe('Header small screens', () => {
+  it('lets the nav scroll inside itself instead of widening the page', async () => {
+    const { Header } = await import('../components/layout/Header')
+    const { renderWithProviders } = await import('./utils')
+    renderWithProviders(<Header />)
+    const nav = screen.getByRole('navigation', { name: sk.common.mainNavLabel })
+    expect(nav.className).toContain('overflow-x-auto')
+    expect(nav.className).toContain('max-w-full')
+    expect(nav.parentElement?.className).toContain('flex-wrap')
+  })
+})
