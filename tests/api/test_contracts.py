@@ -110,3 +110,35 @@ def test_get_contract_detail_not_found(client):
     with deps(client, get_notice_repo, repo):
         response = client.get("/api/contracts/9999")
     assert response.status_code == 404
+
+
+def test_list_contracts_rejects_reversed_date_range(client):
+    repo = _repo(search=EMPTY_MCP_RESPONSE)
+    with deps(client, get_notice_repo, repo):
+        response = client.get("/api/contracts?date_from=2025-01-01&date_to=2024-01-01")
+    assert response.status_code == 422
+    repo.search.assert_not_called()
+
+
+def test_list_contracts_accepts_equal_dates(client):
+    repo = _repo(search=EMPTY_MCP_RESPONSE)
+    with deps(client, get_notice_repo, repo):
+        response = client.get("/api/contracts?date_from=2024-05-01&date_to=2024-05-01")
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("bad", ["4", "45.*", "abc", "123456789", "45-12", "(?i)"])
+def test_list_contracts_rejects_malformed_cpv(client, bad):
+    repo = _repo(search=EMPTY_MCP_RESPONSE)
+    with deps(client, get_notice_repo, repo):
+        response = client.get("/api/contracts", params={"cpv": bad})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("ok", ["45", "4523", "45000000", "45000000-7"])
+def test_list_contracts_accepts_cpv_division_and_full_codes(client, ok):
+    repo = _repo(search=EMPTY_MCP_RESPONSE)
+    with deps(client, get_notice_repo, repo):
+        response = client.get("/api/contracts", params={"cpv": ok})
+    assert response.status_code == 200
+    assert repo.search.call_args.kwargs["cpv_codes"] == [ok]

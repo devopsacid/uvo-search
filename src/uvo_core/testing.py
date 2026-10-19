@@ -22,6 +22,7 @@ from uvo_core.adapters.mongo.dashboards import (
     shape_timeseries,
     shape_top,
 )
+from uvo_core.adapters.mongo.procurements import split_cpv
 from uvo_core.domain.analytics import (
     D1_NOTICE_TYPE,
     DashboardFilter,
@@ -90,7 +91,13 @@ class InMemoryNoticeRepository:
         if source:
             rows = [n for n in rows if n.get("source") == source]
         if cpv_codes:
-            rows = [n for n in rows if n.get("cpv_code") in cpv_codes]
+            exact, prefixes = split_cpv(cpv_codes)
+            rows = [
+                n
+                for n in rows
+                if n.get("cpv_code") in exact
+                or any(str(n.get("cpv_code") or "").startswith(p) for p in prefixes)
+            ]
         if procurer_id:
             rows = [n for n in rows if (n.get("procurer") or {}).get("ico") == procurer_id]
         if supplier_ico:

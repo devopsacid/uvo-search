@@ -1,6 +1,7 @@
 # src/uvo_api/routers/contracts.py
 """Contracts endpoints — list and detail."""
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,11 +16,27 @@ router = APIRouter(prefix="/api/contracts", tags=["contracts"])
 NoticeRepo = Annotated[NoticeRepository, Depends(get_notice_repo)]
 
 
+def _reject_reversed_range(date_from: str | None, date_to: str | None) -> None:
+    """422 on ``date_from > date_to``, consistent with ``/api/analytics``."""
+    if not (date_from and date_to):
+        return
+    try:
+        start, end = date.fromisoformat(date_from), date.fromisoformat(date_to)
+    except ValueError:
+        return  # malformed dates keep their existing lenient string semantics
+    if start > end:
+        raise HTTPException(status_code=422, detail="date_from must not be after date_to")
+
+
 @router.get("", response_model=ContractListResponse)
 async def list_contracts(
     repo: NoticeRepo,
     q: str | None = Query(None),
-    cpv: str | None = Query(None),
+    cpv: str | None = Query(
+        None,
+        pattern=r"^\d{2,8}(-\d)?$",
+        description="Full 8-digit CPV code (exact) or a 2-7 digit division/group prefix.",
+    ),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     value_min: float | None = Query(None),
@@ -35,6 +52,7 @@ async def list_contracts(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> ContractListResponse:
+    _reject_reversed_range(date_from, date_to)
     # `ico` is legacy; prefer explicit supplier_ico / procurer_ico.
     eff_supplier = supplier_ico or ico
     result = await repo.search(

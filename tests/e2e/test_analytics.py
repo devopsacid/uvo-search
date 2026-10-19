@@ -385,12 +385,6 @@ class TestTop:
         assert listing["pagination"]["total"] > 0
         assert len(listing["data"]) > 0
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="DEFECT: CPV division drill-down lands on an empty list. Analytics treats cpv as "
-        "a prefix (division 45 counts > 0) but /api/contracts?cpv=45 matches exact codes "
-        "(cpv_code $in) and returns 0.",
-    )
     def test_cpv_division_drill_down_has_notices(self, analytics_ready):
         """A CPV division counted on the CPV page must yield a non-empty /zakazky list."""
         window = {"date_from": DEFAULT_FROM, "date_to": DEFAULT_TO}

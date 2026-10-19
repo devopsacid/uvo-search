@@ -21,6 +21,7 @@ not mapped in the search index, and remapping it would trigger an index rebuild.
 
 import asyncio
 import logging
+import re
 
 from uvo_core.adapters.mongo.search_query import build_search_stage, with_filters
 from uvo_core.cache import _make_key, async_ttl_cache
@@ -44,6 +45,51 @@ NOTICE_LIST_PROJECTION: dict[str, int] = {
     "content_hash": 0,
     "pipeline_run_id": 0,
 }
+
+
+# 8 digits = a full CPV code (exact match, with or without the "-d" check digit).
+# Digits only and 2-7 long = a division/group/class/category prefix, matched the
+# way the analytics CPV breakdown buckets codes (anchored prefix on ``cpv_code``).
+_CPV_PREFIX_RE = re.compile(r"^\d{2,7}$")
+
+
+def split_cpv(cpv_codes: list[str] | None) -> tuple[list[str], list[str]]:
+    """Split a CPV filter into ``(exact_codes, prefixes)``.
+
+    Only digit-only strings of 2-7 chars become prefixes, so a value can never
+    smuggle regex metacharacters into the ``$regex`` / ``range`` clauses.
+    """
+    exact: list[str] = []
+    prefixes: list[str] = []
+    for code in cpv_codes or []:
+        (prefixes if _CPV_PREFIX_RE.match(code) else exact).append(code)
+    return exact, prefixes
+
+
+def _cpv_find_clause(cpv_codes: list[str]) -> dict:
+    exact, prefixes = split_cpv(cpv_codes)
+    clauses: list[dict] = []
+    if exact:
+        clauses.append({"cpv_code": {"$in": exact}})
+    if prefixes:
+        pattern = "^" + (prefixes[0] if len(prefixes) == 1 else f"(?:{'|'.join(prefixes)})")
+        clauses.append({"cpv_code": {"$regex": pattern}})
+    return clauses[0] if len(clauses) == 1 else {"$or": clauses}
+
+
+def _cpv_search_clause(cpv_codes: list[str]) -> dict:
+    """Atlas Search equivalent: ``cpv_code`` is a ``token``, which supports ``in``/``range``
+    but not ``regex``; a prefix is the lexicographic range ``[p, p+1)``."""
+    exact, prefixes = split_cpv(cpv_codes)
+    clauses: list[dict] = []
+    if exact:
+        clauses.append({"in": {"path": "cpv_code", "value": exact}})
+    for prefix in prefixes:
+        upper = prefix[:-1] + chr(ord(prefix[-1]) + 1)
+        clauses.append({"range": {"path": "cpv_code", "gte": prefix, "lt": upper}})
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"compound": {"should": clauses, "minimumShouldMatch": 1}}
 
 
 def _value_expr(value_min: float | None, value_max: float | None) -> dict | None:
@@ -78,7 +124,11 @@ def _find_filter(
     if source:
         filter_["source"] = source
     if cpv_codes:
-        filter_["cpv_code"] = {"$in": cpv_codes}
+        clause = _cpv_find_clause(cpv_codes)
+        if "$or" in clause:
+            filter_["$or"] = clause["$or"]
+        else:
+            filter_["cpv_code"] = clause["cpv_code"]
     if procurer_id:
         filter_["procurer.ico"] = procurer_id
     if supplier_ico:
@@ -109,7 +159,7 @@ def _search_filters(
     """
     filters: list[dict] = [{"equals": {"path": "notice_type", "value": _NOTICE_TYPE}}]
     if cpv_codes:
-        filters.append({"in": {"path": "cpv_code", "value": list(cpv_codes)}})
+        filters.append(_cpv_search_clause(list(cpv_codes)))
     if procurer_id:
         filters.append({"equals": {"path": "procurer.ico", "value": procurer_id}})
     if supplier_ico:
