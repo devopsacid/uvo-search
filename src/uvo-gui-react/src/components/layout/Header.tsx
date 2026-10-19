@@ -15,10 +15,10 @@ const navItems = [
 export function Header() {
   return (
     <header className="border-b border-border bg-card">
-      <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
         <span className="text-base font-semibold text-foreground">UVO</span>
         <GlobalSearch />
-        <nav className="flex gap-1" aria-label={sk.common.mainNavLabel}>
+        <nav className="-mx-1 flex max-w-full gap-1 overflow-x-auto px-1 py-0.5" aria-label={sk.common.mainNavLabel}>
           {navItems.map(({ to, label, end }) => (
             <NavLink
               key={to}
@@ -26,7 +26,7 @@ export function Header() {
               end={end}
               className={({ isActive }) =>
                 cn(
-                  'rounded-md px-3 py-1.5 text-sm transition-colors',
+                  'shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors',
                   isActive
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
