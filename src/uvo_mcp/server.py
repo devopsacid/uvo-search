@@ -10,8 +10,9 @@ from typing import Any
 import httpx
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
+from uvo_core.observability import CONTENT_TYPE, render_default_registry, set_ready
 from uvo_mcp.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,29 @@ async def _stop_task(task: asyncio.Task | None) -> None:
         await task
     except (asyncio.CancelledError, Exception):  # noqa: BLE001
         logger.debug("background task ended: %s", task.get_name(), exc_info=True)
+
+
+READY_REFRESH_INTERVAL_S = 30.0
+
+
+async def refresh_ready() -> None:
+    """Set ``uvo_ready{service="uvo-mcp"}`` from the same checks as ``/readyz``."""
+    from uvo_core.adapters.mongo.health import mongo_ready
+
+    db = _runtime["mongo_db"]
+    probe = _runtime["index_probe"]
+    ok = False
+    try:
+        ok = bool(await mongo_ready(db) and (probe is None or await probe.ready(db)))
+    except Exception:  # noqa: BLE001 - a failing probe means "not ready", never a crash
+        logger.warning("readiness refresh failed", exc_info=True)
+    set_ready("uvo-mcp", ok)
+
+
+async def _ready_refresher() -> None:
+    while True:
+        await refresh_ready()
+        await asyncio.sleep(READY_REFRESH_INTERVAL_S)
 
 
 @asynccontextmanager
@@ -101,12 +125,14 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         health_check_interval=30,
     )
     invalidator = asyncio.create_task(run_cache_invalidator(redis_client), name="cache-invalidator")
+    ready_refresher: asyncio.Task | None = None
 
     try:
         async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
             logger.info("MCP server starting, httpx client ready")
             _runtime["mongo_db"] = mongo_db
             _runtime["index_probe"] = SearchIndexProbe()
+            ready_refresher = asyncio.create_task(_ready_refresher(), name="ready-refresher")
             try:
                 yield AppContext(
                     http_client=client,
@@ -120,6 +146,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
                 _runtime["mongo_db"] = None
                 _runtime["index_probe"] = None
     finally:
+        await _stop_task(ready_refresher)
         await _stop_task(invalidator)
         await close_quietly("redis", redis_client.aclose)
         if mongo_client is not None:
@@ -166,3 +193,9 @@ async def readiness_check(request: Request) -> JSONResponse:
     if await mongo_ready(db) and (probe is None or await probe.ready(db)):
         return JSONResponse({"status": "ready", "service": "uvo-mcp"})
     return JSONResponse({"status": "unavailable", "service": "uvo-mcp"}, status_code=503)
+
+
+@mcp.custom_route("/metrics", methods=["GET"], name="metrics")
+async def metrics_endpoint(request: Request) -> Response:
+    """Prometheus scrape endpoint: process, cache and readiness metrics."""
+    return Response(render_default_registry(), media_type=CONTENT_TYPE)
