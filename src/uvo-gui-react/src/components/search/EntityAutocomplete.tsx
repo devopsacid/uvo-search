@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEntityAutocomplete } from '@/api/queries/search'
-import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useKeyboardShortcut } from '@/hooks/useKeyboardShortcut'
 import { cn } from '@/lib/utils'
 import sk from '@/i18n/sk'
@@ -25,7 +25,7 @@ export function EntityAutocomplete({
   const [activeIndex, setActiveIndex] = useState(-1)
   const navigate = useNavigate()
 
-  const debouncedQuery = useDebouncedValue(inputValue, 250)
+  const debouncedQuery = useDebouncedValue(inputValue, SEARCH_DEBOUNCE_MS)
   const { data, isFetching } = useEntityAutocomplete(debouncedQuery)
   const hits = data?.items ?? []
 

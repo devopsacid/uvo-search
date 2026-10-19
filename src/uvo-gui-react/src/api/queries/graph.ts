@@ -11,7 +11,7 @@ export const graphKeys = {
 export function useEgoGraph(ico: string, hops = 2) {
   return useQuery({
     queryKey: graphKeys.ego(ico, hops),
-    queryFn: () => apiClient.get<GraphResponse>(`/graph/ego/${encodeURIComponent(ico)}?hops=${hops}`),
+    queryFn: ({ signal }) => apiClient.get<GraphResponse>(`/graph/ego/${encodeURIComponent(ico)}?hops=${hops}`, { signal }),
     staleTime: 5 * 60 * 1000,
     enabled: Boolean(ico),
   })
@@ -20,9 +20,10 @@ export function useEgoGraph(ico: string, hops = 2) {
 export function useCpvGraph(cpv: string, year: number) {
   return useQuery({
     queryKey: graphKeys.cpv(cpv, year),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiClient.get<GraphResponse>(
         `/graph/cpv/${encodeURIComponent(cpv)}?year=${year}`,
+        { signal },
       ),
     staleTime: 5 * 60 * 1000,
     enabled: Boolean(cpv) && year > 0,

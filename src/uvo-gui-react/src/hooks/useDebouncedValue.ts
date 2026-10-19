@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 
+/** Single debounce delay for every search-as-you-type input. */
+export const SEARCH_DEBOUNCE_MS = 250
+
 export function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState<T>(value)
 

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { apiClient } from '../client'
+import { searchKeys } from './search'
 
 export interface FirmaHit {
   ico: string
@@ -24,12 +25,14 @@ export interface UnifiedSearchResult {
 }
 
 export function useUnifiedSearch(query: string) {
-  const debouncedQ = useDebouncedValue(query, 250)
+  const debouncedQ = useDebouncedValue(query, SEARCH_DEBOUNCE_MS)
   return useQuery({
-    queryKey: ['search', 'unified', debouncedQ],
-    queryFn: (): Promise<UnifiedSearchResult> => {
+    queryKey: searchKeys.unified(debouncedQ),
+    queryFn: ({ signal }): Promise<UnifiedSearchResult> => {
       const params = new URLSearchParams({ q: debouncedQ, limit: '8' })
-      return apiClient.get<UnifiedSearchResult>(`/search/unified?${params.toString()}`)
+      return apiClient.get<UnifiedSearchResult>(`/search/unified?${params.toString()}`, {
+        signal,
+      })
     },
     enabled: debouncedQ.length >= 2,
     placeholderData: (prev) => prev,
