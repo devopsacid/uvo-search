@@ -45,21 +45,45 @@ class TestSearchCompletedProcurements:
         assert result["status_code"] == 503
 
 
-async def test_pipeline_has_search_match_and_facet():
-    agg = MagicMock()
-    agg.to_list = AsyncMock(
-        return_value=[{"items": [{"_id": "n1", "title": "X"}], "total": [{"count": 1}]}]
-    )
+async def test_pipeline_filters_inside_search_and_counts_via_search_meta():
+    items = MagicMock()
+    items.to_list = AsyncMock(return_value=[{"_id": "n1", "title": "X"}])
+    meta = MagicMock()
+    meta.to_list = AsyncMock(return_value=[{"count": {"total": 1}}])
     db = MagicMock()
-    db.notices.aggregate = MagicMock(return_value=agg)
+    db.notices.aggregate = MagicMock(side_effect=[items, meta])
 
     out = await _search_mongo_procurements(db, text_query="fakulta", date_from="2024-01-01")
     assert out["total"] == 1
-    (pipeline,) = db.notices.aggregate.call_args.args
-    assert "$search" in pipeline[0]
-    assert pipeline[1]["$match"]["notice_type"] == "contract_award"
-    assert pipeline[1]["$match"]["publication_date"] == {"$gte": "2024-01-01"}
-    assert "$facet" in pipeline[2]
+    pipeline = db.notices.aggregate.call_args_list[0].args[0]
+    filters = pipeline[0]["$search"]["compound"]["filter"]
+    assert {"equals": {"path": "notice_type", "value": "contract_award"}} in filters
+    assert {"range": {"path": "publication_date", "gte": "2024-01-01"}} in filters
+    assert not any("$facet" in s for s in pipeline)
+    assert "$searchMeta" in db.notices.aggregate.call_args_list[1].args[0][0]
+
+
+async def test_offset_is_clamped_like_the_routers():
+    from uvo_mcp.config import Settings
+    from uvo_mcp.server import AppContext
+
+    db = MagicMock()
+    ctx = MagicMock()
+    ctx.request_context.lifespan_context = AppContext(
+        http_client=MagicMock(), settings=Settings(), mongo_db=db
+    )
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.skip.return_value = cursor
+    cursor.limit.return_value = cursor
+    cursor.to_list = AsyncMock(return_value=[])
+    db.notices.find = MagicMock(return_value=cursor)
+    db.notices.count_documents = AsyncMock(return_value=0)
+
+    out = await search_completed_procurements(ctx, offset=50_000)
+
+    assert out["offset"] == 10_000
+    cursor.skip.assert_called_once_with(10_000)
 
 
 class TestGetProcurementDetail:

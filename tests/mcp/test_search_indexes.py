@@ -35,7 +35,28 @@ def test_notices_fields_include_title_and_cpv_as_token():
     title_types = [f["type"] for f in fields["title"]]
     assert "string" in title_types
     assert fields["cpv_code"]["type"] == "token"
-    assert fields["publication_date"]["type"] == "date"
+    # publication_date is stored as an ISO string (model_dump(mode="json")), so the
+    # `date` mapping alone indexes nothing; `token` backs $search range + sort.
+    pub_types = [f["type"] for f in fields["publication_date"]]
+    assert "token" in pub_types and "date" in pub_types
+
+
+def test_notices_filter_fields_mapped_as_token():
+    # Every compound.filter clause search_procurements emits needs a token
+    # mapping, otherwise equals/in/range silently match nothing.
+    fields = INDEX_DEFINITIONS["notices"]["definition"]["mappings"]["fields"]
+    assert fields["notice_type"]["type"] == "token"
+    assert fields["procurer"]["fields"]["ico"]["type"] == "token"
+    assert fields["procurer"]["fields"]["name"]["type"] == "string"
+    supplier = fields["awards"]["fields"]["supplier"]["fields"]
+    assert supplier["ico"]["type"] == "token"
+    assert supplier["name"]["type"] == "string"
+
+
+def test_notices_text_fields_keep_sk_folding_analyzer():
+    definition = INDEX_DEFINITIONS["notices"]["definition"]
+    assert definition["analyzer"] == "sk_folding"
+    assert definition["searchAnalyzer"] == "sk_folding"
 
 
 def test_notices_title_has_autocomplete_for_search_operator():

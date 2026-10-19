@@ -56,6 +56,32 @@ class TestFindSupplier:
         assert result["status_code"] == 503
 
 
+@pytest.mark.parametrize("tool", [find_procurer, find_supplier])
+async def test_offset_is_clamped_like_the_routers(tool):
+    from uvo_mcp.config import Settings
+    from uvo_mcp.server import AppContext
+
+    coll = MagicMock()
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.skip.return_value = cursor
+    cursor.limit.return_value = cursor
+    cursor.to_list = AsyncMock(return_value=[])
+    coll.find = MagicMock(return_value=cursor)
+    coll.estimated_document_count = AsyncMock(return_value=0)
+    ctx = MagicMock()
+    ctx.request_context.lifespan_context = AppContext(
+        http_client=MagicMock(),
+        settings=Settings(),
+        mongo_db={"procurers": coll, "suppliers": coll},
+    )
+
+    out = await tool(ctx, offset=50_000)
+
+    assert out["offset"] == 10_000
+    cursor.skip.assert_called_once_with(10_000)
+
+
 async def test_ico_bypass_uses_find_not_aggregate():
     coll = MagicMock()
     coll.count_documents = AsyncMock(return_value=1)
@@ -78,7 +104,7 @@ async def test_ico_bypass_uses_find_not_aggregate():
     )
     assert out["total"] == 1
     assert out["items"][0]["ico"] == "123"
-    coll.find.assert_called_once_with({"ico": "123"})
+    coll.find.assert_called_once_with({"ico": "123"}, {"name_embedding": 0})
 
 
 async def test_name_query_builds_search_pipeline():

@@ -17,6 +17,10 @@ _search_mongo_procurements = search_procurements
 
 logger = logging.getLogger(__name__)
 
+# Deep-paging bound, same as the FastAPI routers (`Query(le=10_000)`): skip cost
+# grows with the offset even on an index-backed sort.
+_MAX_OFFSET = 10_000
+
 
 def _get_app_context(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context
@@ -47,7 +51,7 @@ async def search_completed_procurements(
         date_from=date_from,
         date_to=date_to,
         limit=min(limit, app_ctx.settings.max_page_size),
-        offset=max(offset, 0),
+        offset=min(max(offset, 0), _MAX_OFFSET),
     )
 
 

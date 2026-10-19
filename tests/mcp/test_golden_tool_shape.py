@@ -31,17 +31,15 @@ def _ctx_with_db(db) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_search_completed_procurements_golden_shape():
-    agg = MagicMock()
-    agg.to_list = AsyncMock(
-        return_value=[
-            {
-                "items": [{"_id": "abc123", "title": "Dodávka IT", "final_value": 1000.0}],
-                "total": [{"count": 1}],
-            }
-        ]
+    # Text queries run two aggregates: the page ($search) and the count ($searchMeta).
+    items = MagicMock()
+    items.to_list = AsyncMock(
+        return_value=[{"_id": "abc123", "title": "Dodávka IT", "final_value": 1000.0}]
     )
+    meta = MagicMock()
+    meta.to_list = AsyncMock(return_value=[{"count": {"total": 1}}])
     db = MagicMock()
-    db.notices.aggregate = MagicMock(return_value=agg)
+    db.notices.aggregate = MagicMock(side_effect=[items, meta])
 
     result = await search_completed_procurements(
         _ctx_with_db(db), text_query="it", limit=20, offset=0
