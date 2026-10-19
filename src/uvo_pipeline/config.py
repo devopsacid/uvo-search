@@ -11,7 +11,6 @@ class PipelineSettings(BaseSettings):
     ekosystem_base_url: str = "https://datahub.ekosystem.slovensko.digital"
     ekosystem_api_token: str = ""
     ted_base_url: str = "https://api.ted.europa.eu"
-    ckan_base_url: str = "https://data.slovensko.sk"  # NOTE: CKAN API no longer available here
 
     # Databases (required for pipeline) — no defaults: a missing value must
     # fail at startup rather than silently using a known-weak credential.
