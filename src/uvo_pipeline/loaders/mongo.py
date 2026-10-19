@@ -1,6 +1,7 @@
 """MongoDB loader — upsert canonical notices, procurers, and suppliers."""
 
 import logging
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -178,6 +179,32 @@ async def upsert_supplier(db: AsyncIOMotorDatabase, supplier: CanonicalSupplier)
     return str(result["_id"])
 
 
+def _collapse_entity_ops(
+    entities: Iterable[tuple[str | None, str, dict[str, Any]]],
+) -> list[UpdateOne]:
+    """One upsert per distinct entity key (ICO, else name_slug) in a batch.
+
+    Later occurrences win on scalar fields (same as sequential ``$set``) and
+    ``sources`` are unioned, so N notices naming one procurer cost one op, not N.
+    """
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    for ico, name_slug, doc in entities:
+        key = ("ico", ico) if ico else ("slug", name_slug)
+        current = merged.get(key)
+        if current is None:
+            merged[key] = {"ico": ico, "name_slug": name_slug, "doc": dict(doc)}
+            continue
+        sources = list(
+            dict.fromkeys([*(current["doc"].get("sources") or []), *(doc.get("sources") or [])])
+        )
+        current["doc"] = {**current["doc"], **doc, "sources": sources}
+    ops: list[UpdateOne] = []
+    for entry in merged.values():
+        filter_, update = _entity_update(entry["ico"], entry["name_slug"], entry["doc"])
+        ops.append(UpdateOne(filter_, update, upsert=True))
+    return ops
+
+
 async def upsert_batch(
     db: AsyncIOMotorDatabase,
     notices: list[CanonicalNotice],
@@ -186,9 +213,13 @@ async def upsert_batch(
 ) -> dict[str, int]:
     """Bulk upsert notices with pre-ingestion skip via ingested_docs registry.
 
-    Returns {inserted, updated, skipped, errors}.
+    Returns {inserted, updated, skipped, errors, failed}. ``failed`` lists the
+    ``(source, source_id)`` of notices whose write to ``notices`` failed; they
+    get no registry entry (so a redelivery is not skipped as "unchanged") and
+    the caller must not acknowledge them.
     """
     inserted = updated = skipped = errors = 0
+    failed: list[tuple[str, str]] = []
 
     for i in range(0, len(notices), batch_size):
         raw_batch = notices[i : i + batch_size]
@@ -225,7 +256,9 @@ async def upsert_batch(
         # `result.upserted_id is not None` check produced.
         notice_ops: list[UpdateOne] = []
         notice_op_notices: list[CanonicalNotice] = []
-        registry_ops: list[InsertOne | UpdateOne] = []
+        # (notice key, op) pairs: registry ops for written notices must be
+        # dropped when that notice's notices-write fails.
+        registry_ops: list[tuple[tuple[str, str], InsertOne | UpdateOne]] = []
 
         for notice in batch:
             key = (notice.source, notice.source_id)
@@ -246,28 +279,34 @@ async def upsert_batch(
                 )
                 notice_op_notices.append(notice)
                 registry_ops.append(
-                    InsertOne(
-                        {
-                            "source": notice.source,
-                            "source_id": notice.source_id,
-                            "content_hash": notice.content_hash,
-                            "ingested_at": now,
-                            "last_seen_at": now,
-                            "pipeline_run_id": notice.pipeline_run_id,
-                            "skipped_count": 0,
-                        }
+                    (
+                        key,
+                        InsertOne(
+                            {
+                                "source": notice.source,
+                                "source_id": notice.source_id,
+                                "content_hash": notice.content_hash,
+                                "ingested_at": now,
+                                "last_seen_at": now,
+                                "pipeline_run_id": notice.pipeline_run_id,
+                                "skipped_count": 0,
+                            }
+                        ),
                     )
                 )
 
             elif reg_entry["content_hash"] == notice.content_hash:
                 # Unchanged — skip upsert, update registry metadata
                 registry_ops.append(
-                    UpdateOne(
-                        {"source": notice.source, "source_id": notice.source_id},
-                        {
-                            "$set": {"last_seen_at": now},
-                            "$inc": {"skipped_count": 1},
-                        },
+                    (
+                        key,
+                        UpdateOne(
+                            {"source": notice.source, "source_id": notice.source_id},
+                            {
+                                "$set": {"last_seen_at": now},
+                                "$inc": {"skipped_count": 1},
+                            },
+                        ),
                     )
                 )
                 skipped += 1
@@ -287,15 +326,18 @@ async def upsert_batch(
                 )
                 notice_op_notices.append(notice)
                 registry_ops.append(
-                    UpdateOne(
-                        {"source": notice.source, "source_id": notice.source_id},
-                        {
-                            "$set": {
-                                "content_hash": notice.content_hash,
-                                "last_seen_at": now,
-                                "pipeline_run_id": notice.pipeline_run_id,
-                            }
-                        },
+                    (
+                        key,
+                        UpdateOne(
+                            {"source": notice.source, "source_id": notice.source_id},
+                            {
+                                "$set": {
+                                    "content_hash": notice.content_hash,
+                                    "last_seen_at": now,
+                                    "pipeline_run_id": notice.pipeline_run_id,
+                                }
+                            },
+                        ),
                     )
                 )
 
@@ -318,6 +360,7 @@ async def upsert_batch(
                         werr.get("errmsg"),
                     )
                     errors += 1
+                    failed.append((n.source, n.source_id))
 
             for idx, notice in enumerate(notice_op_notices):
                 if idx in failed_notice_idx:
@@ -327,9 +370,13 @@ async def upsert_batch(
                 else:
                     updated += 1
 
-        if registry_ops:
+        failed_keys = {
+            (n.source, n.source_id) for n in map(notice_op_notices.__getitem__, failed_notice_idx)
+        }
+        live_registry_ops = [op for key, op in registry_ops if key not in failed_keys]
+        if live_registry_ops:
             try:
-                await db.ingested_docs.bulk_write(registry_ops, ordered=False)
+                await db.ingested_docs.bulk_write(live_registry_ops, ordered=False)
             except BulkWriteError as exc:
                 for werr in (exc.details or {}).get("writeErrors", []):
                     logger.error("Failed to update ingested_docs registry: %s", werr.get("errmsg"))
@@ -338,23 +385,16 @@ async def upsert_batch(
         # instead of one find_one_and_update per procurer/supplier occurrence.
         # Unordered is safe: multiple ops for the same (source, source_id) key
         # within a batch each still apply their own $set/$addToSet atomically.
-        procurer_ops: list[UpdateOne] = []
-        supplier_ops: list[UpdateOne] = []
-        for notice in batch:
-            if notice.procurer:
-                filter_, update = _entity_update(
-                    notice.procurer.ico,
-                    notice.procurer.name_slug,
-                    notice.procurer.model_dump(mode="json"),
-                )
-                procurer_ops.append(UpdateOne(filter_, update, upsert=True))
-            for award in notice.awards:
-                filter_, update = _entity_update(
-                    award.supplier.ico,
-                    award.supplier.name_slug,
-                    award.supplier.model_dump(mode="json"),
-                )
-                supplier_ops.append(UpdateOne(filter_, update, upsert=True))
+        procurer_ops = _collapse_entity_ops(
+            (n.procurer.ico, n.procurer.name_slug, n.procurer.model_dump(mode="json"))
+            for n in batch
+            if n.procurer
+        )
+        supplier_ops = _collapse_entity_ops(
+            (a.supplier.ico, a.supplier.name_slug, a.supplier.model_dump(mode="json"))
+            for n in batch
+            for a in n.awards
+        )
 
         if procurer_ops:
             try:
@@ -382,7 +422,13 @@ async def upsert_batch(
         skipped,
         errors,
     )
-    return {"inserted": inserted, "updated": updated, "skipped": skipped, "errors": errors}
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "failed": failed,
+    }
 
 
 def _entity_stats_pipeline(kind: str) -> list[dict]:
