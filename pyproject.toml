@@ -31,6 +31,7 @@ dev = [
     "mongomock-motor>=0.0.21",
     "pytest-playwright>=0.5",
     "fakeredis>=2.20",
+    "import-linter>=2.0",
 ]
 
 [build-system]
@@ -59,6 +60,26 @@ select = ["E", "F", "I", "UP"]
 # UP046: Generic[T] subclass syntax — PEP 695 style is Python 3.13+, keep 3.12 compat
 ignore = ["E501", "UP046"]
 
+[tool.importlinter]
+root_packages = ["uvo_core", "uvo_pipeline", "uvo_workers", "uvo_api", "uvo_mcp"]
+
+[[tool.importlinter.contracts]]
+name = "uvo_core is independent of the delivery and pipeline packages"
+type = "forbidden"
+source_modules = ["uvo_core"]
+forbidden_modules = ["uvo_pipeline", "uvo_workers", "uvo_api", "uvo_mcp"]
+
+[[tool.importlinter.contracts]]
+name = "uvo_core and uvo_pipeline do not import the entrypoint packages"
+type = "forbidden"
+source_modules = ["uvo_core", "uvo_pipeline"]
+forbidden_modules = ["uvo_api", "uvo_mcp", "uvo_workers"]
+
+[[tool.importlinter.contracts]]
+name = "Entrypoint packages do not import each other"
+type = "independence"
+modules = ["uvo_api", "uvo_mcp", "uvo_workers"]
+
 [dependency-groups]
 dev = [
     "mongomock-motor>=0.0.36",
@@ -68,6 +89,7 @@ dev = [
     "respx>=0.22.0",
     "pytest-playwright>=0.5",
     "fakeredis>=2.20",
+    "import-linter>=2.15",
 ]
 
 [project.scripts]
