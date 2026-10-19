@@ -15,6 +15,9 @@ _run_entity_search = entity_search
 
 logger = logging.getLogger(__name__)
 
+# Deep-paging bound, same as the FastAPI routers (`Query(le=10_000)`).
+_MAX_OFFSET = 10_000
+
 
 def _get_app_context(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context
@@ -41,7 +44,7 @@ async def find_procurer(
         ico=ico,
         sort_by=sort_by,
         limit=min(limit, app_ctx.settings.max_page_size),
-        offset=max(offset, 0),
+        offset=min(max(offset, 0), _MAX_OFFSET),
     )
 
 
@@ -66,5 +69,5 @@ async def find_supplier(
         ico=ico,
         sort_by=sort_by,
         limit=min(limit, app_ctx.settings.max_page_size),
-        offset=max(offset, 0),
+        offset=min(max(offset, 0), _MAX_OFFSET),
     )

@@ -63,6 +63,29 @@ async def test_pipeline_filters_inside_search_and_counts_via_search_meta():
     assert "$searchMeta" in db.notices.aggregate.call_args_list[1].args[0][0]
 
 
+async def test_offset_is_clamped_like_the_routers():
+    from uvo_mcp.config import Settings
+    from uvo_mcp.server import AppContext
+
+    db = MagicMock()
+    ctx = MagicMock()
+    ctx.request_context.lifespan_context = AppContext(
+        http_client=MagicMock(), settings=Settings(), mongo_db=db
+    )
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.skip.return_value = cursor
+    cursor.limit.return_value = cursor
+    cursor.to_list = AsyncMock(return_value=[])
+    db.notices.find = MagicMock(return_value=cursor)
+    db.notices.count_documents = AsyncMock(return_value=0)
+
+    out = await search_completed_procurements(ctx, offset=50_000)
+
+    assert out["offset"] == 10_000
+    cursor.skip.assert_called_once_with(10_000)
+
+
 class TestGetProcurementDetail:
     @pytest.mark.asyncio
     async def test_no_mongo_returns_503(self, mock_context):
