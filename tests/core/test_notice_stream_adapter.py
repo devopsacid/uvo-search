@@ -46,3 +46,24 @@ async def test_xadd_maxlen_trims_stream():
     assert (
         length <= 5
     )  # approximate trim — not exact, matches existing xadd_notice(approximate=True)
+
+
+async def test_xadd_many_returns_str_ids_and_preserves_order():
+    redis_client = fakeredis.aioredis.FakeRedis()
+    stream = RedisNoticeStream(redis_client, "ted")
+
+    ids = await stream.xadd_many(
+        [{"source_id": f"T-{i}", "content_hash": f"h{i}", "pipeline_run_id": "r"} for i in range(3)]
+    )
+
+    assert len(ids) == 3
+    assert all(isinstance(i, str) for i in ids)
+    assert await redis_client.xlen("notices:ted") == 3
+
+
+async def test_wait_for_capacity_noop_when_disabled():
+    redis_client = fakeredis.aioredis.FakeRedis()
+    stream = RedisNoticeStream(redis_client, "ted")
+    await stream.xadd_many([{"source_id": "T-1", "content_hash": "h", "pipeline_run_id": "r"}])
+
+    await stream.wait_for_capacity(high_water=0)
