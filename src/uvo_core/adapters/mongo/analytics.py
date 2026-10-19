@@ -282,14 +282,26 @@ def build_cpv_breakdown_pipeline(
 
 
 def build_monthly_buckets_pipeline(year: int) -> list[dict]:
-    """Full-corpus monthly count + spend for one year."""
+    """Full-corpus monthly count + spend for one year.
+
+    The year window is expressed on the *raw* ``award_date`` / ``publication_date``
+    fields in the leading ``$match`` (equivalent to coalescing ``award_date`` then
+    ``publication_date``) so the planner can use indexes instead of computing a
+    derived field for every document first.
+    """
+    window = {"$gte": f"{year}-", "$lt": f"{year + 1}-"}
+    match = {
+        **_dashboard_match(None, None),
+        "$or": [
+            {"award_date": window},
+            {"award_date": None, "publication_date": window},
+        ],
+    }
     return [
-        {"$match": _dashboard_match(None, None)},
-        {"$addFields": {"_d": {"$ifNull": [_DATE_EXPR, ""]}}},
-        {"$match": {"_d": {"$gte": f"{year}-", "$lt": f"{year + 1}-"}}},
+        {"$match": match},
         {
             "$group": {
-                "_id": {"$toInt": {"$substrCP": ["$_d", 5, 2]}},
+                "_id": {"$toInt": {"$substrCP": [_DATE_EXPR, 5, 2]}},
                 "count": {"$sum": 1},
                 "total": {"$sum": _VALUE_EXPR},
             }
