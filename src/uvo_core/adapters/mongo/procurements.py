@@ -15,7 +15,8 @@ Two query shapes, both bounded by the page rather than the corpus:
 The coalesced contract value (final → estimated → 0) cannot be expressed as a
 ``$search`` clause, so a value filter on a text query stays a ``$match`` — placed
 after the sorted ``$search`` so the page still streams, and counted over the
-text-matched set only.
+text-matched set only. The ``source`` filter is handled the same way: ``source`` is
+not mapped in the search index, and remapping it would trigger an index rebuild.
 """
 
 import asyncio
@@ -70,9 +71,12 @@ def _find_filter(
     date_from: str | None,
     date_to: str | None,
     value_expr: dict | None,
+    source: str | None = None,
 ) -> dict:
     """Plain MQL filter for the no-text-query path."""
     filter_: dict = {"notice_type": _NOTICE_TYPE}
+    if source:
+        filter_["source"] = source
     if cpv_codes:
         filter_["cpv_code"] = {"$in": cpv_codes}
     if procurer_id:
@@ -138,23 +142,37 @@ async def _find_page(db, filter_: dict, *, limit: int, offset: int) -> tuple[lis
 
 
 def _search_pipelines(
-    operator: dict, value_expr: dict | None, *, limit: int, offset: int
+    operator: dict,
+    value_expr: dict | None,
+    *,
+    limit: int,
+    offset: int,
+    source: str | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """Return ``(items_pipeline, count_pipeline)`` for a text query."""
-    value_match = [{"$match": {"$expr": value_expr}}] if value_expr is not None else []
+    """Return ``(items_pipeline, count_pipeline)`` for a text query.
+
+    Filters Atlas Search cannot express (coalesced value, ``source``) are ``$match``
+    stages after the sorted ``$search``; when any exists the total is a ``$count``
+    over the matched stream instead of ``$searchMeta``.
+    """
+    post_match: list[dict] = []
+    if value_expr is not None:
+        post_match.append({"$match": {"$expr": value_expr}})
+    if source:
+        post_match.append({"$match": {"source": source}})
     items = [
         {"$search": {"index": _SEARCH_INDEX, **operator, "sort": {"publication_date": -1}}},
-        *value_match,
+        *post_match,
         {"$skip": offset},
         {"$limit": limit},
         {"$project": NOTICE_LIST_PROJECTION},
     ]
-    if value_expr is None:
+    if not post_match:
         count = [{"$searchMeta": {"index": _SEARCH_INDEX, **operator, "count": {"type": "total"}}}]
     else:
         count = [
             {"$search": {"index": _SEARCH_INDEX, **operator}},
-            *value_match,
+            *post_match,
             {"$count": "count"},
         ]
     return items, count
@@ -174,7 +192,7 @@ def _total_from_count(rows: list[dict]) -> int:
 @async_ttl_cache(
     maxsize=256,
     ttl=_CACHE_TTL_SEARCH,
-    key_from=lambda db, *, text_query, cpv_codes, procurer_id, supplier_ico, date_from, date_to, value_min=None, value_max=None, limit, offset: (
+    key_from=lambda db, *, text_query, cpv_codes, procurer_id, supplier_ico, date_from, date_to, value_min=None, value_max=None, source=None, limit, offset: (
         _make_key(
             (),
             {
@@ -186,6 +204,7 @@ def _total_from_count(rows: list[dict]) -> int:
                 "date_to": date_to,
                 "value_min": value_min,
                 "value_max": value_max,
+                "source": source,
                 "limit": limit,
                 "offset": offset,
             },
@@ -203,6 +222,7 @@ async def search_procurements(
     date_to: str | None = None,
     value_min: float | None = None,
     value_max: float | None = None,
+    source: str | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
@@ -218,6 +238,7 @@ async def search_procurements(
             date_from=date_from,
             date_to=date_to,
             value_expr=value_expr,
+            source=source,
         )
         logger.debug("search_procurements: find path filter=%s", filter_)
         items, total = await _find_page(db, filter_, limit=limit, offset=offset)
@@ -234,7 +255,7 @@ async def search_procurements(
         ),
     )
     items_pipeline, count_pipeline = _search_pipelines(
-        operator, value_expr, limit=limit, offset=offset
+        operator, value_expr, limit=limit, offset=offset, source=source
     )
     logger.debug("search_procurements: $search path items=%s", items_pipeline)
     items, count_rows = await asyncio.gather(

@@ -182,6 +182,18 @@ def get_analytics(db: Db):
     return MongoCompanyAnalytics(db)
 
 
+def make_dashboard_analytics(db):
+    """DashboardAnalytics port bound to a Mongo handle (also used by the lifespan warm-up)."""
+    from uvo_core.adapters.mongo.dashboards import MongoDashboardAnalytics
+
+    return MongoDashboardAnalytics(db)
+
+
+def get_dashboard_analytics(db: Db):
+    """DashboardAnalytics port (``/api/analytics``) bound to the shared Mongo handle."""
+    return make_dashboard_analytics(db)
+
+
 def get_graph_store(driver: Annotated[Any | None, Depends(get_neo4j_driver)]):
     """GraphStore port, or None when Neo4j is not configured."""
     if driver is None:

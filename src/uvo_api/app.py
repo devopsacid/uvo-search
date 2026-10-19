@@ -16,9 +16,11 @@ from uvo_api.db import (
     close_resources,
     get_index_probe,
     install_resources,
+    make_dashboard_analytics,
 )
 from uvo_api.errors import register_error_handlers
 from uvo_api.routers import (
+    analytics,
     contracts,
     dashboard,
     firma,
@@ -36,8 +38,23 @@ from uvo_core.adapters.mongo.health import mongo_ready
 from uvo_core.adapters.mongo.search_indexes import SearchIndexProbe, ensure_indexes
 from uvo_core.adapters.redis.cache_invalidation import run_cache_invalidator
 from uvo_core.infra.clients import close_quietly, make_redis
+from uvo_core.services.analytics import warm_default_dashboards
 
 logger = logging.getLogger(__name__)
+
+# Delay before the dashboard warm-up so startup (index bootstrap, probes) is not contended.
+_WARMUP_DELAY_SECONDS = 5.0
+
+
+async def _warm_dashboards(db, delay: float = _WARMUP_DELAY_SECONDS) -> None:
+    """Pre-compute the landing-page aggregates; best effort, never raises."""
+    try:
+        await asyncio.sleep(delay)
+        await warm_default_dashboards(make_dashboard_analytics(db))
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - warm-up is an optimisation, not a dependency
+        logger.warning("dashboard warm-up failed", exc_info=True)
 
 
 async def _stop_task(task: asyncio.Task) -> None:
@@ -76,9 +93,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     invalidator = asyncio.create_task(
         run_cache_invalidator(subscriber_redis), name="cache-invalidator"
     )
+    warmup = asyncio.create_task(_warm_dashboards(resources.db), name="dashboard-warmup")
     try:
         yield
     finally:
+        await _stop_task(warmup)
         await _stop_task(invalidator)
         await close_quietly("subscriber redis", subscriber_redis.aclose)
         await close_resources(resources)
@@ -131,6 +150,7 @@ def create_app() -> FastAPI:
     app.include_router(firma.router)
     app.include_router(firmy_router)
     app.include_router(dashboard.router)
+    app.include_router(analytics.router)
     app.include_router(ingestion.router)
     app.include_router(ingestion_log.router)
     app.include_router(worker_status.router)

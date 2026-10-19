@@ -10,7 +10,24 @@ without MongoDB. They mirror the adapters' value/date precedence:
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import UTC, datetime
 from statistics import median as _statistics_median
+
+from uvo_core.adapters.mongo.dashboards import (
+    coverage_since,
+    shape_concentration,
+    shape_coverage,
+    shape_cpv,
+    shape_summary,
+    shape_timeseries,
+    shape_top,
+)
+from uvo_core.domain.analytics import (
+    D1_NOTICE_TYPE,
+    DashboardFilter,
+    cpv_division,
+    cpv_group,
+)
 
 
 def _median(values: list[float]) -> float:
@@ -63,12 +80,15 @@ class InMemoryNoticeRepository:
         date_to: str | None = None,
         value_min: float | None = None,
         value_max: float | None = None,
+        source: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> dict:
         rows = [
             n for n in self.notices if n.get("notice_type", "contract_award") == "contract_award"
         ]
+        if source:
+            rows = [n for n in rows if n.get("source") == source]
         if cpv_codes:
             rows = [n for n in rows if n.get("cpv_code") in cpv_codes]
         if procurer_id:
@@ -315,3 +335,194 @@ class InMemoryCompanyAnalytics:
 
         ordered = sorted(rows.values(), key=lambda r: r.get(sort_field) or 0, reverse=True)
         return {"total": len(ordered), "items": ordered[offset : offset + limit]}
+
+
+class InMemoryDashboardAnalytics:
+    """DashboardAnalytics fake: metric definition D1 computed in plain Python.
+
+    It produces the same *raw rows* the Mongo pipelines return and hands them to the
+    shared ``shape_*`` functions, so it is an independent check of the pipelines'
+    filtering and grouping (the E2E test compares both over the shared 30-notice
+    fixture) while the shaping rules live in one place.
+    """
+
+    def __init__(self, notices: list[dict] | None = None) -> None:
+        self.notices = list(notices or [])
+
+    # -- D1 selection -------------------------------------------------------------
+
+    def _selected(self, f: DashboardFilter) -> list[dict]:
+        lo, hi = f.date_from or "", f.date_to or "9999-12-31"
+        out = []
+        for n in self.notices:
+            if n.get("notice_type") != D1_NOTICE_TYPE:
+                continue
+            day = n.get("award_date")
+            if day is None:
+                day = n.get("publication_date")
+            if day is None or not (lo <= day <= hi):
+                continue
+            if f.cpv and not str(n.get("cpv_code") or "").startswith(f.cpv):
+                continue
+            if f.source and n.get("source") != f.source:
+                continue
+            if f.procurer_ico and (n.get("procurer") or {}).get("ico") != f.procurer_ico:
+                continue
+            if f.supplier_ico and f.supplier_ico not in _supplier_icos(n):
+                continue
+            out.append(n)
+        return out
+
+    @staticmethod
+    def _day(notice: dict) -> str:
+        day = notice.get("award_date")
+        return day if day is not None else (notice.get("publication_date") or "")
+
+    @staticmethod
+    def _supplier_names(notices: list[dict]) -> dict[str, str]:
+        names: dict[str, str] = {}
+        for n in notices:
+            for award in n.get("awards") or []:
+                s = award.get("supplier") or {}
+                if s.get("ico") and s.get("name") and s["ico"] not in names:
+                    names[s["ico"]] = s["name"]
+        return names
+
+    @staticmethod
+    def _entity_groups(notices: list[dict], dimension: str) -> dict[str, dict]:
+        groups: dict[str, dict] = {}
+        for n in notices:
+            if dimension == "procurer":
+                keys = [(n.get("procurer") or {}).get("ico")]
+            elif dimension == "supplier":
+                keys = sorted(_supplier_icos(n))
+            else:
+                keys = [cpv_division(n.get("cpv_code"))]
+            for key in keys:
+                if not key:
+                    continue
+                g = groups.setdefault(key, {"_id": key, "count": 0, "total": 0.0})
+                g["count"] += 1
+                g["total"] += _value(n)
+                if dimension == "procurer":
+                    g.setdefault("name", (n.get("procurer") or {}).get("name"))
+        return groups
+
+    # -- port ----------------------------------------------------------------------
+
+    async def summary(self, f: DashboardFilter) -> dict:
+        sel = self._selected(f)
+        procurers = {(n.get("procurer") or {}).get("ico") for n in sel} - {None, ""}
+        suppliers = set().union(*(_supplier_icos(n) for n in sel)) if sel else set()
+        row = {
+            "totals": [{"count": len(sel), "total": sum(_value(n) for n in sel)}] if sel else [],
+            "procurers": [{"n": len(procurers)}] if procurers else [],
+            "suppliers": [{"n": len(suppliers)}] if suppliers else [],
+        }
+        return shape_summary([row], f)
+
+    async def timeseries(
+        self, f: DashboardFilter, granularity: str, split_by: str | None, top: int
+    ) -> dict:
+        width = 4 if granularity == "year" else 7
+        cells: dict[tuple, dict] = {}
+        for n in self._selected(f):
+            gid: dict = {"period": self._day(n)[:width]}
+            if split_by == "source":
+                gid["key"] = n.get("source")
+            elif split_by == "cpv_division":
+                gid["key"] = cpv_division(n.get("cpv_code"))
+            cell = cells.setdefault(tuple(gid.items()), {"_id": gid, "count": 0, "total": 0.0})
+            cell["count"] += 1
+            cell["total"] += _value(n)
+        return shape_timeseries(list(cells.values()), f, granularity, split_by, top)
+
+    async def top(self, f: DashboardFilter, dimension: str, metric: str, n: int) -> dict:
+        sel = self._selected(f)
+        field = "total" if metric == "total_value" else "count"
+        groups = sorted(
+            self._entity_groups(sel, dimension).values(), key=lambda g: (-g[field], g["_id"])
+        )[:n]
+        if dimension == "supplier":
+            names = self._supplier_names(sel)
+            for g in groups:
+                g["name"] = names.get(g["_id"])
+        total = [{"count": len(sel), "total": sum(_value(x) for x in sel)}] if sel else []
+        return shape_top([{"total": total, "items": groups}], dimension, metric, n)
+
+    async def concentration(self, f: DashboardFilter, dimension: str) -> dict:
+        sel = self._selected(f)
+        groups = [g for g in self._entity_groups(sel, dimension).values() if g["total"] > 0]
+        if dimension == "supplier":
+            names = self._supplier_names(sel)
+            for g in groups:
+                g["name"] = names.get(g["_id"])
+        top = sorted(groups, key=lambda g: (-g["total"], g["_id"]))[:10]
+        total = sum(g["total"] for g in groups)
+        totals = (
+            [{"total": total, "sumsq": sum(g["total"] ** 2 for g in groups), "n": len(groups)}]
+            if groups
+            else []
+        )
+        return shape_concentration([{"totals": totals, "top": top}], dimension)
+
+    async def cpv(self, f: DashboardFilter, level: str) -> dict:
+        normalise = cpv_division if level == "division" else cpv_group
+        groups: dict[str, dict] = {}
+        for n in self._selected(f):
+            key = normalise(n.get("cpv_code"))
+            g = groups.setdefault(key, {"_id": key, "count": 0, "total": 0.0})
+            g["count"] += 1
+            g["total"] += _value(n)
+        return shape_cpv(list(groups.values()), level)
+
+    async def coverage(self) -> dict:
+        now = datetime.now(UTC)
+        since = coverage_since(now)
+        per_source: dict[str, dict] = {}
+        monthly: dict[tuple[str, str], int] = {}
+        for n in self.notices:
+            source = n.get("source") or "unknown"
+            g = per_source.setdefault(
+                source,
+                {
+                    "_id": source,
+                    "notices_total": 0,
+                    "contract_awards": 0,
+                    "last_publication": None,
+                    "last_ingested": None,
+                    "with_value": 0,
+                    "with_cpv": 0,
+                    "with_supplier": 0,
+                    "with_procurer": 0,
+                },
+            )
+            g["notices_total"] += 1
+            for key, field in (
+                ("last_publication", "publication_date"),
+                ("last_ingested", "ingested_at"),
+            ):
+                v = n.get(field)
+                if v and (g[key] is None or v > g[key]):
+                    g[key] = v
+            if n.get("notice_type") == D1_NOTICE_TYPE:
+                g["contract_awards"] += 1
+                g["with_value"] += 1 if _value(n) > 0 else 0
+                g["with_cpv"] += 1 if n.get("cpv_code") else 0
+                g["with_supplier"] += 1 if _supplier_icos(n) else 0
+                g["with_procurer"] += 1 if (n.get("procurer") or {}).get("ico") else 0
+            pub = n.get("publication_date") or ""
+            if pub >= since:
+                key = (pub[:7], source)
+                monthly[key] = monthly.get(key, 0) + 1
+        monthly_rows = [
+            {"_id": {"period": p, "source": s}, "count": c} for (p, s), c in monthly.items()
+        ]
+        canonical_ids = [n["canonical_id"] for n in self.notices if n.get("canonical_id")]
+        return shape_coverage(
+            list(per_source.values()),
+            monthly_rows,
+            len(canonical_ids),
+            len(set(canonical_ids)),
+            now,
+        )

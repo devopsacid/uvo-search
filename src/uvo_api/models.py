@@ -1,6 +1,8 @@
 # src/uvo_api/models.py
 """Pydantic v2 response models for the analytics API."""
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 # --- Shared ---
@@ -410,3 +412,172 @@ class CytoEdge(BaseModel):
 class GraphResponse(BaseModel):
     nodes: list[CytoNode]
     edges: list[CytoEdge]
+
+
+# --- Analytics dashboards ---
+# Key names are the contract in docs/specs/2026-10-19-analytics-dashboards.md §6.2;
+# the SPA's TypeScript interfaces mirror them one to one.
+
+
+class AnalyticsFilters(BaseModel):
+    date_from: str | None = None
+    date_to: str | None = None
+    cpv: str | None = None
+    source: str | None = None
+    procurer_ico: str | None = None
+    supplier_ico: str | None = None
+
+
+class AnalyticsMeta(BaseModel):
+    definition: Literal["D1"] = "D1"
+    filters: AnalyticsFilters
+    generated_at: str
+
+
+class AnalyticsPeriod(BaseModel):
+    date_from: str
+    date_to: str
+    contract_count: int
+    total_value: float
+    avg_value: float
+    procurer_count: int
+    supplier_count: int
+
+
+class AnalyticsDeltas(BaseModel):
+    contract_count_pct: float | None = None
+    total_value_pct: float | None = None
+    avg_value_pct: float | None = None
+    procurer_count_pct: float | None = None
+    supplier_count_pct: float | None = None
+
+
+class AnalyticsSummaryResponse(BaseModel):
+    meta: AnalyticsMeta
+    current: AnalyticsPeriod
+    previous: AnalyticsPeriod | None = None
+    deltas: AnalyticsDeltas
+
+
+class AnalyticsPoint(BaseModel):
+    period: str
+    contract_count: int
+    total_value: float
+    avg_value: float
+
+
+class AnalyticsSeries(BaseModel):
+    key: str
+    label: str
+    points: list[AnalyticsPoint]
+
+
+class AnalyticsTimeseriesResponse(BaseModel):
+    meta: AnalyticsMeta
+    granularity: Literal["month", "quarter", "year"]
+    points: list[AnalyticsPoint]
+    series: list[AnalyticsSeries] | None = None
+
+
+class AnalyticsTotals(BaseModel):
+    total_value: float
+    contract_count: int
+
+
+class AnalyticsTopItem(BaseModel):
+    key: str
+    label: str
+    ico: str | None = None
+    total_value: float
+    contract_count: int
+    share_pct: float
+
+
+class AnalyticsOther(AnalyticsTotals):
+    share_pct: float
+
+
+class AnalyticsTopResponse(BaseModel):
+    meta: AnalyticsMeta
+    dimension: Literal["procurer", "supplier", "cpv_division"]
+    metric: Literal["total_value", "contract_count"]
+    total: AnalyticsTotals
+    items: list[AnalyticsTopItem]
+    other: AnalyticsOther
+
+
+class AnalyticsConcentrationItem(BaseModel):
+    ico: str
+    name: str
+    total_value: float
+    share_pct: float
+    cumulative_pct: float
+
+
+class AnalyticsConcentrationResponse(BaseModel):
+    meta: AnalyticsMeta
+    dimension: Literal["supplier", "procurer"]
+    hhi: float
+    hhi_band: Literal["low", "moderate", "high"]
+    cr4_pct: float
+    cr10_pct: float
+    entity_count: int
+    total_value: float
+    top: list[AnalyticsConcentrationItem]
+
+
+class AnalyticsCpvItem(BaseModel):
+    cpv_code: str
+    prefix: str
+    label_sk: str
+    total_value: float
+    contract_count: int
+    share_pct: float
+
+
+class AnalyticsCpvResponse(BaseModel):
+    meta: AnalyticsMeta
+    level: Literal["division", "group"]
+    total_value: float
+    contract_count: int
+    items: list[AnalyticsCpvItem]
+
+
+class AnalyticsSourceQuality(BaseModel):
+    with_value_pct: float
+    with_cpv_pct: float
+    with_supplier_ico_pct: float
+    with_procurer_ico_pct: float
+
+
+class AnalyticsSourceCoverage(BaseModel):
+    source: str
+    notices_total: int
+    contract_awards: int
+    last_publication_date: str | None = None
+    last_ingested_at: str | None = None
+    age_seconds: float | None = None
+    status: Literal["healthy", "warning", "stale", "legacy", "unknown"]
+    expected_cadence_seconds: int | None = None
+    quality: AnalyticsSourceQuality
+
+
+class AnalyticsMonthlyCoverage(BaseModel):
+    period: str
+    vestnik: int
+    crz: int
+    ted: int
+    uvo: int
+    itms: int
+
+
+class AnalyticsCanonical(BaseModel):
+    notices_with_canonical_id: int
+    match_groups: int
+
+
+class AnalyticsCoverageResponse(BaseModel):
+    generated_at: str
+    sources: list[AnalyticsSourceCoverage]
+    monthly: list[AnalyticsMonthlyCoverage]
+    canonical: AnalyticsCanonical

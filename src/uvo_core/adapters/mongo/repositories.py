@@ -34,6 +34,7 @@ class MongoNoticeRepository:
         date_to: str | None = None,
         value_min: float | None = None,
         value_max: float | None = None,
+        source: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> dict:
@@ -47,6 +48,7 @@ class MongoNoticeRepository:
             date_to=date_to,
             value_min=value_min,
             value_max=value_max,
+            source=source,
             limit=limit,
             offset=offset,
         )

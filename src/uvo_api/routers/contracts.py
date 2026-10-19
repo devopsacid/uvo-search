@@ -27,6 +27,11 @@ async def list_contracts(
     ico: str | None = Query(None),
     supplier_ico: str | None = Query(None),
     procurer_ico: str | None = Query(None),
+    source: str | None = Query(
+        None,
+        pattern="^(vestnik|crz|ted|uvo|itms)$",
+        description="Restrict to one data source.",
+    ),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0, le=10_000, description="Result offset; deep paging is bounded"),
 ) -> ContractListResponse:
@@ -41,6 +46,7 @@ async def list_contracts(
         date_to=date_to,
         value_min=value_min,
         value_max=value_max,
+        source=source,
         limit=limit,
         offset=offset,
     )
