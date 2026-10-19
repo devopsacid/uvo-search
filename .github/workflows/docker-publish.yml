@@ -1,31 +1,42 @@
 name: Publish Docker Images
 
-# Builds and pushes every application image on push to main so both live
-# deployment paths have something to pull:
-#   - Docker Swarm (deploy-dev.yml, workflow_dispatch): pulls
-#     ghcr.io/<repo>/uvo-{mcp,api,workers,gui}:dev-<sha7>, built by its own
-#     job on manual trigger. This workflow does NOT publish that tag scheme
-#     and never touches deploy-dev.yml — it only adds `latest` and immutable
-#     `sha-<short>` tags to the SAME image names, so the two workflows write
-#     different tags of the same repos without conflicting.
-#   - Kubernetes/ArgoCD (deploy/k8s): currently pins images by the
-#     `sha-<short>` tag this workflow produces (see
-#     deploy/k8s/overlays/hetzner/kustomization.yaml). NOTE: as of this
-#     writing that file's `images:` block expects flat names
-#     (`uvo-search-mcp`, `uvo-search-api`, `uvo-search-gui-react`,
-#     `uvo-search-workers`) rather than the `uvo-{mcp,api,workers,gui}`
-#     names published here — that mismatch needs a human decision (rename
-#     one side) before ArgoCD can actually pull. See the PR description.
+# Publishes every application image, but only for a commit on main whose CI
+# run (unit tests, lint, frontend, image build + import checks, E2E) succeeded.
+# It is triggered by that CI run completing, not by the push itself, so a red
+# main never produces tags.
+#
+# Tags (unchanged, consumed downstream -- do not rename):
+#   ghcr.io/<repo>/uvo-{mcp,api,workers,gui,pipeline}:sha-<7-char commit sha>
+#   ghcr.io/<repo>/uvo-{mcp,api,workers,gui,pipeline}:latest
+#
+# Production runs on the Hetzner k8s cluster managed from the stubarag-infra
+# repo (argocd/manifests/uvo-search), which pins the `sha-<short>` tag.
+# Publishing does NOT deploy; bumping the pin in stubarag-infra does.
+# deploy/k8s in this repo is superseded and not used for deployment.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 env:
   REGISTRY: ghcr.io
 
+# One publish at a time, in order; never cancel one mid-push (that could leave
+# `latest` and `sha-*` pointing at different builds).
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Build and push (${{ matrix.image }})
+    # workflow_run fires for every CI completion, including PR runs from
+    # forks/branches named main and failed/cancelled runs.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -35,30 +46,41 @@ jobs:
       matrix:
         include:
           - image: mcp
-            dockerfile: Dockerfile.mcp
+            dockerfile: Dockerfile
+            target: mcp
             context: .
           - image: api
-            dockerfile: Dockerfile.api
+            dockerfile: Dockerfile
+            target: api
             context: .
           - image: workers
-            dockerfile: Dockerfile.workers
+            dockerfile: Dockerfile
+            target: workers
             context: .
           - image: gui
             dockerfile: src/uvo-gui-react/Dockerfile
+            target: ""
             context: src/uvo-gui-react
           # Legacy one-shot backfill CLI (deploy/k8s/base/pipeline-job.yaml
-          # runs it as a manual batch/v1 Job, never a Deployment — see
-          # deploy/README.md). Not long-lived and not part of the
-          # kustomize-managed image list, but a real, runnable artifact:
-          # ci.yml already builds and import-checks it, and someone has to
-          # be able to `kubectl apply` the Job with a real tag. Publishing
-          # it here is the cheapest way to keep that path unbroken.
+          # runs it as a manual batch/v1 Job, never a Deployment). Not
+          # long-lived, but a real runnable artifact that ci.yml builds and
+          # import-checks, so keep it published.
           - image: pipeline
-            dockerfile: Dockerfile.pipeline
+            dockerfile: Dockerfile
+            target: pipeline
             context: .
 
     steps:
+      # Build exactly the commit CI validated, not whatever main moved to since.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Compute short sha
+        id: sha
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: echo "short=${HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -70,6 +92,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # type=sha would use github.sha, which on a workflow_run event is the
+      # default branch tip, not the validated commit -- so tag explicitly.
       - name: Extract metadata for ${{ matrix.image }} image
         id: meta
         uses: docker/metadata-action@v5
@@ -77,13 +101,14 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/uvo-${{ matrix.image }}
           tags: |
             type=raw,value=latest
-            type=sha,format=short
+            type=raw,value=sha-${{ steps.sha.outputs.short }}
 
       - name: Build and push ${{ matrix.image }} image
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

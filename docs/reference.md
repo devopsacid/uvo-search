@@ -263,8 +263,7 @@ uvo-search/
 │   ├── ci.yml                            # Unit tests, lint, Docker build
 │   └── docker-publish.yml                # Push to registry on tag
 │
-├── Dockerfile.mcp                        # MCP server image
-├── Dockerfile.api                        # API bridge image
+├── Dockerfile                            # Multi-stage: targets mcp, api, workers, pipeline
 ├── docker-compose.yml                    # Local deployment (14 services)
 ├── pyproject.toml                        # Dependencies, tooling config
 ├── uv.lock                               # Locked dependency versions

@@ -1,3 +1,5 @@
+# Python images COPY only pyproject.toml, uv.lock and src/uvo_{core,mcp,api,pipeline,workers}.
+# Everything else is build-context noise (or secrets) and busts layer caches.
 **/node_modules
 **/__pycache__
 **/.pytest_cache
@@ -5,6 +7,26 @@
 **/.mypy_cache
 **/dist
 **/.venv
+**/*.pyc
 .git
+.github
+.claude
 .worktrees
 .superpowers
+.env
+.env.*
+!.env.example
+.coverage
+coverage
+htmlcov
+logs
+tests
+docs
+deploy
+docker
+scripts
+*.md
+docker-compose*.yml
+Dockerfile*
+# GUI image builds from its own context (src/uvo-gui-react)
+src/uvo-gui-react

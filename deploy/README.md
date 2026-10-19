@@ -41,20 +41,20 @@ Four images map 1:1 to the existing Dockerfiles at repo root / `src/uvo-gui-reac
 
 | Image | Dockerfile | Compose services it replaces |
 |---|---|---|
-| `REGISTRY_PLACEHOLDER/uvo-search-mcp` | `Dockerfile.mcp` | mcp-server |
-| `REGISTRY_PLACEHOLDER/uvo-search-api` | `Dockerfile.api` | api |
+| `REGISTRY_PLACEHOLDER/uvo-search-mcp` | `Dockerfile` (`--target mcp`) | mcp-server |
+| `REGISTRY_PLACEHOLDER/uvo-search-api` | `Dockerfile` (`--target api`) | api |
 | `REGISTRY_PLACEHOLDER/uvo-search-gui-react` | `src/uvo-gui-react/Dockerfile` | gui-react |
-| `REGISTRY_PLACEHOLDER/uvo-search-workers` | `Dockerfile.workers` | all 4 extractors + ingestor + dedup-worker (same image, different `args:`) |
-| `REGISTRY_PLACEHOLDER/uvo-search-pipeline` | `Dockerfile.pipeline` | legacy `pipeline` Job only |
+| `REGISTRY_PLACEHOLDER/uvo-search-workers` | `Dockerfile` (`--target workers`) | all 4 extractors + ingestor + dedup-worker (same image, different `args:`) |
+| `REGISTRY_PLACEHOLDER/uvo-search-pipeline` | `Dockerfile` (`--target pipeline`) | legacy `pipeline` Job only |
 
 ```bash
 REGISTRY=registry.example.com/uvo-search   # <-- your real registry
 TAG=$(git rev-parse --short HEAD)
 
-docker build -f Dockerfile.mcp -t $REGISTRY/uvo-search-mcp:$TAG .
-docker build -f Dockerfile.api -t $REGISTRY/uvo-search-api:$TAG .
-docker build -f Dockerfile.workers -t $REGISTRY/uvo-search-workers:$TAG .
-docker build -f Dockerfile.pipeline -t $REGISTRY/uvo-search-pipeline:$TAG .
+docker build --target mcp -t $REGISTRY/uvo-search-mcp:$TAG .
+docker build --target api -t $REGISTRY/uvo-search-api:$TAG .
+docker build --target workers -t $REGISTRY/uvo-search-workers:$TAG .
+docker build --target pipeline -t $REGISTRY/uvo-search-pipeline:$TAG .
 docker build -t $REGISTRY/uvo-search-gui-react:$TAG src/uvo-gui-react
 
 for img in mcp api workers pipeline gui-react; do

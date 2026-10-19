@@ -2,7 +2,8 @@ services:
   mcp-server:
     build:
       context: .
-      dockerfile: Dockerfile.mcp
+      dockerfile: Dockerfile
+      target: mcp
     ports:
       - "127.0.0.1:8000:8000"
     env_file: .env
@@ -22,7 +23,8 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: Dockerfile
+      target: api
     ports:
       - "8001:8001"
     env_file: .env
@@ -155,7 +157,8 @@ services:
   extractor-vestnik:
     build:
       context: .
-      dockerfile: Dockerfile.workers
+      dockerfile: Dockerfile
+      target: workers
     command: ["uvo_workers.vestnik"]
     env_file: .env
     environment:
@@ -178,7 +181,8 @@ services:
   extractor-crz:
     build:
       context: .
-      dockerfile: Dockerfile.workers
+      dockerfile: Dockerfile
+      target: workers
     command: ["uvo_workers.crz"]
     env_file: .env
     environment:
@@ -198,7 +202,8 @@ services:
   extractor-ted:
     build:
       context: .
-      dockerfile: Dockerfile.workers
+      dockerfile: Dockerfile
+      target: workers
     command: ["uvo_workers.ted"]
     env_file: .env
     environment:
@@ -218,7 +223,8 @@ services:
   extractor-itms:
     build:
       context: .
-      dockerfile: Dockerfile.workers
+      dockerfile: Dockerfile
+      target: workers
     command: ["uvo_workers.itms"]
     env_file: .env
     environment:
@@ -240,7 +246,8 @@ services:
   ingestor:
     build:
       context: .
-      dockerfile: Dockerfile.workers
+      dockerfile: Dockerfile
+      target: workers
     command: ["uvo_workers.ingestor"]
     env_file: .env
     environment:
@@ -260,7 +267,8 @@ services:
   dedup-worker:
     build:
       context: .
-      dockerfile: Dockerfile.workers
+      dockerfile: Dockerfile
+      target: workers
     command: ["uvo_workers.dedup"]
     env_file: .env
     environment:
@@ -289,7 +297,8 @@ services:
     profiles: ["legacy"]
     build:
       context: .
-      dockerfile: Dockerfile.pipeline
+      dockerfile: Dockerfile
+      target: pipeline
     env_file: .env
     environment:
       PIPELINE_MODE: ${PIPELINE_MODE:-recent}
