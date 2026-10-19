@@ -9,7 +9,9 @@ import fakeredis.aioredis
 import pytest
 from mongomock_motor import AsyncMongoMockClient
 
+import uvo_workers.context as context_mod
 import uvo_workers.ingestor as ingestor_mod
+from tests.workers.helpers import fake_clients
 from uvo_core.adapters.redis.streams import ensure_consumer_group, read_group, xadd_many
 from uvo_workers.ingestor import (
     DEAD_LETTER_STREAM,
@@ -235,14 +237,6 @@ async def test_run_loop_reclaims_even_when_traffic_never_stops(monkeypatch):
         {b"payload": json.dumps(_payload("A")).encode(), b"hash": b"h", b"run": b"r"},
     )
 
-    monkeypatch.setattr(ingestor_mod, "AsyncIOMotorClient", AsyncMongoMockClient)
-    monkeypatch.setattr(ingestor_mod, "get_redis", AsyncMock(return_value=redis))
-    monkeypatch.setattr(ingestor_mod, "close_redis", AsyncMock())
-    monkeypatch.setattr(
-        ingestor_mod,
-        "AsyncGraphDatabase",
-        type("G", (), {"driver": staticmethod(lambda *a, **k: _Driver())}),
-    )
     monkeypatch.setattr(ingestor_mod, "ensure_consumer_group", AsyncMock())
     monkeypatch.setattr(ingestor_mod, "ensure_indexes", AsyncMock())
     monkeypatch.setattr(ingestor_mod, "ensure_constraints", AsyncMock())
@@ -270,9 +264,9 @@ async def test_run_loop_reclaims_even_when_traffic_never_stops(monkeypatch):
     async def fake_serve_health(port, snapshot, **kwargs):
         await asyncio.Event().wait()
 
-    monkeypatch.setattr(ingestor_mod, "serve_health", fake_serve_health)
+    monkeypatch.setattr(context_mod, "serve_health", fake_serve_health)
 
-    task = asyncio.create_task(ingestor_mod.run_ingestor())
+    task = asyncio.create_task(ingestor_mod.run_ingestor(fake_clients(redis, neo4j=_Driver())))
     try:
         await asyncio.wait_for(reclaimed.wait(), timeout=10)
     finally:

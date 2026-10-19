@@ -9,8 +9,13 @@ import respx
 from mongomock_motor import AsyncMongoMockClient
 
 import uvo_workers.crz as crz_mod
+import uvo_workers.extract as extract_mod
 import uvo_workers.ted as ted_mod
+from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
 from uvo_workers.checkpoints import next_checkpoint, resolve_since
+from uvo_workers.extract import ExtractContext, run_extract
+
+from .helpers import DB_NAME
 
 NOW = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 
@@ -43,16 +48,22 @@ class _FrozenDatetime(datetime):
         return NOW
 
 
+def _ctx(mongo_client) -> ExtractContext:
+    return ExtractContext(
+        redis=fakeredis.aioredis.FakeRedis(),
+        checkpoints=MongoCheckpointStore(mongo_client[DB_NAME]),
+    )
+
+
 @pytest.mark.asyncio
 async def test_crz_checkpoint_is_cycle_start_minus_overlap(monkeypatch):
     mongo_client = AsyncMongoMockClient()
-    monkeypatch.setattr(crz_mod, "AsyncIOMotorClient", lambda *a, **kw: mongo_client)
-    monkeypatch.setattr(crz_mod, "datetime", _FrozenDatetime)
+    monkeypatch.setattr(extract_mod, "datetime", _FrozenDatetime)
     monkeypatch.setattr(crz_mod.get_settings(), "checkpoint_overlap_seconds", 7200)
 
     with respx.mock(base_url="https://datahub.ekosystem.slovensko.digital") as mock:
         mock.get("/api/data/crz/contracts/sync").mock(return_value=httpx.Response(200, json=[]))
-        await crz_mod._extract(fakeredis.aioredis.FakeRedis(), {})
+        await run_extract(crz_mod.SPEC, _ctx(mongo_client))
 
     doc = await mongo_client["uvo_search"].pipeline_state.find_one({"source": "crz"})
     saved = doc.get("state", doc)["crz_since"]
@@ -62,15 +73,14 @@ async def test_crz_checkpoint_is_cycle_start_minus_overlap(monkeypatch):
 @pytest.mark.asyncio
 async def test_ted_checkpoint_is_cycle_start_minus_overlap(monkeypatch):
     mongo_client = AsyncMongoMockClient()
-    monkeypatch.setattr(ted_mod, "AsyncIOMotorClient", lambda *a, **kw: mongo_client)
-    monkeypatch.setattr(ted_mod, "datetime", _FrozenDatetime)
+    monkeypatch.setattr(extract_mod, "datetime", _FrozenDatetime)
     monkeypatch.setattr(ted_mod.get_settings(), "checkpoint_overlap_seconds", 7200)
 
     with respx.mock(base_url="https://api.ted.europa.eu") as mock:
         mock.post("/v3/notices/search").mock(
             return_value=httpx.Response(200, json={"notices": [], "totalNoticeCount": 0})
         )
-        await ted_mod._extract(fakeredis.aioredis.FakeRedis(), {})
+        await run_extract(ted_mod.SPEC, _ctx(mongo_client))
 
     doc = await mongo_client["uvo_search"].pipeline_state.find_one({"source": "ted"})
     saved = doc.get("state", doc)["ted_since"]

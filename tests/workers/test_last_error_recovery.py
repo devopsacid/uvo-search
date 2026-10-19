@@ -13,10 +13,12 @@ from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
 import pytest
-from mongomock_motor import AsyncMongoMockClient
 
+import uvo_workers.context as context_mod
 import uvo_workers.dedup as dedup_mod
 import uvo_workers.ingestor as ingestor_mod
+
+from .helpers import fake_clients
 
 
 class _FakeNeo4jSession:
@@ -33,12 +35,6 @@ class _FakeNeo4jDriver:
 
     async def close(self):
         pass
-
-
-class _FakeGraphDatabase:
-    @staticmethod
-    def driver(*args, **kwargs):
-        return _FakeNeo4jDriver()
 
 
 def _encoded_entry(entry_id: bytes = b"1-0") -> tuple:
@@ -76,10 +72,6 @@ async def _publish_until(
 async def test_ingestor_last_error_clears_after_next_successful_batch(monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
 
-    monkeypatch.setattr(ingestor_mod, "AsyncIOMotorClient", AsyncMongoMockClient)
-    monkeypatch.setattr(ingestor_mod, "get_redis", AsyncMock(return_value=fake_redis))
-    monkeypatch.setattr(ingestor_mod, "close_redis", AsyncMock())
-    monkeypatch.setattr(ingestor_mod, "AsyncGraphDatabase", _FakeGraphDatabase)
     monkeypatch.setattr(ingestor_mod, "ensure_consumer_group", AsyncMock())
     monkeypatch.setattr(ingestor_mod, "ensure_indexes", AsyncMock())
     monkeypatch.setattr(ingestor_mod, "ensure_constraints", AsyncMock())
@@ -123,9 +115,11 @@ async def test_ingestor_last_error_clears_after_next_successful_batch(monkeypatc
         captured["snapshot"] = snapshot
         await _never_returns()
 
-    monkeypatch.setattr(ingestor_mod, "serve_health", fake_serve_health)
+    monkeypatch.setattr(context_mod, "serve_health", fake_serve_health)
 
-    task = asyncio.create_task(ingestor_mod.run_ingestor())
+    task = asyncio.create_task(
+        ingestor_mod.run_ingestor(fake_clients(fake_redis, neo4j=_FakeNeo4jDriver()))
+    )
     try:
         # Cycle 1's exception is caught (and last_error set) strictly before
         # the loop calls read_group a second time, so this wait is a
@@ -163,9 +157,6 @@ async def test_dedup_worker_last_error_clears_after_next_successful_run(monkeypa
     """
     fake_redis = fakeredis.aioredis.FakeRedis()
 
-    monkeypatch.setattr(dedup_mod, "AsyncIOMotorClient", AsyncMongoMockClient)
-    monkeypatch.setattr(dedup_mod, "get_redis", AsyncMock(return_value=fake_redis))
-    monkeypatch.setattr(dedup_mod, "close_redis", AsyncMock())
     monkeypatch.setattr(dedup_mod, "recompute_entity_stats", AsyncMock(return_value={}))
     # A failed cycle still counts against MIN_DEDUP_INTERVAL_SECONDS (it sets
     # last_dedup_run before calling _run_dedup), so with the real 300s floor
@@ -192,7 +183,7 @@ async def test_dedup_worker_last_error_clears_after_next_successful_run(monkeypa
         captured["snapshot"] = snapshot
         await _never_returns()
 
-    monkeypatch.setattr(dedup_mod, "serve_health", fake_serve_health)
+    monkeypatch.setattr(context_mod, "serve_health", fake_serve_health)
 
     # Debounce fires immediately; the (default, real) interval fallback is
     # 3600s and never fires in this test.
@@ -200,7 +191,7 @@ async def test_dedup_worker_last_error_clears_after_next_successful_run(monkeypa
         dedup_mod, "get_settings", lambda: dedup_mod.DedupWorkerSettings(dedup_debounce_seconds=0)
     )
 
-    task = asyncio.create_task(dedup_mod.run_dedup_worker())
+    task = asyncio.create_task(dedup_mod.run_dedup_worker(fake_clients(fake_redis)))
     try:
         await _publish_until(fake_redis, "notices:written", "1", reached_cycle1)
 

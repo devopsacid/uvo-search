@@ -1,10 +1,10 @@
 """Tests for uvo_workers.crz — truncated-fetch checkpoint safety (Bug A).
 
 A mid-sync HTTP failure must not be swallowed inside the fetch generator:
-doing so let `_extract` reach its `save_checkpoint(..., utcnow())` call as if
+doing so let `run_extract` reach its `save_checkpoint(..., utcnow())` call as if
 the sync had fully completed, silently skipping everything between the
 truncation point and "now" on the next cycle. The fix lets the error
-propagate out of `fetch_contracts_since` so `_extract` (and `run_extractor_loop`)
+propagate out of `fetch_contracts_since` so `run_extract` (and `run_extractor_loop`)
 never reach the checkpoint save, and the failure is recorded as `cycle_failed`.
 """
 
@@ -17,9 +17,12 @@ import respx
 from mongomock_motor import AsyncMongoMockClient
 
 import uvo_workers.crz as crz_mod
-import uvo_workers.runner as runner_mod
+from uvo_core.adapters.mongo.checkpoints import MongoCheckpointStore
 from uvo_core.adapters.redis.client import RedisSettings
+from uvo_workers.extract import ExtractContext, run_extract
 from uvo_workers.runner import run_extractor_loop
+
+from .helpers import DB_NAME, fake_clients
 
 BASE_URL = "https://datahub.ekosystem.slovensko.digital"
 
@@ -53,15 +56,17 @@ def _mock_truncated_sync(mock: respx.MockRouter) -> None:
 
 
 @pytest.mark.asyncio
-async def test_crz_extract_raises_and_leaves_checkpoint_untouched(monkeypatch):
+async def test_crz_extract_raises_and_leaves_checkpoint_untouched():
     mongo_client = AsyncMongoMockClient()
-    monkeypatch.setattr(crz_mod, "AsyncIOMotorClient", lambda *a, **kw: mongo_client)
-    fake_redis = fakeredis.aioredis.FakeRedis()
+    ctx = ExtractContext(
+        redis=fakeredis.aioredis.FakeRedis(),
+        checkpoints=MongoCheckpointStore(mongo_client[DB_NAME]),
+    )
 
     with respx.mock(base_url=BASE_URL) as mock:
         _mock_truncated_sync(mock)
         with pytest.raises(httpx.HTTPStatusError):
-            await crz_mod._extract(fake_redis, {})
+            await run_extract(crz_mod.SPEC, ctx)
 
     db = mongo_client["uvo_search"]
     checkpoint = await db.pipeline_state.find_one({"source": "crz"})
@@ -69,30 +74,17 @@ async def test_crz_extract_raises_and_leaves_checkpoint_untouched(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_crz_worker_cycle_failed_logged_and_checkpoint_untouched(monkeypatch):
+async def test_crz_worker_cycle_failed_logged_and_checkpoint_untouched():
     """Driven through the real daemon loop: cycle_failed is logged, and the
     pipeline_state checkpoint for `crz` is never written."""
     mongo_client = AsyncMongoMockClient()
-    monkeypatch.setattr(crz_mod, "AsyncIOMotorClient", lambda *a, **kw: mongo_client)
-    monkeypatch.setattr(runner_mod, "AsyncIOMotorClient", lambda *a, **kw: mongo_client)
-
     fake_redis = fakeredis.aioredis.FakeRedis()
 
-    async def fake_get_redis(url=None, password=None):
-        return fake_redis
-
-    async def fake_close_redis(client):
-        pass
-
-    monkeypatch.setattr(runner_mod, "get_redis", fake_get_redis)
-    monkeypatch.setattr(runner_mod, "close_redis", fake_close_redis)
-
     done = asyncio.Event()
-    real_extract = crz_mod._extract
 
     async def extract_then_signal(redis, state):
         try:
-            return await real_extract(redis, state)
+            return await run_extract(crz_mod.SPEC, ExtractContext.from_loop_state(redis, state))
         finally:
             done.set()
 
@@ -107,6 +99,7 @@ async def test_crz_worker_cycle_failed_logged_and_checkpoint_untouched(monkeypat
                 redis_settings=_fake_redis_settings(),
                 health_port=0,
                 instance_id="crz-test",
+                clients=fake_clients(fake_redis, mongo=mongo_client),
             )
         )
         await asyncio.wait_for(done.wait(), timeout=5.0)

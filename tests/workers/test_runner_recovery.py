@@ -4,26 +4,17 @@ import asyncio
 
 import fakeredis.aioredis
 import pytest
-from mongomock_motor import AsyncMongoMockClient
 
-import uvo_workers.runner as runner_mod
+import uvo_workers.context as context_mod
 from uvo_core.adapters.redis.client import RedisSettings
 from uvo_workers.runner import run_extractor_loop
+
+from .helpers import fake_clients
 
 
 @pytest.mark.asyncio
 async def test_last_error_cleared_after_successful_cycle(monkeypatch):
     fake_redis = fakeredis.aioredis.FakeRedis()
-    monkeypatch.setattr(runner_mod, "AsyncIOMotorClient", AsyncMongoMockClient)
-
-    async def fake_get(url=None, password=None):
-        return fake_redis
-
-    async def fake_close(client):
-        pass
-
-    monkeypatch.setattr(runner_mod, "get_redis", fake_get)
-    monkeypatch.setattr(runner_mod, "close_redis", fake_close)
 
     snapshots = []
 
@@ -31,7 +22,7 @@ async def test_last_error_cleared_after_successful_cycle(monkeypatch):
         snapshots.append(snapshot)
         await asyncio.Event().wait()
 
-    monkeypatch.setattr(runner_mod, "serve_health", fake_serve_health)
+    monkeypatch.setattr(context_mod, "serve_health", fake_serve_health)
 
     calls = [0]
     done = asyncio.Event()
@@ -51,6 +42,7 @@ async def test_last_error_cleared_after_successful_cycle(monkeypatch):
             redis_settings=RedisSettings(redis_url="redis://x:6379/0", redis_password=""),
             health_port=9999,
             instance_id="t",
+            clients=fake_clients(fake_redis),
         )
     )
     try:

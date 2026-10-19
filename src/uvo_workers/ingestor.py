@@ -10,21 +10,16 @@ the ``notices:dead`` stream and acknowledged so it cannot loop forever.
 import asyncio
 import logging
 import os
-import signal
 import time
 import uuid
 from dataclasses import dataclass, field
-from functools import lru_cache
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from neo4j import AsyncGraphDatabase
-from pydantic_settings import BaseSettings
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from redis.exceptions import RedisError
 
 from uvo_core.adapters.mongo.ingestion_log import IngestionLogEntry, log_event, log_events
 from uvo_core.adapters.mongo.loaders import ensure_indexes, upsert_batch
 from uvo_core.adapters.neo4j.loader import ensure_constraints, merge_notice_batch
-from uvo_core.adapters.redis.client import close_redis, get_redis, get_redis_settings
 from uvo_core.adapters.redis.pubsub import publish
 from uvo_core.adapters.redis.streams import (
     ack,
@@ -37,11 +32,11 @@ from uvo_core.adapters.redis.streams import (
     trim_consumed,
 )
 from uvo_core.domain.models import CanonicalNotice
-from uvo_pipeline.config import get_pipeline_settings
 from uvo_pipeline.utils.date_validation import validate_notice_dates
+from uvo_workers.clients import WorkerClients
+from uvo_workers.context import WorkerContext
 from uvo_workers.errors import redact_exception
-from uvo_workers.health import serve_health
-from uvo_workers.metrics import build_registry
+from uvo_workers.settings import WorkerSettings, settings_factory
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +56,7 @@ _BOOTSTRAP_BACKOFF_SECONDS = 2.0
 _OUTAGE_SUSPECT_THRESHOLD = 3
 
 
-class IngestorSettings(BaseSettings):
+class IngestorSettings(WorkerSettings):
     ingestor_batch_size: int = 100
     # Deliveries before a failing entry is processed alone and, if it still
     # fails, dead-lettered.
@@ -74,13 +69,8 @@ class IngestorSettings(BaseSettings):
     ingestor_maintenance_interval_seconds: float = 30.0
     health_port: int = 8095
 
-    model_config = {"env_file": ".env", "secrets_dir": "/run/secrets", "extra": "ignore"}
 
-
-@lru_cache
-def get_settings() -> IngestorSettings:
-    """One IngestorSettings construction per process (cached factory idiom)."""
-    return IngestorSettings()
+get_settings = settings_factory(IngestorSettings)
 
 
 @dataclass
@@ -402,11 +392,9 @@ async def run_maintenance(ctx: IngestorContext) -> None:
         logger.warning("ingestor: dead-letter length unavailable: %s", exc)
 
 
-async def run_ingestor() -> None:
+async def run_ingestor(clients: WorkerClients | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = get_settings()
-    pipeline_settings = get_pipeline_settings()
-    redis_settings = get_redis_settings()
     instance_id = uuid.uuid4().hex
     # Consumer name must be stable across restarts so this pod's own pending
     # entries are redelivered to it via XAUTOCLAIM. Kubernetes sets HOSTNAME
@@ -415,11 +403,7 @@ async def run_ingestor() -> None:
     # log correlation of a single process lifetime.
     consumer_name = os.environ.get("HOSTNAME") or f"ingestor-{instance_id[:8]}"
 
-    mongo_client = AsyncIOMotorClient(pipeline_settings.mongodb_uri)
-    db = mongo_client[pipeline_settings.mongodb_database]
-
-    metrics: dict = {
-        "instance_id": instance_id,
+    seed: dict = {
         "batches_processed": 0,
         "notices_written": 0,
         "last_error": None,
@@ -427,118 +411,83 @@ async def run_ingestor() -> None:
         "stream_lag": {},
         "stream_pending": {},
         "dead_letter_length": 0,
-        "redis_connected": False,
     }
 
-    try:
-        redis_client = await get_redis(
-            url=redis_settings.redis_url,
-            password=redis_settings.redis_password or None,
-        )
-        await redis_client.ping()
-        metrics["redis_connected"] = True
-    except Exception as exc:
-        logger.critical("Redis connection failed: %s", exc)
-        try:
-            await log_event(
-                db,
-                level="critical",
-                event="redis_connect_failed",
-                component="ingestor",
-                instance_id=instance_id,
-                message=f"Redis connection failed: {redact_exception(exc)}",
-            )
-        except Exception:
-            pass
-        mongo_client.close()
-        raise SystemExit(1) from exc
-
-    await log_event(
-        db,
-        level="info",
-        event="worker_started",
+    async with WorkerContext(
+        name="ingestor",
         component="ingestor",
+        registry_name="ingestor",
+        health_port=settings.health_port,
+        metrics=seed,
+        clients=clients,
+        with_neo4j=True,
         instance_id=instance_id,
-        message="ingestor up",
-        details={"streams": _STREAMS},
-    )
+        start_message="ingestor up",
+        start_details={"streams": _STREAMS},
+        stop_message="ingestor shutting down",
+        stop_details=lambda: {
+            "batches_processed": wctx.metrics["batches_processed"],
+            "notices_written": wctx.metrics["notices_written"],
+        },
+    ) as wctx:
+        db = wctx.db
+        redis_client = wctx.redis
+        neo4j_driver = wctx.neo4j
+        metrics = wctx.metrics
 
-    stop_event = asyncio.Event()
+        # Ensure consumer groups exist for all source streams
+        for stream in _STREAMS:
+            await ensure_consumer_group(redis_client, stream, _GROUP)
 
-    def _signal_handler() -> None:
-        logger.info("Shutdown signal received, stopping ingestor")
-        stop_event.set()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(sig, _signal_handler)
-        except (NotImplementedError, RuntimeError):
-            pass
-
-    metrics_registry = build_registry("ingestor")
-    health_task = asyncio.create_task(
-        serve_health(settings.health_port, lambda: dict(metrics), registry=metrics_registry),
-        name="health-ingestor",
-    )
-
-    # Ensure consumer groups exist for all source streams
-    for stream in _STREAMS:
-        await ensure_consumer_group(redis_client, stream, _GROUP)
-
-    neo4j_driver = AsyncGraphDatabase.driver(
-        pipeline_settings.neo4j_uri,
-        auth=(pipeline_settings.neo4j_user, pipeline_settings.neo4j_password),
-    )
-
-    # The ingestor is the only writer in a worker-only deployment; the legacy
-    # pipeline Job that used to provision these is excluded from the kustomize
-    # base. Both helpers are idempotent, so running them on every start is safe.
-    # Retried: uvo_mcp provisions the same Neo4j constraints at its own startup,
-    # and two concurrent CREATE CONSTRAINT statements deadlock on the label lock
-    # (Neo.TransientError.Transaction.DeadlockDetected). Whichever loses simply
-    # needs to try again — the winner's constraints already satisfy it.
-    for attempt in range(1, _BOOTSTRAP_ATTEMPTS + 1):
-        try:
-            await ensure_indexes(db)
-            async with neo4j_driver.session() as bootstrap_session:
-                await ensure_constraints(bootstrap_session)
-            logger.info("ingestor: indexes and constraints ensured")
-            break
-        except Exception as exc:
-            if attempt < _BOOTSTRAP_ATTEMPTS:
-                delay = _BOOTSTRAP_BACKOFF_SECONDS * attempt
-                logger.warning(
-                    "ingestor: index/constraint bootstrap attempt %d/%d failed (%s); retrying in %.1fs",
-                    attempt,
-                    _BOOTSTRAP_ATTEMPTS,
-                    type(exc).__name__,
-                    delay,
+        # The ingestor is the only writer in a worker-only deployment; the legacy
+        # pipeline Job that used to provision these is excluded from the kustomize
+        # base. Both helpers are idempotent, so running them on every start is safe.
+        # Retried: uvo_mcp provisions the same Neo4j constraints at its own startup,
+        # and two concurrent CREATE CONSTRAINT statements deadlock on the label lock
+        # (Neo.TransientError.Transaction.DeadlockDetected). Whichever loses simply
+        # needs to try again — the winner's constraints already satisfy it.
+        for attempt in range(1, _BOOTSTRAP_ATTEMPTS + 1):
+            try:
+                await ensure_indexes(db)
+                async with neo4j_driver.session() as bootstrap_session:
+                    await ensure_constraints(bootstrap_session)
+                logger.info("ingestor: indexes and constraints ensured")
+                break
+            except Exception as exc:
+                if attempt < _BOOTSTRAP_ATTEMPTS:
+                    delay = _BOOTSTRAP_BACKOFF_SECONDS * attempt
+                    logger.warning(
+                        "ingestor: index/constraint bootstrap attempt %d/%d failed (%s); retrying in %.1fs",
+                        attempt,
+                        _BOOTSTRAP_ATTEMPTS,
+                        type(exc).__name__,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                logger.error(
+                    "ingestor: failed to ensure indexes/constraints: %s", exc, exc_info=True
                 )
-                await asyncio.sleep(delay)
-                continue
-            logger.error("ingestor: failed to ensure indexes/constraints: %s", exc, exc_info=True)
-            await log_event(
-                db,
-                level="error",
-                event="index_bootstrap_failed",
-                component="ingestor",
-                instance_id=instance_id,
-                message=redact_exception(exc),
-            )
+                await log_event(
+                    db,
+                    level="error",
+                    event="index_bootstrap_failed",
+                    component="ingestor",
+                    instance_id=instance_id,
+                    message=redact_exception(exc),
+                )
 
-    ctx = IngestorContext(
-        db=db,
-        redis=redis_client,
-        neo4j_driver=neo4j_driver,
-        instance_id=instance_id,
-        metrics=metrics,
-    )
-    last_reclaim: float | None = None
-    last_maintenance: float | None = None
+        ctx = IngestorContext(
+            db=db,
+            redis=redis_client,
+            neo4j_driver=neo4j_driver,
+            instance_id=instance_id,
+            metrics=metrics,
+        )
+        last_reclaim: float | None = None
+        last_maintenance: float | None = None
 
-    try:
-        while not stop_event.is_set():
+        while not wctx.stop_event.is_set():
             try:
                 results = await read_group(
                     redis_client,
@@ -574,32 +523,6 @@ async def run_ingestor() -> None:
             if is_due(last_maintenance, now, settings.ingestor_maintenance_interval_seconds):
                 last_maintenance = now
                 await run_maintenance(ctx)
-
-    finally:
-        health_task.cancel()
-        try:
-            await health_task
-        except (asyncio.CancelledError, Exception):
-            pass
-        try:
-            await log_event(
-                db,
-                level="info",
-                event="worker_stopped",
-                component="ingestor",
-                instance_id=instance_id,
-                message="ingestor shutting down",
-                details={
-                    "batches_processed": metrics["batches_processed"],
-                    "notices_written": metrics["notices_written"],
-                },
-            )
-        except Exception:
-            pass
-        mongo_client.close()
-        await neo4j_driver.close()
-        await close_redis(redis_client)
-        logger.info("ingestor stopped")
 
 
 if __name__ == "__main__":

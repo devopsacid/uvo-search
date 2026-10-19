@@ -33,10 +33,10 @@ def test_index_bootstrap_failed_is_a_valid_log_event():
     import re
 
     from uvo_core.adapters.mongo.ingestion_log import LogEvent
-    from uvo_workers import dedup, ingestor, runner
+    from uvo_workers import context, dedup, ingestor, runner
 
     allowed = set(LogEvent.__args__)
-    for module in (ingestor, runner, dedup):
+    for module in (ingestor, runner, dedup, context):
         emitted = set(re.findall(r'event="([a-z_]+)"', inspect.getsource(module)))
         unknown = emitted - allowed
         assert not unknown, (
