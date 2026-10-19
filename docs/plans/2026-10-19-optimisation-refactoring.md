@@ -121,7 +121,7 @@ A03: delete `catalog/ckan.py`, `extractors/vestnik_xml.py`, `utils/zip_handler.p
 | A10 | Delete `deploy/` — harvest hardening into the `stubarag-infra` chart first |
 | A02 | Delete `orchestrator.py` / pipeline image — first add a one-shot backfill mode to the workers |
 | A17/A12 | Typed read-models; large function splits — after Wave 2 |
-| F2 | Two definitions of contract count and total value. Entity docs from `recompute_entity_stats` count all notice types and use `final_value` only. `entity_profile` counts `contract_award` only, with a final→estimated fallback. Needs a product decision on the definition, then a stats recompute on existing data |
+| F2 | Two definitions of contract count and total value. Entity docs from `recompute_entity_stats` count all notice types and use `final_value` only. `entity_profile` counts `contract_award` only, with a final→estimated fallback. Dashboards use D1 (spec §4); recommendation: adopt D1 everywhere; entity-stats recompute still pending user decision |
 | — | Notices Atlas Search index rebuild on deploy. Text search returns nothing until the rebuilt index is READY. Measure rebuild time on prod-size data before rollout |
 | — | Ego-network benchmark at prod volume. B6 bounds the query, but it has not been timed on prod-size data |
 | — | CRZ extractor still retries only HTTP 429 (`uvo_pipeline/extractors/crz.py`). It does not use the shared `fetch_with_retry`, so 5xx and timeouts are not retried |

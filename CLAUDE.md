@@ -11,7 +11,7 @@ Five Python packages under `src/` + one React frontend:
 | Package | Port | Entrypoint | Role |
 | ------- | ---- | ---------- | ---- |
 | `uvo_core` | — | (library) | Shared core: query services (`uvo_core.services`), domain models, infrastructure adapters (`uvo_core.adapters.{mongo,neo4j,redis}`), client factories (`uvo_core.infra.clients`). Imports none of the other packages. |
-| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI delivery adapter: `/api/*` for the SPA, `/v1/*` public API, `/health`, `/readyz` |
+| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI delivery adapter: `/api/*` for the SPA (incl. `/api/analytics/*`), `/v1/*` public API, `/health`, `/readyz`, `/metrics` |
 | `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` (`stdio` arg for stdio transport) | FastMCP server — external LLM tool surface over the same services |
 | `uvo_workers` | 8091–8096 | `uv run python -m uvo_workers.<service>` | Long-lived services: 4 extractors (`vestnik`, `crz`, `ted`, `itms`), `ingestor`, `dedup-worker`; Redis Streams |
 | `uvo_pipeline` | — | `uv run python -m uvo_pipeline [health]` | Source extractors and transformers (shared with the workers), `health` CLI, legacy one-shot backfill orchestrator |
@@ -23,7 +23,7 @@ Five Python packages under `src/` + one React frontend:
 
 **Layering:** `uvo_core` imports none of the other packages. `uvo_core` and `uvo_pipeline` never import the entrypoint packages (`uvo_api`, `uvo_mcp`, `uvo_workers`), and the entrypoints don't import each other. CI enforces this with import-linter (`uv run lint-imports`; contracts in `pyproject.toml`).
 
-**Health:** `/health` is liveness only and never checks dependencies. `/readyz` on API and MCP does a bounded Mongo ping and checks that the required Atlas Search indexes exist; it returns 503 otherwise. Workers serve JSON snapshots on `/health` at their ports above.
+**Health:** `/health` is liveness only and never checks dependencies. `/readyz` on API and MCP does a bounded Mongo ping and checks that the required Atlas Search indexes exist; it returns 503 otherwise. Workers serve JSON snapshots on `/health` at their ports above. Prometheus `/metrics` is served by API, MCP and every worker port, outside `/api` so nginx never proxies it. API `/metrics` labels HTTP metrics by route template only.
 
 ## Dev commands
 
@@ -43,6 +43,7 @@ cd src/uvo-gui-react && npm run dev         # React public frontend (5174 dev, 8
 uv run pytest tests/ --ignore=tests/e2e -q  # the full unit suite (also covers tests/core, tests/gui)
 uv run pytest tests/e2e/ -v                 # requires docker compose up
 uv run pytest --cov=src -v
+monitoring/scripts/validate.sh              # promtool + dashboard JSON checks (needs docker, jq)
 
 # Lint (CI runs all three)
 uv run ruff check src/ tests/
@@ -64,7 +65,10 @@ cd src/uvo-gui-react && npm ci && npm run lint && npx tsc -b && npm test -- --ru
 ```bash
 docker compose --profile legacy run --rm pipeline   # ad-hoc backfill (one-shot, exits)
 docker compose --profile debug up -d mongo-express  # dev-only admin UI
+docker compose --profile monitoring up -d           # Prometheus 127.0.0.1:9090, Grafana 127.0.0.1:3000
 ```
+
+The `monitoring` profile is opt-in and not part of the 12. Its rules and dashboards live as code in `monitoring/` (`monitoring/README.md` has the logins and alert runbook). Grafana's admin password comes from `GRAFANA_ADMIN_PASSWORD`; the dev default `uvo_grafana_dev` is acceptable only because the port is loopback-bound.
 
 Credentials are required (`${VAR:?}`), so an empty `.env` aborts at interpolation — only `REDIS_PASSWORD` has a dev default.
 
@@ -105,6 +109,8 @@ Docker Desktop context (`desktop-linux`) will fail with "pipe not found" — tha
 - **Utilities:** `cn()` (Tailwind class merging) from `src/lib/utils.ts`.
 - **Data fetching:** TanStack Query v5 (query client factory in `src/api/queryClient.ts`), no Redux/Zustand state.
 - **Graph chunk:** Cytoscape.js lazy-loaded as code-split chunk; `<Suspense>` wraps graph pages.
+- **Analytics dashboards:** `/analytika/{prehlad,koncentracia,cpv,pokrytie}` (`/` → `prehlad`, `/cpv-trends` → `cpv`). Filters `date_from`, `date_to`, `cpv`, `source`, `procurer_ico`, `supplier_ico` (+ `dimension` on koncentracia) are URL params; `/zakazky` accepts the same names as drill-down targets. Backend: `/api/analytics/*` (`routers/analytics.py`, `uvo_core/services/analytics.py`). CSV export goes through `src/lib/csv.ts` (BOM, `;`, decimal comma).
+- **Metric definition D1** (all dashboards, spec §4): one `contract_award` notice = one contract; value = `final_value` → `estimated_value` → 0; date = `award_date` → `publication_date`; supplier attribution by distinct award ICO. Entity-list sorting and the Firma "Prehľad" KPIs still use the entity-doc definition (all notice types), so totals can differ from a dashboard filtered to the same ICO (F2, still open).
 
 ## Workers (`uvo_workers`)
 
@@ -116,6 +122,7 @@ Docker Desktop context (`desktop-linux`) will fail with "pipe not found" — tha
   - **Producer backpressure:** extractors pause while consumer-group lag + pending ≥ `STREAM_HIGH_WATER`, and fail the cycle after 15 minutes.
   - **Trimming:** `XTRIM MINID` removes only fully acked entries. `STREAM_MAXLEN_APPROX` is a memory safety net, not the retention mechanism.
 - **Dead letters:** watch `XLEN notices:dead` and the `uvo_worker_dead_letter_length` metric. The `health` CLI and the `db-monitor` agent do not read `notices:dead` yet.
+- **Metrics:** `uvo_workers/metrics.py` serves the `uvo_worker_*` families on each worker's `/metrics`. Counters that come from the snapshot (`cycles_completed`, `dedup_runs`, …) are emitted only when the worker tracks them, so an extractor never reports `dedup_runs`. Alerts and dashboards depend on these names (`monitoring/prometheus/rules/uvo-alerts.yml`).
 
 ## Data integrity & pipeline status
 
@@ -164,6 +171,7 @@ uv run python scripts/enrich_itms_procurers.py --limit 100 # run on first 100
 
 - **Pipeline (`.github/workflows/ci.yml`):** `test` (unit tests), `lint` (ruff + `lint-imports`), `frontend` (eslint, `tsc -b`, vitest, build), `images` (builds each image and imports its first-party packages on a read-only rootfs; nginx check for the GUI), `manifests` (kubeconform on `deploy/k8s`), and `docker-compose` (compose up + E2E).
 - **The E2E job needs `test`, `lint` and `frontend`.** While Lint was red it was silently skipped for months, and assertions rotted behind it (`"data"` vs `"items"`, an English GUI title the Slovak UI had dropped) while two runtime-fatal image bugs shipped. It is the only check that runs the real system — keep it green, and treat a skipped E2E as a failed one.
+- **Monitoring job (`monitoring`):** runs `monitoring/scripts/validate.sh` (promtool config/rules/rule tests, dashboard JSON checks), then starts only Prometheus and Grafana to confirm the dashboards provision. It is not in the E2E job's `needs`, so it does not gate E2E.
 - **Publishing (`docker-publish.yml`)** runs via `workflow_run`, and only after CI succeeds on a `push` to `main`. It builds the exact commit CI validated and pushes `ghcr.io/<repo>/uvo-{mcp,api,workers,gui,pipeline}` with tags `sha-<7-char>` and `latest`. Prod pins the `sha-` tag. Publishing never deploys, and the tag names are consumed downstream, so don't rename them.
 - **`uv sync` must run *after* `COPY src/`.** Each target stage in the root `Dockerfile` syncs third-party deps once in a shared `deps` stage, then copies only its own packages and runs `uv sync --frozen --no-dev` again. Without that second sync, the first-party packages never reach the venv and the container dies with `ModuleNotFoundError` on start. Runtime stages contain no `uv` binary; commands run `python -m …` straight from `/app/.venv` on PATH. **A build that succeeds proves nothing about whether the app starts** — that is why CI import-checks each image.
 - **fastembed model** is baked into the `mcp` image at `/opt/fastembed` (`FASTEMBED_CACHE_PATH`). Keep it outside `/tmp`: k8s mounts an emptyDir over `/tmp`, which would hide it.
@@ -174,6 +182,7 @@ uv run python scripts/enrich_itms_procurers.py --limit 100 # run on first 100
 - Mongo uses a custom `sk_folding` analyzer (standard tokenizer + `lowercase` + `icuFolding`) for case- and diacritic-insensitive Slovak search. Name fields carry an `autocomplete` (edgeGram) subfield powering the live dropdown.
 - Atlas Search indexes are created idempotently on `uvo_mcp` and `uvo_api` startup (`uvo_core.adapters.mongo.search_indexes`) — expect a cold-start lag on a fresh Mongo volume; both `/readyz` endpoints stay 503 until the required indexes exist. Failures are logged at ERROR. A drifted index definition is updated in place, which triggers an async rebuild: text search is empty or degraded until the index is READY again.
 - Legacy-data migration after Mongo image swap: `scripts/migrate_to_atlas_local.sh` (one-shot).
+- Analytics aggregates run at query time over `notices` (no precomputed stats), with `maxTimeMS` 15 s and 15-min caches. The ingestor creates the B-tree indexes they need (`notice_type_award_date_desc`, `source_notice_type_publication_date_desc`). Measure cold cost with `MONGODB_URI=... uv run python scripts/bench_analytics.py` before changing a default range. `/api/contracts?source=` filters on the `$search` path after the search stage, so the Atlas index mapping does not change.
 - Graph endpoints (`/api/graph/*`) and the MCP graph tools need Neo4j. If Neo4j is down or unset, they return an error or 503; they do not silently degrade.
 
 ## Production deployment — Kubernetes via ArgoCD
