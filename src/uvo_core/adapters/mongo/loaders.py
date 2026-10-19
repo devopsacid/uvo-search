@@ -76,6 +76,20 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
         name="supplier_ico_notice_type",
     )
 
+    # Analytics dashboards (metric definition D1): the first $or branch seeks on
+    # {notice_type, award_date}; the source filter and per-source coverage groups seek
+    # on {source, notice_type, publication_date}.
+    await _ensure_index(
+        db.notices,
+        [("notice_type", 1), ("award_date", -1)],
+        name="notice_type_award_date_desc",
+    )
+    await _ensure_index(
+        db.notices,
+        [("source", 1), ("notice_type", 1), ("publication_date", -1)],
+        name="source_notice_type_publication_date_desc",
+    )
+
     # procurers / suppliers:
     # - ico_unique uses partialFilterExpression rather than sparse. MongoDB
     #   "sparse" still indexes null-valued fields, so two records with ico=null

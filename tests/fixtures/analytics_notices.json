@@ -1,0 +1,722 @@
+[
+  {
+    "source": "vestnik",
+    "source_id": "vestnik-001",
+    "notice_type": "contract_award",
+    "title": "Fixture vestnik 1",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "35763469",
+          "name": "Stavby Alfa s.r.o."
+        }
+      }
+    ],
+    "final_value": 1200000,
+    "estimated_value": null,
+    "award_date": "2023-02-10",
+    "publication_date": "2023-02-15",
+    "cpv_code": "45233120-6",
+    "ingested_at": "2023-02-15T08:00:00"
+  },
+  {
+    "source": "vestnik",
+    "source_id": "vestnik-002",
+    "notice_type": "contract_award",
+    "title": "Fixture vestnik 2",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "35763469",
+          "name": "Stavby Alfa s.r.o."
+        }
+      }
+    ],
+    "final_value": 800000,
+    "estimated_value": null,
+    "award_date": "2023-05-20",
+    "publication_date": "2023-05-25",
+    "cpv_code": "45233120-6",
+    "ingested_at": "2023-05-25T08:00:00"
+  },
+  {
+    "source": "vestnik",
+    "source_id": "vestnik-003",
+    "notice_type": "contract_award",
+    "title": "Fixture vestnik 3",
+    "procurer": {
+      "ico": "00603481",
+      "name": "Mesto Bratislava"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "44103011",
+          "name": "IT Gama s.r.o."
+        }
+      }
+    ],
+    "final_value": 150000,
+    "estimated_value": null,
+    "award_date": "2023-08-01",
+    "publication_date": "2023-08-03",
+    "cpv_code": "72200000-7",
+    "ingested_at": "2023-08-03T08:00:00"
+  },
+  {
+    "source": "vestnik",
+    "source_id": "vestnik-004",
+    "notice_type": "contract_award",
+    "title": "Fixture vestnik 4",
+    "procurer": {
+      "ico": "36631124",
+      "name": "Narodna dialnicna spolocnost"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "35763469",
+          "name": "Stavby Alfa s.r.o."
+        }
+      },
+      {
+        "supplier": {
+          "ico": "31322832",
+          "name": "Dopravne systemy Beta a.s."
+        }
+      }
+    ],
+    "final_value": 5000000,
+    "estimated_value": null,
+    "award_date": "2024-01-15",
+    "publication_date": "2024-01-20",
+    "cpv_code": "45233120-6",
+    "ingested_at": "2024-01-20T08:00:00"
+  },
+  {
+    "source": "vestnik",
+    "source_id": "vestnik-005",
+    "notice_type": "contract_award",
+    "title": "Fixture vestnik 5",
+    "procurer": {
+      "ico": "00164801",
+      "name": "Mesto Kosice"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000001",
+          "name": "Zdravotnicke potreby Delta"
+        }
+      }
+    ],
+    "final_value": 90000,
+    "estimated_value": null,
+    "award_date": "2024-03-05",
+    "publication_date": "2024-03-07",
+    "cpv_code": "33100000-1",
+    "ingested_at": "2024-03-07T08:00:00"
+  },
+  {
+    "source": "vestnik",
+    "source_id": "vestnik-006",
+    "notice_type": "contract_award",
+    "title": "Fixture vestnik 6",
+    "procurer": {
+      "ico": "00603481",
+      "name": "Mesto Bratislava"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000002",
+          "name": "Cistiace sluzby Epsilon"
+        }
+      }
+    ],
+    "final_value": 40000,
+    "estimated_value": null,
+    "award_date": "2024-07-12",
+    "publication_date": "2024-07-14",
+    "cpv_code": "90911200-8",
+    "ingested_at": "2024-07-14T08:00:00"
+  },
+  {
+    "source": "vestnik",
+    "source_id": "vestnik-007",
+    "notice_type": "contract_award",
+    "title": "Fixture vestnik 7",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "31322832",
+          "name": "Dopravne systemy Beta a.s."
+        }
+      }
+    ],
+    "final_value": 300000,
+    "estimated_value": null,
+    "award_date": null,
+    "publication_date": "2024-11-02",
+    "cpv_code": "34144000-9",
+    "ingested_at": "2024-11-02T08:00:00"
+  },
+  {
+    "source": "vestnik",
+    "source_id": "vestnik-008",
+    "notice_type": "contract_notice",
+    "title": "Fixture vestnik 8",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [],
+    "final_value": null,
+    "estimated_value": 2000000,
+    "award_date": null,
+    "publication_date": "2024-12-01",
+    "cpv_code": "45233120-6",
+    "ingested_at": "2024-12-01T08:00:00"
+  },
+  {
+    "source": "crz",
+    "source_id": "crz-001",
+    "notice_type": "contract_award",
+    "title": "Fixture crz 1",
+    "procurer": {
+      "ico": "00603481",
+      "name": "Mesto Bratislava"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "44103011",
+          "name": "IT Gama s.r.o."
+        }
+      }
+    ],
+    "final_value": null,
+    "estimated_value": 75000,
+    "award_date": "2023-03-03",
+    "publication_date": "2023-03-04",
+    "cpv_code": "72200000-7",
+    "ingested_at": "2023-03-04T08:00:00",
+    "canonical_id": "c-001"
+  },
+  {
+    "source": "crz",
+    "source_id": "crz-002",
+    "notice_type": "contract_award",
+    "title": "Fixture crz 2",
+    "procurer": {
+      "ico": "00164801",
+      "name": "Mesto Kosice"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000002",
+          "name": "Cistiace sluzby Epsilon"
+        }
+      }
+    ],
+    "final_value": 22000,
+    "estimated_value": null,
+    "award_date": "2023-09-09",
+    "publication_date": "2023-09-10",
+    "cpv_code": "90911200-8",
+    "ingested_at": "2023-09-10T08:00:00"
+  },
+  {
+    "source": "crz",
+    "source_id": "crz-003",
+    "notice_type": "contract_award",
+    "title": "Fixture crz 3",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000003",
+          "name": "Konzult Zeta s.r.o."
+        }
+      }
+    ],
+    "final_value": 60000,
+    "estimated_value": null,
+    "award_date": "2024-02-02",
+    "publication_date": "2024-02-03",
+    "cpv_code": "79400000-8",
+    "ingested_at": "2024-02-03T08:00:00"
+  },
+  {
+    "source": "crz",
+    "source_id": "crz-004",
+    "notice_type": "contract_award",
+    "title": "Fixture crz 4",
+    "procurer": {
+      "ico": "36631124",
+      "name": "Narodna dialnicna spolocnost"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "31322832",
+          "name": "Dopravne systemy Beta a.s."
+        }
+      }
+    ],
+    "final_value": null,
+    "estimated_value": 450000,
+    "award_date": "2024-06-30",
+    "publication_date": "2024-07-01",
+    "cpv_code": "34144000-9",
+    "ingested_at": "2024-07-01T08:00:00"
+  },
+  {
+    "source": "crz",
+    "source_id": "crz-005",
+    "notice_type": "contract_award",
+    "title": "Fixture crz 5",
+    "procurer": {
+      "ico": "00603481",
+      "name": "Mesto Bratislava"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "44103011",
+          "name": "IT Gama s.r.o."
+        }
+      }
+    ],
+    "final_value": 98000,
+    "estimated_value": null,
+    "award_date": "2025-01-20",
+    "publication_date": "2025-01-21",
+    "cpv_code": "72200000-7",
+    "ingested_at": "2025-01-21T08:00:00"
+  },
+  {
+    "source": "crz",
+    "source_id": "crz-006",
+    "notice_type": "contract_award",
+    "title": "Fixture crz 6",
+    "procurer": {
+      "ico": "00164801",
+      "name": "Mesto Kosice"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000001",
+          "name": "Zdravotnicke potreby Delta"
+        }
+      }
+    ],
+    "final_value": null,
+    "estimated_value": null,
+    "award_date": "2025-04-04",
+    "publication_date": "2025-04-05",
+    "cpv_code": "33100000-1",
+    "ingested_at": "2025-04-05T08:00:00"
+  },
+  {
+    "source": "ted",
+    "source_id": "ted-001",
+    "notice_type": "contract_award",
+    "title": "Fixture ted 1",
+    "procurer": {
+      "ico": "36631124",
+      "name": "Narodna dialnicna spolocnost"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "35763469",
+          "name": "Stavby Alfa s.r.o."
+        }
+      }
+    ],
+    "final_value": 9000000,
+    "estimated_value": null,
+    "award_date": "2023-11-11",
+    "publication_date": "2023-11-20",
+    "cpv_code": "45233120-6",
+    "ingested_at": "2023-11-20T08:00:00",
+    "canonical_id": "c-002"
+  },
+  {
+    "source": "ted",
+    "source_id": "ted-002",
+    "notice_type": "contract_award",
+    "title": "Fixture ted 2",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "44103011",
+          "name": "IT Gama s.r.o."
+        }
+      }
+    ],
+    "final_value": 640000,
+    "estimated_value": null,
+    "award_date": "2024-04-18",
+    "publication_date": "2024-04-25",
+    "cpv_code": "72200000-7",
+    "ingested_at": "2024-04-25T08:00:00"
+  },
+  {
+    "source": "ted",
+    "source_id": "ted-003",
+    "notice_type": "contract_award",
+    "title": "Fixture ted 3",
+    "procurer": {
+      "ico": "00603481",
+      "name": "Mesto Bratislava"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000003",
+          "name": "Konzult Zeta s.r.o."
+        }
+      }
+    ],
+    "final_value": 120000,
+    "estimated_value": null,
+    "award_date": "2024-09-09",
+    "publication_date": "2024-09-12",
+    "cpv_code": "79400000-8",
+    "ingested_at": "2024-09-12T08:00:00"
+  },
+  {
+    "source": "ted",
+    "source_id": "ted-004",
+    "notice_type": "contract_award",
+    "title": "Fixture ted 4",
+    "procurer": {
+      "ico": "00164801",
+      "name": "Mesto Kosice"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000001",
+          "name": "Zdravotnicke potreby Delta"
+        }
+      },
+      {
+        "supplier": {
+          "ico": "36000002",
+          "name": "Cistiace sluzby Epsilon"
+        }
+      }
+    ],
+    "final_value": 310000,
+    "estimated_value": null,
+    "award_date": "2025-02-14",
+    "publication_date": "2025-02-20",
+    "cpv_code": "33100000-1",
+    "ingested_at": "2025-02-20T08:00:00"
+  },
+  {
+    "source": "ted",
+    "source_id": "ted-005",
+    "notice_type": "contract_award",
+    "title": "Fixture ted 5",
+    "procurer": {
+      "ico": "36631124",
+      "name": "Narodna dialnicna spolocnost"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "31322832",
+          "name": "Dopravne systemy Beta a.s."
+        }
+      }
+    ],
+    "final_value": 2500000,
+    "estimated_value": null,
+    "award_date": "2025-05-05",
+    "publication_date": "2025-05-12",
+    "cpv_code": "34144000-9",
+    "ingested_at": "2025-05-12T08:00:00"
+  },
+  {
+    "source": "ted",
+    "source_id": "ted-006",
+    "notice_type": "contract_award",
+    "title": "Fixture ted 6",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "35763469",
+          "name": "Stavby Alfa s.r.o."
+        }
+      }
+    ],
+    "final_value": 700000,
+    "estimated_value": null,
+    "award_date": "2025-08-08",
+    "publication_date": "2025-08-14",
+    "cpv_code": "45233120-6",
+    "ingested_at": "2025-08-14T08:00:00"
+  },
+  {
+    "source": "uvo",
+    "source_id": "uvo-001",
+    "notice_type": "contract_award",
+    "title": "Fixture uvo 1",
+    "procurer": {
+      "ico": "00603481",
+      "name": "Mesto Bratislava"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000002",
+          "name": "Cistiace sluzby Epsilon"
+        }
+      }
+    ],
+    "final_value": 15000,
+    "estimated_value": null,
+    "award_date": "2023-01-05",
+    "publication_date": "2023-01-09",
+    "cpv_code": "90911200-8",
+    "ingested_at": "2023-01-09T08:00:00"
+  },
+  {
+    "source": "uvo",
+    "source_id": "uvo-002",
+    "notice_type": "contract_award",
+    "title": "Fixture uvo 2",
+    "procurer": {
+      "ico": "00164801",
+      "name": "Mesto Kosice"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000003",
+          "name": "Konzult Zeta s.r.o."
+        }
+      }
+    ],
+    "final_value": null,
+    "estimated_value": null,
+    "award_date": "2023-06-06",
+    "publication_date": "2023-06-08",
+    "cpv_code": null,
+    "ingested_at": "2023-06-08T08:00:00"
+  },
+  {
+    "source": "uvo",
+    "source_id": "uvo-003",
+    "notice_type": "contract_award",
+    "title": "Fixture uvo 3",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "31322832",
+          "name": "Dopravne systemy Beta a.s."
+        }
+      }
+    ],
+    "final_value": 410000,
+    "estimated_value": null,
+    "award_date": "2023-12-12",
+    "publication_date": "2023-12-15",
+    "cpv_code": "34144000-9",
+    "ingested_at": "2023-12-15T08:00:00"
+  },
+  {
+    "source": "itms",
+    "source_id": "itms-001",
+    "notice_type": "contract_award",
+    "title": "Fixture itms 1",
+    "procurer": {
+      "ico": "36631124",
+      "name": "Narodna dialnicna spolocnost"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "35763469",
+          "name": "Stavby Alfa s.r.o."
+        }
+      }
+    ],
+    "final_value": 3300000,
+    "estimated_value": null,
+    "award_date": "2024-05-05",
+    "publication_date": "2024-05-06",
+    "cpv_code": "45233120-6",
+    "ingested_at": "2024-05-06T08:00:00"
+  },
+  {
+    "source": "itms",
+    "source_id": "itms-002",
+    "notice_type": "contract_award",
+    "title": "Fixture itms 2",
+    "procurer": {
+      "ico": "00603481",
+      "name": "Mesto Bratislava"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "44103011",
+          "name": "IT Gama s.r.o."
+        }
+      }
+    ],
+    "final_value": 210000,
+    "estimated_value": null,
+    "award_date": "2024-10-10",
+    "publication_date": "2024-10-11",
+    "cpv_code": "72200000-7",
+    "ingested_at": "2024-10-11T08:00:00"
+  },
+  {
+    "source": "itms",
+    "source_id": "itms-003",
+    "notice_type": "contract_award",
+    "title": "Fixture itms 3",
+    "procurer": {
+      "ico": "00164801",
+      "name": "Mesto Kosice"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000001",
+          "name": "Zdravotnicke potreby Delta"
+        }
+      }
+    ],
+    "final_value": 55000,
+    "estimated_value": null,
+    "award_date": "2025-03-03",
+    "publication_date": "2025-03-04",
+    "cpv_code": "33100000-1",
+    "ingested_at": "2025-03-04T08:00:00"
+  },
+  {
+    "source": "itms",
+    "source_id": "itms-004",
+    "notice_type": "contract_award",
+    "title": "Fixture itms 4",
+    "procurer": {
+      "ico": "00151742",
+      "name": "Ministerstvo dopravy"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000003",
+          "name": "Konzult Zeta s.r.o."
+        }
+      }
+    ],
+    "final_value": null,
+    "estimated_value": null,
+    "award_date": "2025-06-06",
+    "publication_date": "2025-06-07",
+    "cpv_code": null,
+    "ingested_at": "2025-06-07T08:00:00"
+  },
+  {
+    "source": "itms",
+    "source_id": "itms-005",
+    "notice_type": "contract_award",
+    "title": "Fixture itms 5",
+    "procurer": {
+      "ico": "00603481",
+      "name": "Mesto Bratislava"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "36000002",
+          "name": "Cistiace sluzby Epsilon"
+        }
+      }
+    ],
+    "final_value": 33000,
+    "estimated_value": null,
+    "award_date": null,
+    "publication_date": "2025-09-09",
+    "cpv_code": "90911200-8",
+    "ingested_at": "2025-09-09T08:00:00"
+  },
+  {
+    "source": "itms",
+    "source_id": "itms-006",
+    "notice_type": "contract_award",
+    "title": "Fixture itms 6",
+    "procurer": {
+      "ico": "36631124",
+      "name": "Narodna dialnicna spolocnost"
+    },
+    "awards": [
+      {
+        "supplier": {
+          "ico": "31322832",
+          "name": "Dopravne systemy Beta a.s."
+        }
+      }
+    ],
+    "final_value": 1750000,
+    "estimated_value": null,
+    "award_date": "2025-09-19",
+    "publication_date": "2025-09-22",
+    "cpv_code": "34144000-9",
+    "ingested_at": "2025-09-22T08:00:00"
+  },
+  {
+    "source": "itms",
+    "source_id": "itms-007",
+    "notice_type": "contract_notice",
+    "title": "Fixture itms 7",
+    "procurer": {
+      "ico": "00164801",
+      "name": "Mesto Kosice"
+    },
+    "awards": [],
+    "final_value": null,
+    "estimated_value": 500000,
+    "award_date": null,
+    "publication_date": "2025-10-01",
+    "cpv_code": "33100000-1",
+    "ingested_at": "2025-10-01T08:00:00"
+  }
+]

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from uvo_core.domain.analytics import DashboardFilter
+
 
 class NoticeRepository(Protocol):
     """Read/write access to the canonical ``notices`` collection."""
@@ -27,6 +29,7 @@ class NoticeRepository(Protocol):
         date_to: str | None = None,
         value_min: float | None = None,
         value_max: float | None = None,
+        source: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> dict: ...
@@ -96,6 +99,29 @@ class CompanyAnalytics(Protocol):
     async def monthly_buckets(self, year: int) -> list[dict]: ...
 
     async def award_timeline(self, ico: str) -> list[dict]: ...
+
+
+class DashboardAnalytics(Protocol):
+    """Filtered D1 read-models for the analytics dashboards (``/api/analytics``).
+
+    Every method takes an already defaulted and validated ``DashboardFilter`` and
+    returns plain dicts (the services add ``meta`` / deltas). ``coverage`` ignores
+    filters. Adapter: ``MongoDashboardAnalytics``; fake: ``InMemoryDashboardAnalytics``.
+    """
+
+    async def summary(self, f: DashboardFilter) -> dict: ...
+
+    async def timeseries(
+        self, f: DashboardFilter, granularity: str, split_by: str | None, top: int
+    ) -> dict: ...
+
+    async def top(self, f: DashboardFilter, dimension: str, metric: str, n: int) -> dict: ...
+
+    async def concentration(self, f: DashboardFilter, dimension: str) -> dict: ...
+
+    async def cpv(self, f: DashboardFilter, level: str) -> dict: ...
+
+    async def coverage(self) -> dict: ...
 
 
 class GraphStore(Protocol):
