@@ -19,6 +19,7 @@ from uvo_api.db import (
     make_dashboard_analytics,
 )
 from uvo_api.errors import register_error_handlers
+from uvo_api.metrics import install_metrics, start_background
 from uvo_api.routers import (
     analytics,
     contracts,
@@ -94,9 +95,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         run_cache_invalidator(subscriber_redis), name="cache-invalidator"
     )
     warmup = asyncio.create_task(_warm_dashboards(resources.db), name="dashboard-warmup")
+    metrics_tasks = start_background(app)
     try:
         yield
     finally:
+        for task in metrics_tasks:
+            await _stop_task(task)
         await _stop_task(warmup)
         await _stop_task(invalidator)
         await close_quietly("subscriber redis", subscriber_redis.aclose)
@@ -161,5 +165,8 @@ def create_app() -> FastAPI:
     v1_app = create_v1_app()
     app.state.v1_app = v1_app  # lets install_resources share the lifespan clients with /v1
     app.mount("/v1", v1_app)
+
+    # After routers and the mount so the middleware wraps everything; adds GET /metrics.
+    install_metrics(app)
 
     return app
