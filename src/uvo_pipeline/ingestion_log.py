@@ -7,11 +7,14 @@ via a TTL index on `ts`.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 LogLevel = Literal["info", "warning", "error", "critical"]
 LogEvent = Literal[
@@ -26,6 +29,8 @@ LogEvent = Literal[
     "notice_invalid_date",
     "validation_summary",
     "index_bootstrap_failed",
+    "entry_dead_lettered",
+    "partial_write_failed",
 ]
 
 
@@ -82,6 +87,18 @@ async def log_event(
     try:
         await db.ingestion_log.insert_one(entry.model_dump(mode="python"))
     except Exception:
-        # Logging must never crash the worker; swallow and continue.
-        # Real failures will show up in stdout via the regular Python logger.
-        pass
+        # Logging must never crash the worker, but a dead log sink must not be
+        # invisible either: record the failure (with traceback) on stderr.
+        logger.exception("ingestion_log: failed to write %s event for %s", event, component)
+
+
+async def log_events(db: AsyncIOMotorDatabase, entries: list[IngestionLogEntry]) -> None:
+    """Write many log entries in one ``insert_many``. Never raises."""
+    if not entries:
+        return
+    try:
+        await db.ingestion_log.insert_many(
+            [e.model_dump(mode="python") for e in entries], ordered=False
+        )
+    except Exception:
+        logger.exception("ingestion_log: failed to write batch of %d events", len(entries))

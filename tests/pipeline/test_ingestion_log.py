@@ -9,6 +9,7 @@ from uvo_pipeline.ingestion_log import (
     IngestionLogEntry,
     ensure_log_indexes,
     log_event,
+    log_events,
 )
 
 
@@ -70,3 +71,67 @@ async def test_ensure_log_indexes_creates_ttl_and_query_indexes(db):
     assert "level_ts_desc" in names
     # TTL index on ts; mongomock may or may not surface expireAfterSeconds.
     assert "ts_ttl" in names
+
+
+@pytest.mark.asyncio
+async def test_log_event_failure_is_logged_not_raised(db, caplog):
+    class _Broken:
+        async def insert_one(self, doc):
+            raise RuntimeError("mongo down")
+
+    class _BrokenDb:
+        ingestion_log = _Broken()
+
+    with caplog.at_level("ERROR", logger="uvo_pipeline.ingestion_log"):
+        await log_event(
+            _BrokenDb(), level="info", event="worker_started", component="c", message="m"
+        )
+
+    assert any("mongo down" in (r.exc_text or "") for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_log_events_inserts_all_in_one_call(db):
+    calls = []
+    real = db.ingestion_log.insert_many
+
+    class _Spy:
+        async def insert_many(self, docs, **kwargs):
+            calls.append(len(docs))
+            return await real(docs, **kwargs)
+
+    class _SpyDb:
+        ingestion_log = _Spy()
+
+    entries = [
+        IngestionLogEntry(
+            level="warning", event="notice_invalid_date", component="c", message=str(i)
+        )
+        for i in range(5)
+    ]
+    await log_events(_SpyDb(), entries)
+
+    assert calls == [5]
+    assert await db.ingestion_log.count_documents({}) == 5
+
+
+@pytest.mark.asyncio
+async def test_log_events_empty_is_noop(db):
+    await log_events(db, [])
+    assert await db.ingestion_log.count_documents({}) == 0
+
+
+@pytest.mark.asyncio
+async def test_log_events_failure_is_logged_not_raised(caplog):
+    class _Broken:
+        async def insert_many(self, docs, **kwargs):
+            raise RuntimeError("mongo down")
+
+    class _BrokenDb:
+        ingestion_log = _Broken()
+
+    entry = IngestionLogEntry(level="info", event="batch_written", component="c", message="m")
+    with caplog.at_level("ERROR", logger="uvo_pipeline.ingestion_log"):
+        await log_events(_BrokenDb(), [entry])
+
+    assert any("mongo down" in (r.exc_text or "") for r in caplog.records)
