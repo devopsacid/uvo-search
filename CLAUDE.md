@@ -103,14 +103,15 @@ Docker Desktop context (`desktop-linux`) will fail with "pipe not found" — tha
 
 ## React GUI notes
 
-- **API paths:** all SPA REST routes live under `/api/...` (for example `/api/contracts`, `/api/graph/ego/{ico}`); the public API is under `/v1/...`.
+- **API paths:** all SPA REST routes live under `/api/...` (for example `/api/contracts`, `/api/companies/{ico}`, `/api/graph/ego/{ico}`); the public API is under `/v1/...`. `/api/firma*` and `/api/firmy` are hidden (not in OpenAPI) legacy aliases of `/api/companies*`, kept for one release; remove them once `route=~"/api/(firma|firmy).*"` has no traffic. API and GUI images must deploy together, because the unified search keys changed (`companies`/`contracts`).
 - **URL-as-state:** Pagination, filters, sort, search live in URL query params (react-router) — enables bookmarking.
 - **i18n:** All Slovak strings in `src/i18n/sk.ts` only; use `t("key")` from context.
+- **English identifiers:** code identifiers, routes, API paths, query keys and i18n keys are English; only user-visible text (the values in `src/i18n/sk.ts`) is Slovak. `ico`, source names (`vestnik`, `crz`, `ted`, `itms`, `uvo`) and raw inbound payload keys stay as they arrive.
 - **Utilities:** `cn()` (Tailwind class merging) from `src/lib/utils.ts`.
 - **Data fetching:** TanStack Query v5 (query client factory in `src/api/queryClient.ts`), no Redux/Zustand state.
 - **Graph chunk:** Cytoscape.js lazy-loaded as code-split chunk; `<Suspense>` wraps graph pages.
-- **Analytics dashboards:** `/analytika/{prehlad,koncentracia,cpv,pokrytie}` (`/` → `prehlad`, `/cpv-trends` → `cpv`). Filters `date_from`, `date_to`, `cpv`, `source`, `procurer_ico`, `supplier_ico` (+ `dimension` on koncentracia) are URL params; `/zakazky` accepts the same names as drill-down targets. Backend: `/api/analytics/*` (`routers/analytics.py`, `uvo_core/services/analytics.py`). CSV export goes through `src/lib/csv.ts` (BOM, `;`, decimal comma).
-- **Metric definition D1** (all dashboards, spec §4): one `contract_award` notice = one contract; value = `final_value` → `estimated_value` → 0; date = `award_date` → `publication_date`; supplier attribution by distinct award ICO. Entity-list sorting and the Firma "Prehľad" KPIs still use the entity-doc definition (all notice types), so totals can differ from a dashboard filtered to the same ICO (F2, still open).
+- **Analytics dashboards:** `/analytics/{overview,concentration,cpv,coverage}` (`/` → `overview`, `/cpv-trends` → `cpv`; former `/analytika/*` paths redirect, keeping the query). Filters `date_from`, `date_to`, `cpv`, `source`, `procurer_ico`, `supplier_ico` (+ `dimension` on concentration) are URL params; `/contracts` accepts the same names as drill-down targets. Backend: `/api/analytics/*` (`routers/analytics.py`, `uvo_core/services/analytics.py`). CSV export goes through `src/lib/csv.ts` (BOM, `;`, decimal comma).
+- **Metric definition D1** (all dashboards, spec §4): one `contract_award` notice = one contract; value = `final_value` → `estimated_value` → 0; date = `award_date` → `publication_date`; supplier attribution by distinct award ICO. Entity-list sorting and the company Overview tab KPIs still use the entity-doc definition (all notice types), so totals can differ from a dashboard filtered to the same ICO (F2, still open).
 
 ## Workers (`uvo_workers`)
 

@@ -54,7 +54,7 @@ UVO Search searches and browses Slovak government procurement data. It has one R
 ### API (`uvo_api`, port 8001)
 
 - **Framework**: FastAPI, served by uvicorn (`uv run python -m uvo_api`)
-- **Routers**: `/api/*` for the SPA (contracts, procurers, suppliers, firma, dashboard, search, graph, ingestion, ingestion-log, worker-status) and `/v1/*` for the public API
+- **Routers**: `/api/*` for the SPA (contracts, procurers, suppliers, companies, dashboard, search, graph, ingestion, ingestion-log, worker-status) and `/v1/*` for the public API
 - **Delivery adapter**: routers call typed functions in `uvo_core.services`. There is no HTTP hop and no string dispatcher.
 - **Errors**: backend outages raise `uvo_core.errors.BackendUnavailable`, which one exception handler maps to 503
 - **Clients**: Mongo, Neo4j, and Redis clients are created in the app lifespan and owned there

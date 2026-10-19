@@ -26,8 +26,8 @@ All TTLs are seconds in the code; "min" and "h" are shown for readability.
 | Entity (procurer/supplier) search | `entity_search` (`adapters/mongo/subjects.py`) | 1 h | 256 | `notices:written` + TTL |
 | Entity identity lookup | `get_entity_by_ico` (`adapters/mongo/entities.py`) | 5 min | 2000 | `notices:written` + TTL |
 | Entity totals (`estimated_document_count`) | `entity_totals` (`adapters/mongo/entities.py`) | 10 min | 1 | `notices:written` + TTL |
-| Company core stats (`$facet`) | `_firma_core_agg` (`adapters/mongo/analytics.py`) | 1 h | 500 | `notices:written` + TTL |
-| Company partners | `_firma_partners_agg` (`adapters/mongo/analytics.py`) | 30 min | 200 | `notices:written` + TTL |
+| Company core stats (`$facet`) | `_company_core_agg` (`adapters/mongo/analytics.py`) | 1 h | 500 | `notices:written` + TTL |
+| Company partners | `_company_partners_agg` (`adapters/mongo/analytics.py`) | 30 min | 200 | `notices:written` + TTL |
 | Entity profile (HHI, spend by year) | `entity_profile` (`adapters/mongo/analytics.py`) | 30 min | 500 | `notices:written` + TTL |
 | Market CPV + per-CPV median | `_market_cpv_agg` (`adapters/mongo/analytics.py`) | 24 h | 1 | `notices:written` + TTL |
 | Legacy dashboard aggregates (`/api/dashboard/*`) | `_spend_by_year_agg`, `_cpv_breakdown_agg` (15 min, 256); `_monthly_buckets_agg` (15 min, 32); `_top_entities_agg` (30 min, 64); `_award_timeline_agg` (30 min, 500) (`adapters/mongo/analytics.py`) | see left | see left | `notices:written` + TTL |
