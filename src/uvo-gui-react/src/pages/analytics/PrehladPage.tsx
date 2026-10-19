@@ -7,7 +7,7 @@ import {
 } from '@/api/queries/analytics'
 import { useContractSearch } from '@/api/queries/contracts'
 import type { AnalyticsGranularity, AnalyticsTopDimension, AnalyticsTopMetric } from '@/api/types'
-import { ChartCard, ErrorPanel } from '@/components/analytics/ChartCard'
+import { ChartCard, ErrorPanel, InvalidRangeNotice } from '@/components/analytics/ChartCard'
 import { SimpleDataTable, TableLink } from '@/components/analytics/DataTableToggle'
 import { KpiRow, type KpiItem } from '@/components/analytics/KpiRow'
 import { TimeseriesChart } from '@/components/analytics/TimeseriesChart'
@@ -20,6 +20,7 @@ import {
   formatPeriodLabel,
   periodCaption,
   type AnalyticsFilters,
+  type RangeProblem,
 } from '@/lib/analyticsFilters'
 import { firmaLink, zakazkyLink, zakazkyPeriodLink } from '@/lib/analyticsLinks'
 import { csvFilename, downloadCsv, toCsv } from '@/lib/csv'
@@ -46,7 +47,7 @@ export function PrehladPage() {
         <TopSection filters={filters} dimension="procurer" />
         <TopSection filters={filters} dimension="supplier" />
       </div>
-      <RecentSection filters={filters} />
+      <RecentSection filters={filters} rangeProblem={rangeProblem} />
     </div>
   )
 }
@@ -299,8 +300,9 @@ function TopSection({
 
 // ── Recent contracts ──────────────────────────────────────────────────────────
 
-function RecentSection({ filters }: { filters: AnalyticsFilters }) {
-  const q = useContractSearch({
+function RecentSection({ filters, rangeProblem }: { filters: AnalyticsFilters; rangeProblem: RangeProblem | null }) {
+  const q = useContractSearch(
+    {
     date_from: filters.date_from,
     date_to: filters.date_to,
     cpv: filters.cpv,
@@ -308,7 +310,9 @@ function RecentSection({ filters }: { filters: AnalyticsFilters }) {
     procurer_ico: filters.procurer_ico,
     supplier_ico: filters.supplier_ico,
     page_size: 8,
-  })
+    },
+    { enabled: rangeProblem === null },
+  )
   const rows = q.data?.data ?? []
 
   return (
@@ -321,7 +325,9 @@ function RecentSection({ filters }: { filters: AnalyticsFilters }) {
           {sk.analytics.prehlad.allContracts}
         </Link>
       </div>
-      {q.isLoading ? (
+      {rangeProblem ? (
+        <InvalidRangeNotice problem={rangeProblem} />
+      ) : q.isLoading ? (
         <Skeleton className="h-40 w-full" />
       ) : q.isError ? (
         <ErrorPanel error={q.error} onRetry={() => void q.refetch()} />

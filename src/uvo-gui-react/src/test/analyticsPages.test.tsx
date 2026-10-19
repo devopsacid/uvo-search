@@ -438,3 +438,28 @@ describe('Firma workspace integration', () => {
     expect(f.calls.some((c) => c.includes('/analytics/concentration'))).toBe(false)
   })
 })
+
+describe('invalid (reversed) date range', () => {
+  const route = '/analytika/prehlad?date_from=2024-05-01&date_to=2024-01-01'
+
+  it('shows a clear message in every Prehlad card and fires no queries', async () => {
+    const f = install()
+    renderWithProviders(<PrehladPage />, { route })
+    await waitFor(() => expect(screen.getAllByTestId('invalid-range').length).toBe(4))
+    for (const note of screen.getAllByTestId('invalid-range')) {
+      expect(note).toHaveTextContent(sk.analytics.charts.invalidFilterTitle)
+      expect(note).toHaveTextContent(sk.analytics.filters.rangeReversed)
+    }
+    expect(f.calls.filter((u) => u.includes('/analytics/') || u.includes('/contracts'))).toEqual([])
+  })
+
+  it.each([
+    ['Koncentracia', <KoncentraciaPage key="k" />],
+    ['Cpv', <CpvPage key="c" />],
+  ])('%s shows the invalid-filter message instead of a blank page', (_n, ui) => {
+    const f = install()
+    renderWithProviders(ui, { route })
+    expect(screen.getByTestId('invalid-range')).toHaveTextContent(sk.analytics.filters.rangeReversed)
+    expect(f.calls.filter((u) => u.includes('/analytics/'))).toEqual([])
+  })
+})

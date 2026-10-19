@@ -291,6 +291,7 @@ const sk = {
       updating: 'Aktualizujem…',
       retry: 'Skúsiť znova',
       errorTitle: 'Dáta sa nepodarilo načítať',
+      invalidFilterTitle: 'Zadané obdobie je neplatné',
       timeout: 'Výpočet trval príliš dlho. Skúste kratšie obdobie alebo pridajte filter.',
       emptyTitle: 'Žiadne zákazky pre zvolené filtre',
       emptyHint: 'Zmeňte obdobie alebo zrušte niektorý filter.',

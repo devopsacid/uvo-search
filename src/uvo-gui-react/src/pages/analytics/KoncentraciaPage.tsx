@@ -1,7 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import { useAnalyticsConcentration, useConcentrationByYear } from '@/api/queries/analytics'
 import type { AnalyticsConcentrationDimension, ConcentrationEntry } from '@/api/types'
-import { ChartCard, ErrorPanel } from '@/components/analytics/ChartCard'
+import { ChartCard, ErrorPanel, InvalidRangeNotice } from '@/components/analytics/ChartCard'
 import { SimpleDataTable, TableLink } from '@/components/analytics/DataTableToggle'
 import { HhiBadge } from '@/components/analytics/HhiBadge'
 import { HhiTrendChart } from '@/components/analytics/HhiTrendChart'
@@ -51,7 +51,7 @@ export function KoncentraciaPage() {
           ))}
         </div>
       </div>
-      {!rangeProblem && <Body filters={filters} dimension={dimension} />}
+      {rangeProblem ? <InvalidRangeNotice problem={rangeProblem} /> : <Body filters={filters} dimension={dimension} />}
       <p className="text-xs text-muted-foreground">{t.hint}</p>
     </div>
   )
