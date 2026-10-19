@@ -37,3 +37,28 @@ def test_repeated_scrapes_reflect_the_latest_snapshot():
 
     third = render_metrics(registry, {"batches_processed": 41}).decode()
     assert 'uvo_worker_batches_processed_total{component="ingestor"} 41.0' in third
+
+
+def test_stream_health_gauges_are_rendered():
+    registry = build_registry("ingestor")
+    payload = render_metrics(
+        registry,
+        {
+            "stream_lag": {"notices:crz": 12, "notices:ted": 0},
+            "stream_pending": {"notices:crz": 3},
+            "dead_letter_length": 4,
+            "last_success_at": 1700000000.0,
+        },
+    ).decode()
+    assert 'uvo_worker_stream_lag{component="ingestor",stream="notices:crz"} 12.0' in payload
+    assert 'uvo_worker_stream_pending{component="ingestor",stream="notices:crz"} 3.0' in payload
+    assert 'uvo_worker_dead_letter_length{component="ingestor"} 4.0' in payload
+    assert 'uvo_worker_last_success_timestamp_seconds{component="ingestor"} 1.7e+09' in payload
+
+
+def test_stream_health_gauges_default_to_absent_or_zero():
+    registry = build_registry("extractor-crz")
+    payload = render_metrics(registry, {}).decode()
+    assert "uvo_worker_stream_lag{" not in payload
+    assert 'uvo_worker_dead_letter_length{component="extractor-crz"} 0.0' in payload
+    assert 'uvo_worker_last_success_timestamp_seconds{component="extractor-crz"} 0.0' in payload
