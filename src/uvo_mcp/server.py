@@ -76,7 +76,8 @@ async def _ready_refresher() -> None:
 
 
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
+async def _open_runtime() -> AsyncIterator[AppContext]:
+    """Create every client once, publish the handles for ``/readyz``, close on exit."""
     from uvo_core.adapters.mongo.search_indexes import SearchIndexProbe
     from uvo_core.adapters.redis.cache_invalidation import run_cache_invalidator
     from uvo_core.infra.clients import (
@@ -153,6 +154,56 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
             await close_quietly("mongo client", mongo_client.close)
         if neo4j_driver is not None:
             await close_quietly("neo4j driver", neo4j_driver.close)
+
+
+# Process-scoped, reference-counted runtime. FastMCP runs ``app_lifespan`` once per
+# client *session*, so tying the clients to it made ``/readyz`` fail ("no MongoDB
+# handle") until a client connected, and would rebuild the pools per session. The
+# HTTP app opens the runtime at process start (``build_http_app``); sessions (and
+# stdio, which has a single session) just take another reference to the same one.
+_shared: dict[str, Any] = {"refs": 0, "cm": None, "ctx": None}
+_shared_lock = asyncio.Lock()
+
+
+@asynccontextmanager
+async def process_runtime() -> AsyncIterator[AppContext]:
+    """Acquire the shared runtime, creating it on first use and closing it with the last user."""
+    async with _shared_lock:
+        if _shared["refs"] == 0:
+            cm = _open_runtime()
+            _shared["ctx"] = await cm.__aenter__()
+            _shared["cm"] = cm
+        _shared["refs"] += 1
+    try:
+        yield _shared["ctx"]
+    finally:
+        async with _shared_lock:
+            _shared["refs"] -= 1
+            if _shared["refs"] == 0:
+                cm, _shared["cm"], _shared["ctx"] = _shared["cm"], None, None
+                await cm.__aexit__(None, None, None)
+
+
+@asynccontextmanager
+async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
+    """Per-session lifespan: hands out the shared process runtime."""
+    async with process_runtime() as ctx:
+        yield ctx
+
+
+def build_http_app():
+    """The streamable-http ASGI app with the runtime opened at process start."""
+    app = mcp.streamable_http_app()
+    inner = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(a):
+        async with process_runtime():
+            async with inner(a) as state:
+                yield state
+
+    app.router.lifespan_context = lifespan
+    return app
 
 
 mcp = FastMCP(

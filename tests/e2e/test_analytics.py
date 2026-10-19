@@ -218,11 +218,6 @@ class TestReadiness:
             pytest.skip("API was not in a cold-start state (no fresh DB); nothing to recover from")
         assert analytics_ready["recovered_without_restart"] is True
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="DEFECT: MCP /readyz reports 'no MongoDB handle' unless an MCP client "
-        "session is open; the Mongo handle is set per session in app_lifespan.",
-    )
     def test_mcp_readyz_without_open_session(self, compose_stack):
         assert _get(f"{MCP}/readyz").status_code == 200
 

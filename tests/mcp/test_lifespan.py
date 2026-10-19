@@ -113,3 +113,34 @@ async def test_notices_written_event_clears_mcp_in_process_caches(wired, monkeyp
             await asyncio.sleep(0.01)
 
     assert probe_cache.cache_info()["size"] == 0
+
+
+async def test_sessions_share_one_process_runtime(wired):
+    """Concurrent sessions reuse the same clients; they close with the last session."""
+    async with server.app_lifespan(server.mcp) as first:
+        async with server.app_lifespan(server.mcp) as second:
+            assert second is first
+        wired.mongo_client.close.assert_not_called()
+        assert server._runtime["mongo_db"] is not None
+    wired.mongo_client.close.assert_called_once()
+    wired.ensure.assert_awaited_once()
+
+
+def test_readyz_is_200_without_any_mcp_session(wired, monkeypatch):
+    """/readyz must work from process start, before any client opens a session."""
+    from starlette.testclient import TestClient
+
+    wired.mongo_client.__getitem__.return_value.command = AsyncMock(return_value={"ok": 1})
+    probe = MagicMock()
+    probe.ready = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        "uvo_core.adapters.mongo.search_indexes.SearchIndexProbe", lambda *a, **k: probe
+    )
+    server._runtime["mongo_db"] = None
+
+    with TestClient(server.build_http_app()) as client:
+        assert client.get("/readyz").status_code == 200
+        assert client.get("/health").status_code == 200
+
+    assert server._runtime["mongo_db"] is None
+    wired.mongo_client.close.assert_called_once()
