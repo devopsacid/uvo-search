@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton, SkeletonRow } from '@/components/ui/Skeleton'
 import { Pagination } from '@/components/ui/Pagination'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import sk from '@/i18n/sk'
 import type { ContractDetail } from '@/api/types'
 
@@ -19,6 +19,8 @@ const YEAR_OPTIONS = Array.from({ length: 15 }, (_, i) => {
   return { value: y, label: y }
 })
 
+const SOURCE_OPTIONS = Object.entries(sk.analytics.filters.sources).map(([value, label]) => ({ value, label }))
+
 export function ZakazkyPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -27,6 +29,9 @@ export function ZakazkyPage() {
   const cpv = searchParams.get('cpv') ?? ''
   const procurer_ico = searchParams.get('procurer_ico') ?? ''
   const supplier_ico = searchParams.get('supplier_ico') ?? ''
+  const source = searchParams.get('source') ?? ''
+  const paramFrom = searchParams.get('date_from') ?? ''
+  const paramTo = searchParams.get('date_to') ?? ''
   const page = Number(searchParams.get('page') ?? '1')
   const selectedId = searchParams.get('selected') ?? ''
 
@@ -37,6 +42,11 @@ export function ZakazkyPage() {
         next.set(key, value)
       } else {
         next.delete(key)
+      }
+      // An explicit year replaces a date range carried over from a dashboard drill-down.
+      if (key === 'year' && value) {
+        next.delete('date_from')
+        next.delete('date_to')
       }
       if (key !== 'page' && key !== 'selected') next.delete('page')
       return next
@@ -59,24 +69,64 @@ export function ZakazkyPage() {
     setSearchParams({}, { replace: false })
   }
 
-  const date_from = year ? `${year}-01-01` : undefined
-  const date_to = year ? `${year}-12-31` : undefined
+  // Explicit date_from/date_to (dashboard drill-down) take precedence over the year select.
+  const date_from = paramFrom || (year ? `${year}-01-01` : undefined)
+  const date_to = paramTo || (year ? `${year}-12-31` : undefined)
 
   const { data, isLoading, isError, error } = useContractSearch({
     q: q || undefined,
     cpv: cpv || undefined,
     date_from,
     date_to,
-    ico: supplier_ico || undefined,
+    supplier_ico: supplier_ico || undefined,
+    procurer_ico: procurer_ico || undefined,
+    source: source || undefined,
     page,
     page_size: PAGE_SIZE,
   })
+
+  const chips: { name: string; value: string; clear: () => void }[] = []
+  if (paramFrom || paramTo) {
+    chips.push({
+      name: sk.analytics.filters.period,
+      value: `${paramFrom ? formatDate(paramFrom) : '…'} – ${paramTo ? formatDate(paramTo) : '…'}`,
+      clear: () =>
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev)
+          next.delete('date_from')
+          next.delete('date_to')
+          next.delete('page')
+          return next
+        }),
+    })
+  }
+  if (source) {
+    chips.push({
+      name: sk.analytics.filters.source,
+      value: sk.analytics.filters.sources[source as keyof typeof sk.analytics.filters.sources] ?? source,
+      clear: () => setParam('source', ''),
+    })
+  }
+  if (procurer_ico) {
+    chips.push({
+      name: sk.analytics.filters.procurer,
+      value: sk.analytics.filters.icoValue.replace('{ico}', procurer_ico),
+      clear: () => setParam('procurer_ico', ''),
+    })
+  }
+  if (supplier_ico) {
+    chips.push({
+      name: sk.analytics.filters.supplier,
+      value: sk.analytics.filters.icoValue.replace('{ico}', supplier_ico),
+      clear: () => setParam('supplier_ico', ''),
+    })
+  }
 
   const { data: detail, isLoading: detailLoading } = useContractDetail(selectedId)
 
   const contracts = data?.data ?? []
   const total = data?.pagination.total ?? 0
-  const hasFilters = !!(q || year || cpv || procurer_ico || supplier_ico)
+  const hasFilters = !!(q || year || cpv || procurer_ico || supplier_ico || source || paramFrom || paramTo)
 
   return (
     <div className="flex gap-4">
@@ -118,6 +168,31 @@ export function ZakazkyPage() {
           </SidebarSection>
 
           <SidebarSection>
+            <label className="block space-y-1">
+              <span className="text-xs text-muted-foreground">{sk.analytics.filters.source}</span>
+              <select
+                value={source}
+                onChange={(e) => setParam('source', e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">{sk.analytics.filters.allSources}</option>
+                {SOURCE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+          </SidebarSection>
+
+          <SidebarSection>
+            <FilterInput
+              label={sk.search.filterProcurer}
+              value={procurer_ico}
+              onChange={(e) => setParam('procurer_ico', e.target.value)}
+              placeholder={sk.common.ico}
+            />
+          </SidebarSection>
+
+          <SidebarSection>
             <FilterInput
               label={sk.search.filterSupplier}
               value={supplier_ico}
@@ -147,6 +222,29 @@ export function ZakazkyPage() {
             }}
           />
         </div>
+
+        {chips.length > 0 && (
+          <ul aria-label={sk.analytics.activeFilters} className="mb-4 flex flex-wrap gap-2">
+            {chips.map((chip) => (
+              <li
+                key={chip.name}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-accent py-1 pl-2.5 pr-1 text-xs text-foreground"
+              >
+                <span>
+                  {chip.name}: {chip.value}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => chip.clear()}
+                  aria-label={sk.analytics.filters.removeFilter.replace('{name}', chip.name)}
+                  className="rounded px-1.5 text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {isError && (
           <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">

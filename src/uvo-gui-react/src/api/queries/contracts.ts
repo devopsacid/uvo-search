@@ -12,6 +12,7 @@ export interface ContractFilters {
   ico?: string
   supplier_ico?: string
   procurer_ico?: string
+  source?: string
   page?: number
   page_size?: number
 }
@@ -33,6 +34,7 @@ function buildContractParams(filters: ContractFilters): string {
   if (filters.ico) params.set('ico', filters.ico)
   if (filters.supplier_ico) params.set('supplier_ico', filters.supplier_ico)
   if (filters.procurer_ico) params.set('procurer_ico', filters.procurer_ico)
+  if (filters.source) params.set('source', filters.source)
 
   const pageSize = filters.page_size ?? 20
   const page = filters.page ?? 1
