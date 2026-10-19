@@ -209,3 +209,29 @@ def test_mounted_sub_app_route_keeps_mount_prefix():
     before = _count("GET", "/v1/contracts", "200")
     TestClient(app).get("/v1/contracts")
     assert _count("GET", "/v1/contracts", "200") == before + 1
+
+
+def test_create_app_exposes_metrics_with_route_template_labels(monkeypatch):
+    import json
+    from pathlib import Path
+
+    from tests.api._deps import deps
+    from uvo_api.app import create_app
+    from uvo_api.db import get_dashboard_analytics
+    from uvo_core.testing import InMemoryDashboardAnalytics
+
+    monkeypatch.setenv("API_MCP_SERVER_URL", "http://localhost:8000/mcp")
+    fixture = Path(__file__).parent.parent / "fixtures" / "analytics_notices.json"
+    fake = InMemoryDashboardAnalytics(json.loads(fixture.read_text(encoding="utf-8")))
+    client = TestClient(create_app())
+    before = _count("GET", "/api/analytics/summary", "200")
+    with deps(client, get_dashboard_analytics, fake):
+        r = client.get(
+            "/api/analytics/summary", params={"date_from": "2023-01-01", "date_to": "2025-12-31"}
+        )
+    assert r.status_code == 200
+    assert _count("GET", "/api/analytics/summary", "200") == before + 1
+    metrics = client.get("/metrics")
+    assert metrics.status_code == 200
+    assert "uvo_api_http_requests_total" in metrics.text
+    assert "uvo_build_info" in metrics.text
