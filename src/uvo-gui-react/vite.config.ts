@@ -17,6 +17,9 @@ export default defineConfig({
         // entry graph: only the lazy CytoscapeGraph chunk imports it.
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
+          // clsx is used by both the app and recharts; pin it here so the entry never
+          // statically imports the charts chunk.
+          if (/node_modules\/(clsx|tailwind-merge)\//.test(id)) return 'vendor-react'
           if (/node_modules\/(react|react-dom|react-router|react-router-dom|@remix-run|scheduler)\//.test(id))
             return 'vendor-react'
           if (id.includes('@tanstack/')) return 'vendor-query'
