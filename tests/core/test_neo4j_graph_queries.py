@@ -56,7 +56,7 @@ async def test_related_organisations_interpolates_clamped_hops():
 
 
 async def test_ego_network_is_labelled_bounded_and_has_timeout():
-    start = {"name": "A", "ico": "1", "type": "Procurer", "contract_count": 3}
+    start = {"roles": [{"name": "A", "type": "Procurer", "degree": 3}]}
     driver, calls = _driver([[start]])
     await graph.ego_network(driver, "1", max_hops=10)
     expand = calls[1]
@@ -71,18 +71,42 @@ async def test_ego_network_is_labelled_bounded_and_has_timeout():
 
 
 async def test_ego_network_default_hops_is_two():
-    start = {"name": "A", "ico": "1", "type": "Supplier", "contract_count": 1}
+    start = {"roles": [{"name": "A", "type": "Supplier", "degree": 1}]}
     driver, calls = _driver([[start]])
     await graph.ego_network(driver, "1")
     assert "*1..2" in calls[1]["text"]
 
 
 async def test_ego_network_total_value_uses_head_not_list_index():
-    start = {"name": "A", "ico": "1", "type": "Supplier", "contract_count": 1}
+    start = {"roles": [{"name": "A", "type": "Supplier", "degree": 1}]}
     driver, calls = _driver([[start]])
     await graph.ego_network(driver, "1")
     assert "head([" in calls[1]["text"]
     assert "][0]" not in calls[1]["text"]
+
+
+async def test_ego_network_folds_procurer_and_supplier_with_same_ico_into_one_anchor():
+    # Same ICO exists as a Procurer (degree 2) and a Supplier (degree 5): one anchor,
+    # summed degree, primary role = the larger node.
+    start = {
+        "roles": [
+            {"name": "Procurer side", "type": "Procurer", "degree": 2},
+            {"name": "Supplier side", "type": "Supplier", "degree": 5},
+        ]
+    }
+    driver, calls = _driver([[start]])
+    graph_out = await graph.ego_network(driver, "1")
+    anchors = [n for n in graph_out["nodes"] if n["id"] == "1"]
+    assert len(anchors) == 1
+    assert anchors[0]["label"] == "Supplier side"
+    assert anchors[0]["type"] == "supplier"
+    assert anchors[0]["value"] == 7
+    assert "size(roles) > 0" in calls[0]["text"]
+
+
+async def test_ego_network_unknown_ico_returns_empty_graph():
+    driver, _ = _driver([[]])
+    assert await graph.ego_network(driver, "404") == {"nodes": [], "edges": []}
 
 
 async def test_cpv_network_uses_date_range_not_year_accessor():

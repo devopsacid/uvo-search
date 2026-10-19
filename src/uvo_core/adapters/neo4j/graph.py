@@ -211,8 +211,10 @@ async def ego_network(driver, ico: str, max_hops: int = _EGO_MAX_HOPS) -> dict:
                 """
             MATCH (s:Procurer|Supplier {ico: $ico})
             OPTIONAL MATCH (s)-[r]-()
-            RETURN s.name AS name, s.ico AS ico,
-                   labels(s)[0] AS type, count(r) AS contract_count
+            WITH s, count(r) AS degree
+            WITH collect({name: s.name, type: labels(s)[0], degree: degree}) AS roles
+            WHERE size(roles) > 0
+            RETURN roles
             """
             ),
             ico=ico,
@@ -220,8 +222,16 @@ async def ego_network(driver, ico: str, max_hops: int = _EGO_MAX_HOPS) -> dict:
         start_rec = await start_result.single()
         if not start_rec:
             return {"nodes": [], "edges": []}
-        start = dict(start_rec)
-        start["type"] = (start.get("type") or "").lower()
+        # One ICO can exist as both a Procurer and a Supplier node. Fold them into a
+        # single anchor: summed degree, primary role = the node with the larger degree.
+        roles = start_rec["roles"]
+        primary = max(roles, key=lambda role: role["degree"])
+        start = {
+            "name": primary["name"],
+            "ico": ico,
+            "type": (primary.get("type") or "").lower(),
+            "contract_count": sum(role["degree"] for role in roles),
+        }
 
         result = await session.run(
             _timed(
