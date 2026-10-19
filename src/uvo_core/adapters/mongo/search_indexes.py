@@ -1,8 +1,14 @@
-"""Atlas Search index definitions and idempotent provisioning."""
+"""Atlas Search index definitions, idempotent provisioning and a readiness probe.
+
+Single owner of search-index bootstrap: both the MCP and the API lifespans call
+``ensure_indexes`` at startup, and both ``/readyz`` endpoints consult
+``SearchIndexProbe`` so a pod whose required indexes are missing is not ready.
+"""
 
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -161,8 +167,8 @@ async def ensure_indexes(db) -> None:
                 coll,
                 spec["name"],
             )
-        except Exception as exc:
-            logger.warning("search index provisioning failed for %s: %s", coll, exc)
+        except Exception as exc:  # noqa: BLE001 - keep provisioning the other collections
+            logger.error("search index provisioning failed for %s: %s", coll, exc)
     await ensure_vector_indexes(db)
 
 
@@ -189,5 +195,56 @@ async def ensure_vector_indexes(db) -> None:
                     }
                 ],
             )
-        except Exception:
-            pass  # index already exists
+        except Exception as exc:  # noqa: BLE001
+            # Usually "index already exists"; a real failure surfaces via the
+            # readiness probe (required text indexes) and query errors.
+            logger.debug("vector index create skipped for %s: %s", coll, exc)
+
+
+REQUIRED_SEARCH_INDEXES: tuple[tuple[str, str], ...] = tuple(
+    (coll, spec["name"]) for coll, spec in INDEX_DEFINITIONS.items()
+)
+
+
+async def missing_search_indexes(db) -> list[str]:
+    """``collection.index`` labels of required search indexes that are absent or not queryable."""
+    missing: list[str] = []
+    for coll, name in REQUIRED_SEARCH_INDEXES:
+        label = f"{coll}.{name}"
+        try:
+            existing = [i async for i in db[coll].list_search_indexes()]
+        except Exception as exc:  # noqa: BLE001 - unreachable server => not ready
+            logger.warning("search index check failed for %s: %s", coll, exc)
+            missing.append(label)
+            continue
+        current = next((i for i in existing if i.get("name") == name), None)
+        if current is None or current.get("queryable") is False:
+            missing.append(label)
+    return missing
+
+
+class SearchIndexProbe:
+    """Readiness check for the required search indexes, cached for ``ttl`` seconds.
+
+    ``/readyz`` is hit every few seconds by the kubelet; listing search indexes
+    on every probe would be needless load, so the result is reused briefly.
+    """
+
+    def __init__(self, ttl: float = 30.0, clock=time.monotonic) -> None:
+        self._ttl = ttl
+        self._clock = clock
+        self._checked_at: float | None = None
+        self._missing: list[str] = []
+
+    async def missing(self, db) -> list[str]:
+        now = self._clock()
+        if self._checked_at is not None and now - self._checked_at < self._ttl:
+            return list(self._missing)
+        self._missing = await missing_search_indexes(db)
+        self._checked_at = now
+        if self._missing:
+            logger.error("readiness: required search indexes missing: %s", self._missing)
+        return list(self._missing)
+
+    async def ready(self, db) -> bool:
+        return not await self.missing(db)

@@ -23,13 +23,36 @@ def _make_key(args: tuple, kwargs: dict) -> tuple:
     return hashkey(norm_args, tuple(norm))
 
 
-def async_ttl_cache(*, maxsize: int, ttl: float, key_from: Callable | None = None) -> Callable:
+# cache_clear callables of every data-dependent cache; see clear_data_caches().
+_DATA_CACHE_CLEARERS: list[Callable[[], None]] = []
+
+
+def clear_data_caches() -> None:
+    """Drop every cache whose entries derive from ingested data.
+
+    Called by the ``notices:written`` invalidation subscriber in both delivery
+    processes (API and MCP) so fresh data surfaces without waiting for TTLs.
+    Caches declared with ``depends_on_data=False`` (e.g. embeddings) are kept.
+    """
+    for clear in _DATA_CACHE_CLEARERS:
+        clear()
+
+
+def async_ttl_cache(
+    *,
+    maxsize: int,
+    ttl: float,
+    key_from: Callable | None = None,
+    depends_on_data: bool = True,
+) -> Callable:
     """Decorator for async functions. Caches by hashable args/kwargs.
 
     Concurrent identical calls share a single in-flight coroutine (prevents
     thundering herd). Results are deep-copied on the way out so callers may
     mutate what they receive without poisoning the cache. Pass ``key_from`` to derive the cache key from a subset
-    of arguments (e.g. to skip an unhashable ``db`` handle).
+    of arguments (e.g. to skip an unhashable ``db`` handle). Caches that do
+    not depend on ingested data pass ``depends_on_data=False`` so they survive
+    ``clear_data_caches()``.
     """
 
     def decorator(fn: Callable) -> Callable:
@@ -83,6 +106,8 @@ def async_ttl_cache(*, maxsize: int, ttl: float, key_from: Callable | None = Non
                 pending.pop(key, None)
 
         wrapper.cache_clear = cache.clear  # type: ignore[attr-defined]
+        if depends_on_data:
+            _DATA_CACHE_CLEARERS.append(cache.clear)
         wrapper.cache_info = lambda: {  # type: ignore[attr-defined]
             "size": len(cache),
             "maxsize": cache.maxsize,

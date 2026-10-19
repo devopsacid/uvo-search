@@ -7,16 +7,13 @@ import logging
 
 from mcp.server.fastmcp import Context
 
-from uvo_core.services.search import SortBy, entity_search
+from uvo_core.services.search import SortBy, clamp_page, entity_search
 from uvo_mcp.server import AppContext, mcp
 
 # Re-exported for tests / backwards compatibility (shared cache object).
 _run_entity_search = entity_search
 
 logger = logging.getLogger(__name__)
-
-# Deep-paging bound, same as the FastAPI routers (`Query(le=10_000)`).
-_MAX_OFFSET = 10_000
 
 
 def _get_app_context(ctx: Context) -> AppContext:
@@ -36,6 +33,7 @@ async def find_procurer(
     app_ctx = _get_app_context(ctx)
     if app_ctx.mongo_db is None:
         return {"error": "MongoDB not configured", "status_code": 503}
+    limit, offset = clamp_page(limit, offset, max_limit=app_ctx.settings.max_page_size)
     return await entity_search(
         app_ctx.mongo_db,
         "procurers",
@@ -43,8 +41,8 @@ async def find_procurer(
         name_query=name_query,
         ico=ico,
         sort_by=sort_by,
-        limit=min(limit, app_ctx.settings.max_page_size),
-        offset=min(max(offset, 0), _MAX_OFFSET),
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -61,6 +59,7 @@ async def find_supplier(
     app_ctx = _get_app_context(ctx)
     if app_ctx.mongo_db is None:
         return {"error": "MongoDB not configured", "status_code": 503}
+    limit, offset = clamp_page(limit, offset, max_limit=app_ctx.settings.max_page_size)
     return await entity_search(
         app_ctx.mongo_db,
         "suppliers",
@@ -68,6 +67,6 @@ async def find_supplier(
         name_query=name_query,
         ico=ico,
         sort_by=sort_by,
-        limit=min(limit, app_ctx.settings.max_page_size),
-        offset=min(max(offset, 0), _MAX_OFFSET),
+        limit=limit,
+        offset=offset,
     )
