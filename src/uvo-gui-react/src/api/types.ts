@@ -335,3 +335,165 @@ export interface WorkerStatusResponse {
   workers: WorkerStatus[]
   generated_at: string
 }
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+// Mirrors the `/api/analytics/*` contract (docs/specs/2026-10-19-analytics-dashboards.md §6.2).
+
+export type AnalyticsSource = 'vestnik' | 'crz' | 'ted' | 'uvo' | 'itms'
+export type AnalyticsGranularity = 'month' | 'quarter' | 'year'
+export type AnalyticsTopDimension = 'procurer' | 'supplier' | 'cpv_division'
+export type AnalyticsTopMetric = 'total_value' | 'contract_count'
+export type AnalyticsConcentrationDimension = 'supplier' | 'procurer'
+export type AnalyticsCpvLevel = 'division' | 'group'
+export type HhiBand = 'low' | 'moderate' | 'high'
+export type CoverageStatus = 'healthy' | 'warning' | 'stale' | 'legacy' | 'unknown'
+
+export interface AnalyticsFiltersEcho {
+  date_from: string
+  date_to: string
+  cpv: string | null
+  source: string | null
+  procurer_ico: string | null
+  supplier_ico: string | null
+}
+
+export interface AnalyticsMeta {
+  definition: string
+  filters: AnalyticsFiltersEcho
+  generated_at: string
+}
+
+export interface AnalyticsPeriod {
+  date_from: string
+  date_to: string
+  contract_count: number
+  total_value: number
+  avg_value: number
+  procurer_count: number
+  supplier_count: number
+}
+
+export interface AnalyticsDeltas {
+  contract_count_pct: number | null
+  total_value_pct: number | null
+  avg_value_pct: number | null
+  procurer_count_pct: number | null
+  supplier_count_pct: number | null
+}
+
+export interface AnalyticsSummary {
+  meta: AnalyticsMeta
+  current: AnalyticsPeriod
+  previous: AnalyticsPeriod | null
+  deltas: AnalyticsDeltas
+}
+
+export interface TimeseriesPoint {
+  period: string
+  contract_count: number
+  total_value: number
+  avg_value: number
+}
+
+export interface TimeseriesSeries {
+  key: string
+  label: string
+  points: TimeseriesPoint[]
+}
+
+export interface AnalyticsTimeseries {
+  meta: AnalyticsMeta
+  granularity: AnalyticsGranularity
+  points: TimeseriesPoint[]
+  series: TimeseriesSeries[] | null
+}
+
+export interface TopItem {
+  key: string
+  label: string
+  ico: string | null
+  total_value: number
+  contract_count: number
+  share_pct: number
+}
+
+export interface AnalyticsTop {
+  meta: AnalyticsMeta
+  dimension: AnalyticsTopDimension
+  metric: AnalyticsTopMetric
+  total: { total_value: number; contract_count: number }
+  items: TopItem[]
+  other: { total_value: number; contract_count: number; share_pct: number }
+}
+
+export interface ConcentrationEntry {
+  ico: string
+  name: string
+  total_value: number
+  share_pct: number
+  cumulative_pct: number
+}
+
+export interface AnalyticsConcentration {
+  meta: AnalyticsMeta
+  dimension: AnalyticsConcentrationDimension
+  hhi: number
+  hhi_band: HhiBand
+  cr4_pct: number
+  cr10_pct: number
+  entity_count: number
+  total_value: number
+  top: ConcentrationEntry[]
+}
+
+export interface CpvBucket {
+  cpv_code: string
+  prefix: string
+  label_sk: string
+  total_value: number
+  contract_count: number
+  share_pct: number
+}
+
+export interface AnalyticsCpv {
+  meta: AnalyticsMeta
+  level: AnalyticsCpvLevel
+  total_value: number
+  contract_count: number
+  items: CpvBucket[]
+}
+
+export interface CoverageQuality {
+  with_value_pct: number
+  with_cpv_pct: number
+  with_supplier_ico_pct: number
+  with_procurer_ico_pct: number
+}
+
+export interface CoverageSource {
+  source: AnalyticsSource
+  notices_total: number
+  contract_awards: number
+  last_publication_date: string | null
+  last_ingested_at: string | null
+  age_seconds: number | null
+  status: CoverageStatus
+  expected_cadence_seconds: number | null
+  quality: CoverageQuality
+}
+
+export interface CoverageMonth {
+  period: string
+  vestnik: number
+  crz: number
+  ted: number
+  uvo: number
+  itms: number
+}
+
+export interface AnalyticsCoverage {
+  generated_at: string
+  sources: CoverageSource[]
+  monthly: CoverageMonth[]
+  canonical: { notices_with_canonical_id: number; match_groups: number }
+}

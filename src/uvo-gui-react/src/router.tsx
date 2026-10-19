@@ -4,8 +4,18 @@ import { Layout } from '@/components/layout/Layout'
 
 // Route components are split into per-page chunks. Layout wraps <Outlet/> in a
 // shared <Suspense>, and FirmaPage does the same for its tab outlet.
-const OverviewPage = lazy(() =>
-  import('@/pages/OverviewPage').then((m) => ({ default: m.OverviewPage })),
+const AnalyticsLayout = lazy(() =>
+  import('@/components/analytics/AnalyticsLayout').then((m) => ({ default: m.AnalyticsLayout })),
+)
+const PrehladPage = lazy(() =>
+  import('@/pages/analytics/PrehladPage').then((m) => ({ default: m.PrehladPage })),
+)
+const KoncentraciaPage = lazy(() =>
+  import('@/pages/analytics/KoncentraciaPage').then((m) => ({ default: m.KoncentraciaPage })),
+)
+const CpvPage = lazy(() => import('@/pages/analytics/CpvPage').then((m) => ({ default: m.CpvPage })))
+const PokrytiePage = lazy(() =>
+  import('@/pages/analytics/PokrytiePage').then((m) => ({ default: m.PokrytiePage })),
 )
 const AboutPage = lazy(() =>
   import('@/pages/AboutPage').then((m) => ({ default: m.AboutPage })),
@@ -21,9 +31,6 @@ const GraphPage = lazy(() =>
 )
 const IngestionPage = lazy(() =>
   import('@/pages/IngestionPage').then((m) => ({ default: m.IngestionPage })),
-)
-const CpvTrendsPage = lazy(() =>
-  import('@/pages/CpvTrendsPage').then((m) => ({ default: m.CpvTrendsPage })),
 )
 const FirmaPage = lazy(() =>
   import('@/pages/FirmaPage').then((m) => ({ default: m.FirmaPage })),
@@ -62,7 +69,20 @@ export const router = createBrowserRouter([
     path: '/',
     element: <Layout />,
     children: [
-      { index: true, element: <OverviewPage /> },
+      { index: true, element: <Navigate to="/analytika/prehlad" replace /> },
+
+      // Analytics dashboards (replace the old overview and CPV trends pages)
+      {
+        path: 'analytika',
+        element: <AnalyticsLayout />,
+        children: [
+          { index: true, element: <Navigate to="prehlad" replace /> },
+          { path: 'prehlad', element: <PrehladPage /> },
+          { path: 'koncentracia', element: <KoncentraciaPage /> },
+          { path: 'cpv', element: <CpvPage /> },
+          { path: 'pokrytie', element: <PokrytiePage /> },
+        ],
+      },
       { path: 'about', element: <AboutPage /> },
 
       // Firma workspace
@@ -93,7 +113,7 @@ export const router = createBrowserRouter([
       { path: 'search', element: <Navigate to="/zakazky" replace /> },
 
       // Unchanged routes
-      { path: 'cpv-trends', element: <CpvTrendsPage /> },
+      { path: 'cpv-trends', element: <Navigate to="/analytika/cpv" replace /> },
       { path: 'graph', element: <GraphPage /> },
       { path: 'ingestion', element: <IngestionPage /> },
     ],

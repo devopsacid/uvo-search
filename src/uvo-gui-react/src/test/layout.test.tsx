@@ -3,19 +3,10 @@ import { render, screen } from '@testing-library/react'
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
 import { App } from '../App'
 import sk from '../i18n/sk'
+import { makeAnalyticsFetch } from './fixtures/analytics'
 
-// Stub fetch globally — returns type-appropriate shapes per URL so page
-// components don't crash (e.g. recent?.map requires an array).
-global.fetch = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-  let body: unknown
-  if (url.includes('/recent') || url.includes('/spend-by-year') || url.includes('/top-suppliers') || url.includes('/top-procurers') || url.includes('/by-cpv') || url.includes('/by-month')) {
-    body = []
-  } else {
-    body = { total_value: 1000000, contract_count: 42, avg_value: 23809, active_suppliers: 15, deltas: {} }
-  }
-  return { ok: true, json: async () => body } as Response
-}) as typeof fetch
+// Stub fetch globally; analytics endpoints return fixtures so the default route renders.
+global.fetch = makeAnalyticsFetch().impl
 
 describe('Layout + Routing', () => {
   beforeEach(() => {
@@ -41,7 +32,7 @@ describe('Layout + Routing', () => {
   it('renders Slovak navigation labels correctly', async () => {
     renderApp()
 
-    expect(await screen.findByText(sk.nav.overview)).toBeInTheDocument()
+    expect(await screen.findByText(sk.nav.analytics)).toBeInTheDocument()
     expect(await screen.findByText(sk.nav.firmy)).toBeInTheDocument()
     expect(await screen.findByText(sk.nav.zakazky)).toBeInTheDocument()
     expect(await screen.findByText(sk.nav.about)).toBeInTheDocument()
@@ -50,8 +41,8 @@ describe('Layout + Routing', () => {
   it('renders nav items with correct href', async () => {
     renderApp()
 
-    const overviewLink = await screen.findByRole('link', { name: sk.nav.overview })
-    expect(overviewLink).toHaveAttribute('href', '/')
+    const analyticsLink = await screen.findByRole('link', { name: sk.nav.analytics })
+    expect(analyticsLink).toHaveAttribute('href', '/analytika')
 
     const firmyLink = await screen.findByRole('link', { name: sk.nav.firmy })
     expect(firmyLink).toHaveAttribute('href', '/firmy')
@@ -70,10 +61,10 @@ describe('Layout + Routing', () => {
     expect(main).toBeInTheDocument()
   })
 
-  it('displays overview page as default route', async () => {
+  it('redirects the default route to the analytics overview', async () => {
     renderApp()
 
-    expect(await screen.findByText(sk.overview.title)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: sk.analytics.title })).toBeInTheDocument()
   })
 
   it('renders UVO branding text', async () => {

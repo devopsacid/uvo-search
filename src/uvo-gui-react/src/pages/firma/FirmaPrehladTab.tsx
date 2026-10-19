@@ -1,9 +1,13 @@
 import { useParams, Link } from 'react-router-dom'
+import { useAnalyticsConcentration } from '@/api/queries/analytics'
 import { useFirmaProfile } from '@/api/queries/firma'
+import { HhiBadge } from '@/components/analytics/HhiBadge'
 import { SpendByYearChart } from '@/components/charts/SpendByYearChart'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 import { Skeleton, SkeletonRow } from '@/components/ui/Skeleton'
-import { formatCurrency, formatDate, formatNumber } from '@/lib/utils'
+import { defaultRange, type AnalyticsFilters } from '@/lib/analyticsFilters'
+import { analyticsLink } from '@/lib/analyticsLinks'
+import { formatCurrency, formatDate, formatNumber, formatPercent } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 function KpiCard({ label, value }: { label: string; value: string }) {
@@ -11,6 +15,53 @@ function KpiCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-border bg-card p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{value}</p>
+    </div>
+  )
+}
+
+/** HHI / CR4 of a procurer's suppliers over the analytics default period (same numbers as the linked dashboard). */
+function ProcurerConcentrationCard({ ico }: { ico: string }) {
+  const filters: AnalyticsFilters = { ...defaultRange(), procurer_ico: ico }
+  const { data, isLoading, isError } = useAnalyticsConcentration(filters, 'supplier')
+  const t = sk.analytics.koncentracia
+
+  if (isError || (data && data.entity_count === 0)) return null
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <h2 className="mb-3 text-sm font-semibold text-foreground">{sk.firma.supplierConcentration}</h2>
+      {isLoading || !data ? (
+        <Skeleton className="h-16 w-full" />
+      ) : (
+        <>
+          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div>
+              <dt className="text-xs text-muted-foreground">{t.hhi}</dt>
+              <dd className="mt-1 flex items-center gap-2 text-xl font-semibold tabular-nums text-foreground">
+                {formatNumber(Math.round(data.hhi))}
+                <HhiBadge band={data.hhi_band} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t.cr4}</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums text-foreground">{formatPercent(data.cr4_pct)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t.cr10}</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums text-foreground">{formatPercent(data.cr10_pct)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t.entityCount}</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums text-foreground">{formatNumber(data.entity_count)}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {sk.firma.concentrationPeriod.replace('{from}', formatDate(filters.date_from)).replace('{to}', formatDate(filters.date_to))}{' '}
+            <Link to={analyticsLink('koncentracia', { procurer_ico: ico })} className="text-primary hover:underline">
+              {sk.firma.concentrationLink}
+            </Link>
+          </p>
+        </>
+      )}
     </div>
   )
 }
@@ -68,6 +119,22 @@ export function FirmaPrehladTab() {
 
   return (
     <div className="space-y-6">
+      {/* Link into the analytics dashboards, one per role the company has */}
+      {!isLoading && (procurerCount > 0 || supplierCount > 0) && (
+        <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {procurerCount > 0 && (
+            <Link to={analyticsLink('prehlad', { procurer_ico: safeIco })} className="text-primary hover:underline">
+              {procurerCount > 0 && supplierCount > 0 ? sk.firma.analyticsAsProcurer : sk.firma.analyticsLink}
+            </Link>
+          )}
+          {supplierCount > 0 && (
+            <Link to={analyticsLink('prehlad', { supplier_ico: safeIco })} className="text-primary hover:underline">
+              {procurerCount > 0 && supplierCount > 0 ? sk.firma.analyticsAsSupplier : sk.firma.analyticsLink}
+            </Link>
+          )}
+        </p>
+      )}
+
       {/* KPI cards */}
       <div className="grid grid-cols-3 gap-4">
         {isLoading ? (
@@ -92,6 +159,8 @@ export function FirmaPrehladTab() {
           <SpendByYearChart data={spendData} />
         )}
       </div>
+
+      {procurerCount > 0 && <ProcurerConcentrationCard ico={safeIco} />}
 
       {/* Top contracts */}
       <div className="rounded-lg border border-border bg-card">

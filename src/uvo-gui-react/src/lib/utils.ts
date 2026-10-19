@@ -73,6 +73,34 @@ export function formatMillions(value: number): string {
   return String(value)
 }
 
+/** Replace `{name}` placeholders in an i18n template. */
+export function fillTemplate(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? String(values[k]) : m))
+}
+
+const NARROW_NBSP = '\u202f'
+
+/** One decimal, decimal comma, narrow no-break space before the sign: "12,3 %". */
+export function formatPercent(value: number): string {
+  const n = new Intl.NumberFormat('sk-SK', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value)
+  return `${n}${NARROW_NBSP}%`
+}
+
+const compactNumber = new Intl.NumberFormat('sk-SK', { maximumFractionDigits: 1 })
+
+/** Compact euro amount for tiles, axes and aria summaries: "950 €", "15 tis. €", "1,2 M €", "4,2 mld. €". */
+export function formatCompactCurrency(value: number): string {
+  const abs = Math.abs(value)
+  const c = sk.common
+  if (abs >= 1_000_000_000) return `${compactNumber.format(value / 1_000_000_000)} ${c.billionsAbbrev} €`
+  if (abs >= 1_000_000) return `${compactNumber.format(value / 1_000_000)} ${c.millionsAbbrev} €`
+  if (abs >= 1_000) return `${compactNumber.format(Math.round(value / 1_000))} ${c.thousandsAbbrev} €`
+  return `${compactNumber.format(value)} €`
+}
+
 /** Relative age in Slovak; `never` is shown when seconds is null. */
 export function formatAge(seconds: number | null, never: string = DASH): string {
   if (seconds === null) return never
