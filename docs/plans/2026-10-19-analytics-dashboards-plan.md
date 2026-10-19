@@ -2,6 +2,10 @@
 
 Date: 2026-10-19 · Spec: `docs/specs/2026-10-19-analytics-dashboards.md` · Baseline: `main` @ `ff3cfc2`
 
+> **Route note:** file paths and route names below are as of the original plan. Routes were renamed later
+> (`/analytika/*` → `/analytics/*`, `/firma/*` → `/company/*`, `/firmy` → `/companies`, `/zakazky` → `/contracts`);
+> the old paths redirect. See `docs/plans/2026-10-19-english-identifiers.md` §2.3 for the current table.
+
 ## Guardrails (every workstream)
 
 - One git worktree per workstream (`superpowers:using-git-worktrees` / `parallel-worktrees`), branch names below, branched from `main`.

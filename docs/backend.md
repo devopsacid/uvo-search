@@ -135,8 +135,9 @@ Routes under `/api/*` return the schemas in `uvo_api/_schema.py`. Public `/v1` r
 - `GET /api/procurers`, `GET /api/procurers/{ico}`, `GET /api/procurers/{ico}/summary`
 - `GET /api/procurers/{ico}/concentration?top_n=N` — supplier concentration (HHI)
 - `GET /api/suppliers`, `GET /api/suppliers/{ico}`, `GET /api/suppliers/{ico}/summary`
-- `GET /api/firma/{ico}`, `GET /api/firma/{ico}/partneri`, `GET /api/firma/{ico}/cpv-profile` — company profile tabs (`/api/firmy` for the company list)
-- `GET /api/search/entities`, `GET /api/search/unified` — entity and combined search
+- `GET /api/companies` — company list (`q`, `role`, `limit`, `offset`)
+- `GET /api/companies/{ico}`, `GET /api/companies/{ico}/partners` (`role`, `sort`, `limit`, `offset`), `GET /api/companies/{ico}/cpv-profile` — company profile tabs. The former `/api/firma*` and `/api/firmy` paths still answer as hidden aliases for one release (not in OpenAPI)
+- `GET /api/search/entities`, `GET /api/search/unified` — entity and combined search. `/api/search/unified` returns `companies` (`CompanyHit[]`) and `contracts` (`ContractHit[]`) keys (formerly `firmy` and `zakazky`)
 
 **Dashboard routes** (`/api/dashboard/…`):
 

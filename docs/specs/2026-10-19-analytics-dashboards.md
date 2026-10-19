@@ -4,6 +4,12 @@ Date: 2026-10-19 · Baseline: `main` @ `ff3cfc2` · Status: proposed
 
 Companion plan: `docs/plans/2026-10-19-analytics-dashboards-plan.md`.
 
+> **Route note:** this spec predates the English identifier rename and keeps its original Slovak paths
+> (`/analytika/*`, `/firma/*`, `/firmy`, `/zakazky`, `/hladaj`, `/api/firma*`) as written. Current routes:
+> `/analytics/{overview,concentration,cpv,coverage}`, `/company/:ico/{overview,contracts,network,partners,cpv}`,
+> `/companies`, `/contracts`, `/search`; API `/api/companies*`. Old paths redirect (SPA) or are hidden aliases (API).
+> See `docs/plans/2026-10-19-english-identifiers.md` §2.
+
 ## 1. Summary
 
 Two deliverables under one umbrella, "easy to use analytical dashboards":
