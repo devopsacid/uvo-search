@@ -15,6 +15,8 @@ from datetime import date
 
 import httpx
 
+from uvo_pipeline.utils.http_retry import fetch_with_retry
+
 logger = logging.getLogger(__name__)
 
 _SEARCH_PATH = "/v3/notices/search"
@@ -96,7 +98,9 @@ async def search_sk_notices(
         }
 
         try:
-            response = await client.post(_SEARCH_PATH, json=payload)
+            response = await fetch_with_retry(
+                lambda: client.post(_SEARCH_PATH, json=payload), label=f"ted search p{page}"
+            )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.error(

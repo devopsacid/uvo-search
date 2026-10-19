@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 
 from uvo_pipeline.catalog.nkod import VestnikDataset
+from uvo_pipeline.utils.http_retry import fetch_with_retry
 from uvo_pipeline.utils.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,9 @@ async def fetch_bulletin(
     else:
         await rate_limiter.acquire()
         try:
-            response = await client.get(dataset.download_url)
+            response = await fetch_with_retry(
+                lambda: client.get(dataset.download_url), label="vestnik download"
+            )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             logger.warning(

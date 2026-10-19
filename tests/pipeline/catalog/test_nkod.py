@@ -186,7 +186,7 @@ async def test_discover_partial_page_then_error_raises():
         route = mock.post(SPARQL_URL)
         route.side_effect = [
             httpx.Response(200, json=first_page),
-            httpx.Response(500, text="Server error"),
+            *[httpx.Response(500, text="Server error")] * 5,
         ]
         async with httpx.AsyncClient() as client:
             seen = []

@@ -189,7 +189,7 @@ async def test_fetch_partial_page_then_list_error_raises():
         mock.get("/v2/verejneObstaravania").mock(
             side_effect=[
                 httpx.Response(200, json=[STUB_1]),
-                httpx.Response(500),
+                *[httpx.Response(500)] * 5,
             ]
         )
         mock.get(f"/v2/verejneObstaravania/{STUB_1['id']}").mock(
@@ -262,3 +262,88 @@ async def test_subject_cache_avoids_repeat_fetches():
             _ = [r async for r in fetch_procurements(client, rate_limiter)]
 
     assert subj_route.call_count == 1
+
+
+class _RecordingCache:
+    def __init__(self):
+        self.store: dict = {}
+        self.ttls: dict = {}
+
+    async def get(self, key):
+        return self.store.get(key)
+
+    async def set(self, key, value, ttl_seconds):
+        self.store[key] = value
+        self.ttls[key] = ttl_seconds
+
+
+@pytest.mark.asyncio
+async def test_fetch_by_id_does_not_cache_transient_failures():
+    """A 5xx / network error is transient: caching {} for 24h would hide the
+    supplier name for a day. Nothing may be cached and the call returns None."""
+    from uvo_pipeline.extractors.itms import _fetch_by_id
+
+    cache = _RecordingCache()
+    with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+        route = mock.get("/v2/dodavatelia/200").mock(return_value=httpx.Response(503))
+        async with httpx.AsyncClient(base_url=BASE) as client:
+            result = await _fetch_by_id(
+                client,
+                RateLimiter(rate=10000),
+                "/v2/dodavatelia",
+                200,
+                cache,
+                "itms:supplier",
+                86400,
+            )
+
+    assert result is None
+    assert cache.store == {}
+    assert route.call_count > 1, "transient 503 must be retried"
+
+
+@pytest.mark.asyncio
+async def test_fetch_by_id_retries_then_caches_success():
+    from uvo_pipeline.extractors.itms import _fetch_by_id
+
+    cache = _RecordingCache()
+    with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+        mock.get("/v2/dodavatelia/200").mock(
+            side_effect=[httpx.Response(502), httpx.Response(200, json=SUPPLIER_200)]
+        )
+        async with httpx.AsyncClient(base_url=BASE) as client:
+            result = await _fetch_by_id(
+                client,
+                RateLimiter(rate=10000),
+                "/v2/dodavatelia",
+                200,
+                cache,
+                "itms:supplier",
+                86400,
+            )
+
+    assert result == SUPPLIER_200
+    assert cache.ttls["itms:supplier:200"] == 86400
+
+
+@pytest.mark.asyncio
+async def test_fetch_by_id_caches_404_with_short_ttl():
+    from uvo_pipeline.extractors.itms import _fetch_by_id
+
+    cache = _RecordingCache()
+    with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+        mock.get("/v2/dodavatelia/999").mock(return_value=httpx.Response(404))
+        async with httpx.AsyncClient(base_url=BASE) as client:
+            result = await _fetch_by_id(
+                client,
+                RateLimiter(rate=10000),
+                "/v2/dodavatelia",
+                999,
+                cache,
+                "itms:supplier",
+                86400,
+            )
+
+    assert result is None
+    assert cache.store["itms:supplier:999"] == {}
+    assert cache.ttls["itms:supplier:999"] <= 3600
