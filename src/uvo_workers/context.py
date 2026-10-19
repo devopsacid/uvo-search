@@ -9,6 +9,7 @@ handling, the health server, and - on the way out - the health task,
 import asyncio
 import logging
 import signal
+import time
 import uuid
 from collections.abc import Callable
 
@@ -19,7 +20,7 @@ from uvo_core.adapters.redis.client import RedisSettings, get_redis_settings
 from uvo_workers.clients import WorkerClients, open_mongo, open_neo4j, open_redis
 from uvo_workers.errors import redact_exception
 from uvo_workers.health import serve_health
-from uvo_workers.metrics import build_registry
+from uvo_workers.metrics import WorkerMetricsCollector, build_registry
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class WorkerContext:
         self.metrics: dict = metrics if metrics is not None else {}
         self.metrics["instance_id"] = self.instance_id
         self.metrics["redis_connected"] = False
+        self.metrics["started_at_ts"] = time.time()
         self.stop_event = asyncio.Event()
         self._registry_name = registry_name
         self._health_port = health_port
@@ -80,6 +82,10 @@ class WorkerContext:
     @property
     def neo4j(self):
         return self.clients.neo4j
+
+    def build_collector(self) -> WorkerMetricsCollector:
+        """Prometheus collector for this process, labelled with its source/instance."""
+        return build_registry(self._registry_name, source=self.source, instance_id=self.instance_id)
 
     async def __aenter__(self) -> "WorkerContext":
         if self.clients is None:
@@ -105,7 +111,7 @@ class WorkerContext:
                 serve_health(
                     self._health_port,
                     lambda: dict(self.metrics),
-                    registry=build_registry(self._registry_name),
+                    registry=self.build_collector(),
                 ),
                 name=f"health-{self.name}",
             )

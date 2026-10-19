@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+import time
 from collections.abc import Callable
 from typing import Any
 
 from cachetools import TTLCache
 from cachetools.keys import hashkey
+
+from uvo_core.observability import CACHE_REQUESTS, CACHED_CALL_DURATION
 
 
 def _make_key(args: tuple, kwargs: dict) -> tuple:
@@ -44,6 +47,7 @@ def async_ttl_cache(
     ttl: float,
     key_from: Callable | None = None,
     depends_on_data: bool = True,
+    name: str | None = None,
 ) -> Callable:
     """Decorator for async functions. Caches by hashable args/kwargs.
 
@@ -53,11 +57,27 @@ def async_ttl_cache(
     of arguments (e.g. to skip an unhashable ``db`` handle). Caches that do
     not depend on ingested data pass ``depends_on_data=False`` so they survive
     ``clear_data_caches()``.
+
+    ``name`` labels the Prometheus series (``uvo_cache_requests_total`` and
+    ``uvo_cached_call_duration_seconds``); it defaults to ``<module tail>.<function>``.
     """
 
     def decorator(fn: Callable) -> Callable:
+        cache_name = name or f"{fn.__module__.split('.')[-1]}.{fn.__name__}"
+        hits = CACHE_REQUESTS.labels(cache=cache_name, result="hit")
+        misses = CACHE_REQUESTS.labels(cache=cache_name, result="miss")
+        inflight = CACHE_REQUESTS.labels(cache=cache_name, result="inflight")
+        call_duration = CACHED_CALL_DURATION.labels(cache=cache_name)
         cache: TTLCache = TTLCache(maxsize=maxsize, ttl=ttl)
         pending: dict[Any, asyncio.Future] = {}
+
+        async def timed_call(*args, **kwargs):
+            misses.inc()
+            started = time.perf_counter()
+            try:
+                return await fn(*args, **kwargs)
+            finally:
+                call_duration.observe(time.perf_counter() - started)
 
         @functools.wraps(fn)
         async def wrapper(*args, **kwargs):
@@ -67,14 +87,16 @@ def async_ttl_cache(
                 else:
                     key = _make_key(args, kwargs)
             except TypeError:
-                return await fn(*args, **kwargs)
+                return await timed_call(*args, **kwargs)
 
             while True:
                 if key in cache:
+                    hits.inc()
                     return copy.deepcopy(cache[key])
                 in_flight = pending.get(key)
                 if in_flight is None:
                     break
+                inflight.inc()
                 try:
                     # shield: a cancelled waiter must not cancel the shared future.
                     return copy.deepcopy(await asyncio.shield(in_flight))
@@ -88,7 +110,7 @@ def async_ttl_cache(
             fut: asyncio.Future = asyncio.get_running_loop().create_future()
             pending[key] = fut
             try:
-                result = await fn(*args, **kwargs)
+                result = await timed_call(*args, **kwargs)
             except asyncio.CancelledError:
                 fut.cancel()
                 raise
