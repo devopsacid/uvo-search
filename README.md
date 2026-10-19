@@ -333,8 +333,7 @@ uvo-search/
 │   └── docker-publish.yml            # Push to container registry
 │
 ├── docker-compose.yml                # Local deployment
-├── Dockerfile.mcp                    # MCP server container
-├── Dockerfile.api                    # API container
+├── Dockerfile                        # Multi-stage: targets mcp, api, workers, pipeline
 ├── src/uvo-gui-react/Dockerfile      # React app container
 ├── pyproject.toml                    # Python dependencies and tooling
 ├── uv.lock                           # Locked Python dependency versions
