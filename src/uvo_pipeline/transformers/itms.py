@@ -23,7 +23,7 @@ from uvo_core.domain.models import (
 
 logger = logging.getLogger(__name__)
 
-_STAV_TO_STATUS = {
+_RAW_STATUS_TO_STATUS = {
     "Ukoncene": "awarded",
     "Ukončené": "awarded",
     "Zrusene": "cancelled",
@@ -117,15 +117,15 @@ def _cpv_code(raw: dict) -> str | None:
 
 
 def transform_procurement(raw: dict) -> CanonicalNotice:
-    stav = raw.get("stav", "")
+    raw_status = raw.get("stav", "")
     contracts = raw.get("_contracts", [])
     return CanonicalNotice(
         source="itms",
         source_id=str(raw["id"]),
         notice_type="contract_award"
-        if stav in ("Ukoncene", "Ukončené") and contracts
+        if raw_status in ("Ukoncene", "Ukončené") and contracts
         else "contract_notice",
-        status=_STAV_TO_STATUS.get(stav, "unknown"),
+        status=_RAW_STATUS_TO_STATUS.get(raw_status, "unknown"),
         title=raw.get("nazov") or "Unnamed procurement",
         cpv_code=_cpv_code(raw),
         estimated_value=raw.get("predpokladanaHodnotaZakazky"),

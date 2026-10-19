@@ -81,7 +81,7 @@ def test_transform_status_cancelled():
     assert r.status == "cancelled"
 
 
-def test_transform_status_unknown_for_unrecognised_stav():
+def test_transform_status_unknown_for_unrecognised_raw_status():
     r = transform_procurement(_raw(stav="SomethingElse"))
     assert r.status == "unknown"
 
