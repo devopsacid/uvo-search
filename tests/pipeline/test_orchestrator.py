@@ -4,8 +4,8 @@ from datetime import date
 
 import pytest
 
+from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer
 from uvo_pipeline.loaders.mongo import upsert_notice
-from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer
 from uvo_pipeline.orchestrator import _run_cross_source_dedup
 
 

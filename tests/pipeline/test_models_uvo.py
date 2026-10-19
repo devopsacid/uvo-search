@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from uvo_pipeline.models import CanonicalNotice
+from uvo_core.domain.models import CanonicalNotice
 
 
 def test_source_accepts_uvo():

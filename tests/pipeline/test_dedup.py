@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from uvo_pipeline.models import CanonicalNotice, CanonicalProcurer
+from uvo_core.domain.models import CanonicalNotice, CanonicalProcurer
 from uvo_pipeline.utils.hashing import compute_notice_hash
 
 
@@ -75,7 +75,7 @@ def test_canonical_notice_has_content_hash_field():
 def test_pipeline_report_has_notices_skipped():
     from datetime import datetime
 
-    from uvo_pipeline.models import PipelineReport
+    from uvo_core.domain.models import PipelineReport
 
     r = PipelineReport(run_id="x", mode="recent", started_at=datetime.utcnow())
     assert r.notices_skipped == 0
@@ -159,7 +159,7 @@ def test_pipeline_report_accumulates_skipped():
     """PipelineReport.notices_skipped must be settable and default to 0."""
     from datetime import datetime
 
-    from uvo_pipeline.models import PipelineReport
+    from uvo_core.domain.models import PipelineReport
 
     r = PipelineReport(run_id="x", mode="recent", started_at=datetime.utcnow())
     r.notices_skipped += 10

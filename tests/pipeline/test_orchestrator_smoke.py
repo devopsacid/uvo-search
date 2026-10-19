@@ -2,8 +2,8 @@
 
 import pytest
 
+from uvo_core.domain.models import PipelineReport
 from uvo_pipeline.config import PipelineSettings
-from uvo_pipeline.models import PipelineReport
 from uvo_pipeline.orchestrator import run
 
 

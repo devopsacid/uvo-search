@@ -5,7 +5,7 @@ dictionary of every analyzed path. With no literal prefix that is a full scan
 across four fields, reachable from an unauthenticated endpoint.
 """
 
-from uvo_mcp.search_query import build_search_stage
+from uvo_core.adapters.mongo.search_query import build_search_stage
 
 PATHS = ["title", "description"]
 

@@ -9,8 +9,8 @@ from datetime import date
 import pytest
 from mongomock_motor import AsyncMongoMockClient
 
+from uvo_core.domain.models import CanonicalNotice
 from uvo_pipeline.ingestion_log import ensure_log_indexes
-from uvo_pipeline.models import CanonicalNotice
 from uvo_workers.ingestor import process_batch_logs  # to be created
 
 

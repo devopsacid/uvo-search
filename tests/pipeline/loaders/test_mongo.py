@@ -2,13 +2,13 @@
 
 import pytest
 
-from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch, upsert_notice
-from uvo_pipeline.models import (
+from uvo_core.domain.models import (
     CanonicalAward,
     CanonicalNotice,
     CanonicalProcurer,
     CanonicalSupplier,
 )
+from uvo_pipeline.loaders.mongo import ensure_indexes, upsert_batch, upsert_notice
 
 
 def _notice(source_id: str = "test-1", title: str = "Test notice") -> CanonicalNotice:

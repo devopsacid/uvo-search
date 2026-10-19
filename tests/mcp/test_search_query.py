@@ -1,4 +1,4 @@
-from uvo_mcp.search_query import build_search_stage
+from uvo_core.adapters.mongo.search_query import build_search_stage
 
 
 def test_empty_query_uses_exists():
