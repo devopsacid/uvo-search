@@ -82,21 +82,35 @@ INDEX_DEFINITIONS: dict[str, dict[str, Any]] = {
                         },
                     ],
                     "description": {"type": "string"},
+                    # token mappings below back the compound.filter clauses and
+                    # $search.sort emitted by uvo_core.adapters.mongo.procurements.
+                    # A filter on an unmapped path matches nothing, so adding a
+                    # filter there means adding its mapping here (index rebuild).
+                    "notice_type": {"type": "token"},
                     "procurer": {
                         "type": "document",
-                        "fields": {"name": {"type": "string"}},
+                        "fields": {
+                            "name": {"type": "string"},
+                            "ico": {"type": "token"},
+                        },
                     },
                     "awards": {
                         "type": "document",
                         "fields": {
                             "supplier": {
                                 "type": "document",
-                                "fields": {"name": {"type": "string"}},
+                                "fields": {
+                                    "name": {"type": "string"},
+                                    "ico": {"type": "token"},
+                                },
                             }
                         },
                     },
                     "cpv_code": {"type": "token"},
-                    "publication_date": {"type": "date"},
+                    # Stored as an ISO "YYYY-MM-DD" string (model_dump(mode="json")),
+                    # which the `date` type does not index; `token` gives string
+                    # range + sort. `date` is kept for any BSON-date legacy docs.
+                    "publication_date": [{"type": "date"}, {"type": "token"}],
                 },
             },
         },

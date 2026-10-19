@@ -37,6 +37,17 @@ async def test_ensure_indexes_succeeds(mock_mongo_db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("collection", ["procurers", "suppliers"])
+async def test_ensure_indexes_backs_entity_listing_sorts(mock_mongo_db, collection):
+    """Empty-query entity_search sorts with find(); each sort needs its index."""
+    await ensure_indexes(mock_mongo_db)
+    info = await mock_mongo_db[collection].index_information()
+    assert info["name_asc"]["key"] == [("name", 1), ("_id", 1)]
+    assert info["contract_count_desc"]["key"] == [("contract_count", -1), ("_id", 1)]
+    assert info["total_value_desc"]["key"] == [("total_value", -1), ("_id", 1)]
+
+
+@pytest.mark.asyncio
 async def test_upsert_notice_inserts_new(mock_mongo_db):
     notice = _notice("new-1", "Brand new notice")
     doc_id = await upsert_notice(mock_mongo_db, notice)

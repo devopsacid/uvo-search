@@ -15,6 +15,20 @@ def _wildcard_prefix_len(q: str) -> int:
     return min(candidates) if candidates else len(q)
 
 
+def with_filters(operator: dict, filters: list[dict]) -> dict:
+    """Combine a scoring operator with non-scoring ``compound.filter`` clauses.
+
+    The text operator goes under ``must`` (it has to match; a should-only inner
+    compound still requires one of its clauses) and the filters under ``filter``,
+    so mongot does the narrowing instead of a ``$match`` over every hit in
+    mongod. Filter paths must be mapped (token/number/date) in the search index,
+    otherwise the clause silently matches nothing.
+    """
+    if not filters:
+        return operator
+    return {"compound": {"must": [operator], "filter": filters}}
+
+
 def build_search_stage(query: str, path: list[str]) -> dict:
     """Return the operator body for a $search stage (without the index key).
 

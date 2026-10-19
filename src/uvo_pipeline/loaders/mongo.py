@@ -108,6 +108,13 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
 
     await ensure_log_indexes(db)
 
+    # Entity listing sorts: an empty-query entity_search is find({}).sort(<field>, _id)
+    # (uvo_core.adapters.mongo.subjects); _id makes pagination stable on ties.
+    for coll in (db.procurers, db.suppliers):
+        await _ensure_index(coll, [("name", 1), ("_id", 1)], name="name_asc")
+        await _ensure_index(coll, [("contract_count", -1), ("_id", 1)], name="contract_count_desc")
+        await _ensure_index(coll, [("total_value", -1), ("_id", 1)], name="total_value_desc")
+
     logger.info("MongoDB indexes ensured")
 
 

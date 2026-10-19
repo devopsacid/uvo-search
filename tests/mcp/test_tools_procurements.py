@@ -45,21 +45,22 @@ class TestSearchCompletedProcurements:
         assert result["status_code"] == 503
 
 
-async def test_pipeline_has_search_match_and_facet():
-    agg = MagicMock()
-    agg.to_list = AsyncMock(
-        return_value=[{"items": [{"_id": "n1", "title": "X"}], "total": [{"count": 1}]}]
-    )
+async def test_pipeline_filters_inside_search_and_counts_via_search_meta():
+    items = MagicMock()
+    items.to_list = AsyncMock(return_value=[{"_id": "n1", "title": "X"}])
+    meta = MagicMock()
+    meta.to_list = AsyncMock(return_value=[{"count": {"total": 1}}])
     db = MagicMock()
-    db.notices.aggregate = MagicMock(return_value=agg)
+    db.notices.aggregate = MagicMock(side_effect=[items, meta])
 
     out = await _search_mongo_procurements(db, text_query="fakulta", date_from="2024-01-01")
     assert out["total"] == 1
-    (pipeline,) = db.notices.aggregate.call_args.args
-    assert "$search" in pipeline[0]
-    assert pipeline[1]["$match"]["notice_type"] == "contract_award"
-    assert pipeline[1]["$match"]["publication_date"] == {"$gte": "2024-01-01"}
-    assert "$facet" in pipeline[2]
+    pipeline = db.notices.aggregate.call_args_list[0].args[0]
+    filters = pipeline[0]["$search"]["compound"]["filter"]
+    assert {"equals": {"path": "notice_type", "value": "contract_award"}} in filters
+    assert {"range": {"path": "publication_date", "gte": "2024-01-01"}} in filters
+    assert not any("$facet" in s for s in pipeline)
+    assert "$searchMeta" in db.notices.aggregate.call_args_list[1].args[0][0]
 
 
 class TestGetProcurementDetail:
