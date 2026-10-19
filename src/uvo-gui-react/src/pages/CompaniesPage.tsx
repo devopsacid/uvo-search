@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router-dom'
-import { useFirmyList } from '@/api/queries/firma'
+import { useCompaniesList } from '@/api/queries/companies'
 import { Sidebar, SidebarSection } from '@/components/layout/Sidebar'
 import { FilterInput } from '@/components/search/FilterBar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
@@ -12,12 +12,12 @@ import sk from '@/i18n/sk'
 const PAGE_SIZE = 20
 
 const ROLE_CHIPS: { value: string; label: string }[] = [
-  { value: 'all', label: sk.firmy.chipAll },
-  { value: 'supplier', label: sk.firmy.chipSupplier },
-  { value: 'procurer', label: sk.firmy.chipProcurer },
+  { value: 'all', label: sk.companies.chipAll },
+  { value: 'supplier', label: sk.companies.chipSupplier },
+  { value: 'procurer', label: sk.companies.chipProcurer },
 ]
 
-export function FirmyPage() {
+export function CompaniesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const q = searchParams.get('q') ?? ''
   const role = searchParams.get('role') ?? 'all'
@@ -36,7 +36,7 @@ export function FirmyPage() {
     }, { replace: false })
   }
 
-  const { data, isLoading, isError } = useFirmyList({
+  const { data, isLoading, isError } = useCompaniesList({
     q,
     role,
     limit: PAGE_SIZE,
@@ -51,12 +51,12 @@ export function FirmyPage() {
   return (
     <div className="flex gap-4">
       <Sidebar>
-        <SidebarSection title={sk.firmy.title}>
+        <SidebarSection title={sk.companies.title}>
           <FilterInput
             label={sk.common.searchAction}
             value={q}
             onChange={(e) => setParam('q', e.target.value)}
-            placeholder={sk.firmy.searchPlaceholder}
+            placeholder={sk.companies.searchPlaceholder}
           />
           <div className="mt-3 flex flex-wrap gap-1.5">
             {ROLE_CHIPS.map((chip) => (
@@ -87,7 +87,7 @@ export function FirmyPage() {
       </Sidebar>
 
       <div className="min-w-0 flex-1">
-        <h1 className="mb-4 text-lg font-semibold text-foreground">{sk.firmy.title}</h1>
+        <h1 className="mb-4 text-lg font-semibold text-foreground">{sk.companies.title}</h1>
 
         {isError && (
           <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
@@ -100,11 +100,11 @@ export function FirmyPage() {
             <Table>
               <TableHeader>
                 <tr>
-                  <TableHead>{sk.firmy.colName}</TableHead>
-                  <TableHead>{sk.firmy.colIco}</TableHead>
-                  <TableHead>{sk.firmy.colRole}</TableHead>
-                  <TableHead>{sk.firmy.colContracts}</TableHead>
-                  <TableHead>{sk.firmy.colValue}</TableHead>
+                  <TableHead>{sk.companies.colName}</TableHead>
+                  <TableHead>{sk.companies.colIco}</TableHead>
+                  <TableHead>{sk.companies.colRole}</TableHead>
+                  <TableHead>{sk.companies.colContracts}</TableHead>
+                  <TableHead>{sk.companies.colValue}</TableHead>
                 </tr>
               </TableHeader>
               <TableBody>
@@ -116,8 +116,8 @@ export function FirmyPage() {
           </div>
         ) : items.length === 0 ? (
           <EmptyState
-            title={sk.firmy.noResults}
-            description={sk.firmy.noResultsHint}
+            title={sk.companies.noResults}
+            description={sk.companies.noResultsHint}
             action={
               hasFilters ? (
                 <button
@@ -134,11 +134,11 @@ export function FirmyPage() {
             <Table>
               <TableHeader>
                 <tr>
-                  <TableHead>{sk.firmy.colName}</TableHead>
-                  <TableHead>{sk.firmy.colIco}</TableHead>
-                  <TableHead>{sk.firmy.colRole}</TableHead>
-                  <TableHead className="text-right">{sk.firmy.colContracts}</TableHead>
-                  <TableHead className="text-right">{sk.firmy.colValue}</TableHead>
+                  <TableHead>{sk.companies.colName}</TableHead>
+                  <TableHead>{sk.companies.colIco}</TableHead>
+                  <TableHead>{sk.companies.colRole}</TableHead>
+                  <TableHead className="text-right">{sk.companies.colContracts}</TableHead>
+                  <TableHead className="text-right">{sk.companies.colValue}</TableHead>
                 </tr>
               </TableHeader>
               <TableBody>
@@ -146,7 +146,7 @@ export function FirmyPage() {
                   <TableRow key={row.ico}>
                     <TableCell>
                       <Link
-                        to={`/firma/${row.ico}`}
+                        to={`/company/${row.ico}`}
                         className="text-primary hover:underline"
                       >
                         {row.name}

@@ -22,7 +22,7 @@ import {
   type AnalyticsFilters,
   type RangeProblem,
 } from '@/lib/analyticsFilters'
-import { firmaLink, zakazkyLink, zakazkyPeriodLink } from '@/lib/analyticsLinks'
+import { companyLink, contractsLink, contractsPeriodLink } from '@/lib/analyticsLinks'
 import { csvFilename, downloadCsv, toCsv } from '@/lib/csv'
 import {
   fillTemplate,
@@ -36,11 +36,11 @@ import sk from '@/i18n/sk'
 
 const GRANULARITIES: AnalyticsGranularity[] = ['month', 'quarter', 'year']
 
-export function PrehladPage() {
+export function OverviewPage() {
   const { filters, rangeProblem } = useAnalyticsFilters()
   return (
     <div className="space-y-5">
-      <p className="max-w-3xl text-sm text-muted-foreground">{sk.analytics.prehlad.intro}</p>
+      <p className="max-w-3xl text-sm text-muted-foreground">{sk.analytics.overview.intro}</p>
       <SummarySection filters={filters} disabled={rangeProblem !== null} />
       <TimeseriesSection filters={filters} />
       <div className="grid gap-5 xl:grid-cols-2">
@@ -56,7 +56,7 @@ export function PrehladPage() {
 
 function SummarySection({ filters, disabled }: { filters: AnalyticsFilters; disabled: boolean }) {
   const q = useAnalyticsSummary(filters)
-  const href = zakazkyLink(filters)
+  const href = contractsLink(filters)
 
   if (disabled) return null
   if (q.isError) return <ErrorPanel error={q.error} onRetry={() => void q.refetch()} />
@@ -99,13 +99,13 @@ function TimeseriesSection({ filters }: { filters: AnalyticsFilters }) {
   const granularity = override ?? autoGranularity(filters)
   const q = useAnalyticsTimeseries(filters, { granularity })
   const points = q.data?.points ?? []
-  const unit = sk.analytics.prehlad.granularityUnit[granularity]
+  const unit = sk.analytics.overview.granularityUnit[granularity]
 
   const peak = points.reduce<(typeof points)[number] | null>(
     (best, p) => (best === null || p.total_value > best.total_value ? p : best),
     null,
   )
-  const title = sk.analytics.prehlad.timeseriesTitle
+  const title = sk.analytics.overview.timeseriesTitle
   const ariaLabel = peak
     ? fillTemplate(sk.analytics.aria.timeseries, {
         title,
@@ -119,7 +119,7 @@ function TimeseriesSection({ filters }: { filters: AnalyticsFilters }) {
 
   function exportCsv() {
     downloadCsv(
-      csvFilename('cas', filters.date_from, filters.date_to),
+      csvFilename('time', filters.date_from, filters.date_to),
       toCsv(points, [
         { header: sk.analytics.csv.period, value: (p) => p.period },
         { header: sk.analytics.csv.totalValue, value: (p) => p.total_value },
@@ -139,7 +139,7 @@ function TimeseriesSection({ filters }: { filters: AnalyticsFilters }) {
       onExportCsv={exportCsv}
       actions={
         <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          {sk.analytics.prehlad.granularity}
+          {sk.analytics.overview.granularity}
           <select
             value={granularity}
             onChange={(e) => setOverride(e.target.value as AnalyticsGranularity)}
@@ -147,7 +147,7 @@ function TimeseriesSection({ filters }: { filters: AnalyticsFilters }) {
           >
             {GRANULARITIES.map((g) => (
               <option key={g} value={g}>
-                {sk.analytics.prehlad.granularities[g]}
+                {sk.analytics.overview.granularities[g]}
               </option>
             ))}
           </select>
@@ -156,7 +156,7 @@ function TimeseriesSection({ filters }: { filters: AnalyticsFilters }) {
       chart={
         <TimeseriesChart
           points={points}
-          onSelectPeriod={(period) => navigate(zakazkyPeriodLink(filters, period))}
+          onSelectPeriod={(period) => navigate(contractsPeriodLink(filters, period))}
         />
       }
       table={
@@ -168,7 +168,7 @@ function TimeseriesSection({ filters }: { filters: AnalyticsFilters }) {
             {
               header: sk.analytics.csv.period,
               cell: (p) => (
-                <TableLink to={zakazkyPeriodLink(filters, p.period)}>{formatPeriodLabel(p.period)}</TableLink>
+                <TableLink to={contractsPeriodLink(filters, p.period)}>{formatPeriodLabel(p.period)}</TableLink>
               ),
             },
             { header: sk.analytics.csv.totalValue, cell: (p) => formatCurrency(p.total_value), align: 'right' },
@@ -194,7 +194,7 @@ function TopSection({
   const q = useAnalyticsTop(filters, { dimension, metric, n: 10 })
   const data = q.data
   const isProcurer = dimension === 'procurer'
-  const title = isProcurer ? sk.analytics.prehlad.topProcurers : sk.analytics.prehlad.topSuppliers
+  const title = isProcurer ? sk.analytics.overview.topProcurers : sk.analytics.overview.topSuppliers
   const icoParam = isProcurer ? 'procurer_ico' : 'supplier_ico'
 
   const rows: TopBarRow[] = (data?.items ?? []).map((it) => ({
@@ -204,8 +204,8 @@ function TopSection({
     amountLabel: metric === 'total_value' ? formatCompactCurrency(it.total_value) : formatNumber(it.contract_count),
     sharePct: it.share_pct,
     shareLabel: formatPercent(it.share_pct),
-    href: it.ico ? zakazkyLink(filters, { [icoParam]: it.ico }) : undefined,
-    profileHref: it.ico ? firmaLink(it.ico) : undefined,
+    href: it.ico ? contractsLink(filters, { [icoParam]: it.ico }) : undefined,
+    profileHref: it.ico ? companyLink(it.ico) : undefined,
   }))
   if (data && data.other.contract_count > 0) {
     const o = data.other
@@ -232,7 +232,7 @@ function TopSection({
 
   function exportCsv() {
     downloadCsv(
-      csvFilename(isProcurer ? 'top-obstaravatelia' : 'top-dodavatelia', filters.date_from, filters.date_to),
+      csvFilename(isProcurer ? 'top-procurers' : 'top-suppliers', filters.date_from, filters.date_to),
       toCsv(data?.items ?? [], [
         { header: sk.analytics.csv.name, value: (r) => r.label },
         { header: sk.common.ico, value: (r) => r.ico },
@@ -254,7 +254,7 @@ function TopSection({
       asImage={false}
       skeletonClassName="h-72"
       actions={
-        <div role="group" aria-label={sk.analytics.prehlad.metric} className="flex overflow-hidden rounded-md border border-border text-xs">
+        <div role="group" aria-label={sk.analytics.overview.metric} className="flex overflow-hidden rounded-md border border-border text-xs">
           {(['total_value', 'contract_count'] as const).map((m) => (
             <button
               key={m}
@@ -265,7 +265,7 @@ function TopSection({
                 metric === m ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'
               }`}
             >
-              {m === 'total_value' ? sk.analytics.prehlad.metricValue : sk.analytics.prehlad.metricCount}
+              {m === 'total_value' ? sk.analytics.overview.metricValue : sk.analytics.overview.metricCount}
             </button>
           ))}
         </div>
@@ -279,7 +279,7 @@ function TopSection({
           columns={[
             {
               header: sk.analytics.csv.name,
-              cell: (r) => (r.ico ? <TableLink to={firmaLink(r.ico)}>{r.label}</TableLink> : r.label),
+              cell: (r) => (r.ico ? <TableLink to={companyLink(r.ico)}>{r.label}</TableLink> : r.label),
             },
             { header: sk.analytics.csv.totalValue, cell: (r) => formatCurrency(r.total_value), align: 'right' },
             { header: sk.analytics.csv.contractCount, cell: (r) => formatNumber(r.contract_count), align: 'right' },
@@ -288,7 +288,7 @@ function TopSection({
               header: sk.analytics.charts.showContracts,
               cell: (r) =>
                 r.ico ? (
-                  <TableLink to={zakazkyLink(filters, { [icoParam]: r.ico })}>{sk.analytics.charts.showContracts}</TableLink>
+                  <TableLink to={contractsLink(filters, { [icoParam]: r.ico })}>{sk.analytics.charts.showContracts}</TableLink>
                 ) : null,
             },
           ]}
@@ -319,10 +319,10 @@ function RecentSection({ filters, rangeProblem }: { filters: AnalyticsFilters; r
     <section className="rounded-lg border border-border bg-card p-4" aria-labelledby="recent-title">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="recent-title" className="text-sm font-semibold text-foreground">
-          {sk.analytics.prehlad.recentTitle}
+          {sk.analytics.overview.recentTitle}
         </h3>
-        <Link to={zakazkyLink(filters)} className="text-xs text-primary hover:underline">
-          {sk.analytics.prehlad.allContracts}
+        <Link to={contractsLink(filters)} className="text-xs text-primary hover:underline">
+          {sk.analytics.overview.allContracts}
         </Link>
       </div>
       {rangeProblem ? (
@@ -335,14 +335,14 @@ function RecentSection({ filters, rangeProblem }: { filters: AnalyticsFilters; r
         <EmptyState title={sk.analytics.charts.emptyTitle} description={sk.analytics.charts.emptyHint} className="py-8" />
       ) : (
         <SimpleDataTable
-          caption={sk.analytics.prehlad.recentTitle}
+          caption={sk.analytics.overview.recentTitle}
           rows={rows}
           rowKey={(c) => c.id}
           columns={[
             {
               header: sk.search.colTitle,
               cell: (c) => (
-                <TableLink to={zakazkyLink(filters, { selected: c.id })}>
+                <TableLink to={contractsLink(filters, { selected: c.id })}>
                   <span className="line-clamp-2">{c.title}</span>
                 </TableLink>
               ),
@@ -354,7 +354,7 @@ function RecentSection({ filters, rangeProblem }: { filters: AnalyticsFilters; r
           ]}
         />
       )}
-      <p className="mt-3 text-xs text-muted-foreground">{sk.analytics.prehlad.recentHint}</p>
+      <p className="mt-3 text-xs text-muted-foreground">{sk.analytics.overview.recentHint}</p>
     </section>
   )
 }

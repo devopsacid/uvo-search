@@ -9,18 +9,18 @@ import { KpiRow, type KpiItem } from '@/components/analytics/KpiRow'
 import { ShareStackBar, type ShareSegment } from '@/components/analytics/ShareStackBar'
 import { useAnalyticsFilters } from '@/hooks/useAnalyticsFilters'
 import { periodCaption, type AnalyticsFilters } from '@/lib/analyticsFilters'
-import { firmaLink, zakazkyLink } from '@/lib/analyticsLinks'
+import { companyLink, contractsLink } from '@/lib/analyticsLinks'
 import { csvFilename, downloadCsv, toCsv } from '@/lib/csv'
 import { fillTemplate, formatCompactCurrency, formatCurrency, formatNumber, formatPercent } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 const DIMENSIONS: AnalyticsConcentrationDimension[] = ['supplier', 'procurer']
 
-export function KoncentraciaPage() {
+export function ConcentrationPage() {
   const { filters, rangeProblem } = useAnalyticsFilters()
   const [params, setParams] = useSearchParams()
   const dimension: AnalyticsConcentrationDimension = params.get('dimension') === 'procurer' ? 'procurer' : 'supplier'
-  const t = sk.analytics.koncentracia
+  const t = sk.analytics.concentration
 
   function selectDimension(d: AnalyticsConcentrationDimension) {
     setParams((prev) => {
@@ -58,14 +58,14 @@ export function KoncentraciaPage() {
 }
 
 function Body({ filters, dimension }: { filters: AnalyticsFilters; dimension: AnalyticsConcentrationDimension }) {
-  const t = sk.analytics.koncentracia
+  const t = sk.analytics.concentration
   const q = useAnalyticsConcentration(filters, dimension)
   const d = q.data
 
   if (q.isError) return <ErrorPanel error={q.error} onRetry={() => void q.refetch()} />
 
   const empty = q.isSuccess && (d?.entity_count ?? 0) === 0
-  const href = zakazkyLink(filters)
+  const href = contractsLink(filters)
   const items: KpiItem[] = d
     ? [
         { key: 'hhi', label: t.hhi, value: formatNumber(Math.round(d.hhi)), href, extra: <HhiBadge band={d.hhi_band} />, title: t.hhiHint },
@@ -97,7 +97,7 @@ function SharesCard({
   status: ReturnType<typeof useAnalyticsConcentration>
   empty: boolean
 }) {
-  const t = sk.analytics.koncentracia
+  const t = sk.analytics.concentration
   const top = data?.top ?? []
   const icoParam = dimension === 'supplier' ? 'supplier_ico' : 'procurer_ico'
   const listedShare = top.reduce((sum, e) => sum + e.share_pct, 0)
@@ -130,7 +130,7 @@ function SharesCard({
 
   function exportCsv() {
     downloadCsv(
-      csvFilename(`koncentracia-${dimension}`, filters.date_from, filters.date_to),
+      csvFilename(`concentration-${dimension}`, filters.date_from, filters.date_to),
       toCsv(top, [
         { header: sk.analytics.csv.name, value: (e: ConcentrationEntry) => e.name },
         { header: sk.common.ico, value: (e) => e.ico },
@@ -160,14 +160,14 @@ function SharesCard({
             rows={top}
             rowKey={(e) => e.ico}
             columns={[
-              { header: sk.analytics.csv.name, cell: (e) => <TableLink to={firmaLink(e.ico)}>{e.name}</TableLink> },
+              { header: sk.analytics.csv.name, cell: (e) => <TableLink to={companyLink(e.ico)}>{e.name}</TableLink> },
               { header: sk.analytics.csv.totalValue, cell: (e) => formatCurrency(e.total_value), align: 'right' },
               { header: sk.analytics.csv.sharePct, cell: (e) => formatPercent(e.share_pct), align: 'right' },
               { header: sk.analytics.csv.cumulativePct, cell: (e) => formatPercent(e.cumulative_pct), align: 'right' },
               {
                 header: sk.analytics.charts.showContracts,
                 cell: (e) => (
-                  <TableLink to={zakazkyLink(filters, { [icoParam]: e.ico })}>{sk.analytics.charts.showContracts}</TableLink>
+                  <TableLink to={contractsLink(filters, { [icoParam]: e.ico })}>{sk.analytics.charts.showContracts}</TableLink>
                 ),
               },
             ]}
@@ -184,7 +184,7 @@ function SharesCard({
 }
 
 function TrendCard({ filters, dimension }: { filters: AnalyticsFilters; dimension: AnalyticsConcentrationDimension }) {
-  const t = sk.analytics.koncentracia
+  const t = sk.analytics.concentration
   const { slices, results } = useConcentrationByYear(filters, dimension)
 
   const points = slices.map((s, i) => {

@@ -35,7 +35,7 @@ export interface UseAnalyticsFilters {
 
 /**
  * URL-backed analytics filter state (spec §5.1). Defaults are applied in memory only and are
- * never written to the URL, so `/analytika/prehlad` stays short; changes push history entries.
+ * never written to the URL, so `/analytics/overview` stays short; changes push history entries.
  */
 export function useAnalyticsFilters(): UseAnalyticsFilters {
   const [searchParams, setSearchParams] = useSearchParams()

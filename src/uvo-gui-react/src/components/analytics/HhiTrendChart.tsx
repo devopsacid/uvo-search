@@ -33,7 +33,7 @@ export function HhiTrendChart({ points, height = 260 }: HhiTrendChartProps) {
         <ReferenceLine y={1500} stroke="#64748b" strokeDasharray="4 4" label={{ value: '1 500', fontSize: 10, position: 'insideBottomRight' }} />
         <ReferenceLine y={2500} stroke="#64748b" strokeDasharray="4 4" label={{ value: '2 500', fontSize: 10, position: 'insideTopRight' }} />
         <Tooltip
-          formatter={(v: number) => [formatNumber(Math.round(v)), sk.analytics.koncentracia.hhiShort]}
+          formatter={(v: number) => [formatNumber(Math.round(v)), sk.analytics.concentration.hhiShort]}
           labelFormatter={(y) => `${sk.common.year} ${y}`}
           contentStyle={{ fontSize: 12, borderRadius: 6 }}
         />

@@ -9,7 +9,7 @@ function PinIcoRedirect() {
   useEffect(() => {
     const pinIco = searchParams.get('pin_ico')
     if (pinIco) {
-      navigate(`/firma/${pinIco}`, { replace: true })
+      navigate(`/company/${pinIco}`, { replace: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // run once on mount only

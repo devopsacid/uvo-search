@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { EgoNetwork } from '@/components/graph/EgoNetwork'
 
-export function FirmaSietTab() {
+export function CompanyNetworkTab() {
   const { ico } = useParams<{ ico: string }>()
   const navigate = useNavigate()
   const safeIco = ico ?? ''
@@ -12,7 +12,7 @@ export function FirmaSietTab() {
         ico={safeIco}
         hops={2}
         height="500px"
-        onNodeClick={(nodeIco) => navigate('/firma/' + nodeIco)}
+        onNodeClick={(nodeIco) => navigate('/company/' + nodeIco)}
       />
     </div>
   )

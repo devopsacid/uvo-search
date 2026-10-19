@@ -4,22 +4,22 @@ import { cn, formatCurrency } from '@/lib/utils'
 import sk from '@/i18n/sk'
 
 const ROLE_LABELS: Record<string, string> = {
-  supplier: sk.firma.roleSupplier,
-  procurer: sk.firma.roleProcurer,
+  supplier: sk.company.roleSupplier,
+  procurer: sk.company.roleProcurer,
 }
 
 const ICO_PATTERN = /^\d{8}$/
 
-function defaultTab(q: string): 'firmy' | 'zakazky' {
-  return ICO_PATTERN.test(q.trim()) ? 'firmy' : 'zakazky'
+function defaultTab(q: string): 'companies' | 'contracts' {
+  return ICO_PATTERN.test(q.trim()) ? 'companies' : 'contracts'
 }
 
-export function HladajPage() {
+export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
 
   const q = searchParams.get('q') ?? ''
-  const tab = (searchParams.get('tab') as 'firmy' | 'zakazky' | null) ?? defaultTab(q)
+  const tab = (searchParams.get('tab') as 'companies' | 'contracts' | null) ?? defaultTab(q)
 
   const { data, isFetching } = useUnifiedSearch(q)
 
@@ -39,11 +39,11 @@ export function HladajPage() {
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && q.trim()) {
       // Reload same page with current q — already reflected in URL
-      navigate(`/hladaj?q=${encodeURIComponent(q.trim())}`, { replace: true })
+      navigate(`/search?q=${encodeURIComponent(q.trim())}`, { replace: true })
     }
   }
 
-  function setTab(t: 'firmy' | 'zakazky') {
+  function setTab(t: 'companies' | 'contracts') {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('tab', t)
@@ -51,12 +51,12 @@ export function HladajPage() {
     }, { replace: true })
   }
 
-  const firmy = data?.firmy ?? []
-  const zakazky = data?.zakazky ?? []
+  const companies = data?.companies ?? []
+  const contracts = data?.contracts ?? []
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 py-6">
-      <h1 className="text-2xl font-semibold text-foreground">{sk.hladaj.title}</h1>
+      <h1 className="text-2xl font-semibold text-foreground">{sk.searchPage.title}</h1>
 
       {/* Search input */}
       <input
@@ -71,7 +71,7 @@ export function HladajPage() {
 
       {/* Empty-query state */}
       {!q && (
-        <p className="text-sm text-muted-foreground">{sk.hladaj.emptyPrompt}</p>
+        <p className="text-sm text-muted-foreground">{sk.searchPage.emptyPrompt}</p>
       )}
 
       {/* Results */}
@@ -79,7 +79,7 @@ export function HladajPage() {
         <>
           {/* Tab strip */}
           <div className="flex gap-1 border-b border-border">
-            {(['firmy', 'zakazky'] as const).map((t) => (
+            {(['companies', 'contracts'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -90,7 +90,7 @@ export function HladajPage() {
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {t === 'firmy' ? sk.hladaj.tabFirmy : sk.hladaj.tabZakazky}
+                {t === 'companies' ? sk.searchPage.tabCompanies : sk.searchPage.tabContracts}
               </button>
             ))}
           </div>
@@ -104,16 +104,16 @@ export function HladajPage() {
             </div>
           )}
 
-          {/* Firmy tab */}
-          {tab === 'firmy' && !isFetching && (
-            firmy.length === 0 ? (
+          {/* Companies tab */}
+          {tab === 'companies' && !isFetching && (
+            companies.length === 0 ? (
               <NoResults q={q} />
             ) : (
               <ul className="space-y-2">
-                {firmy.map((f) => (
+                {companies.map((f) => (
                   <li key={f.ico}>
                     <Link
-                      to={`/firma/${f.ico}`}
+                      to={`/company/${f.ico}`}
                       className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 hover:bg-accent"
                     >
                       <div className="min-w-0">
@@ -125,7 +125,7 @@ export function HladajPage() {
                           <RoleBadge key={r} role={r} />
                         ))}
                         <span className="text-xs text-muted-foreground">
-                          {f.contract_count} {sk.firma.contractsUnit}
+                          {f.contract_count} {sk.company.contractsUnit}
                         </span>
                       </div>
                     </Link>
@@ -136,15 +136,15 @@ export function HladajPage() {
           )}
 
           {/* Zákazky tab */}
-          {tab === 'zakazky' && !isFetching && (
-            zakazky.length === 0 ? (
+          {tab === 'contracts' && !isFetching && (
+            contracts.length === 0 ? (
               <NoResults q={q} />
             ) : (
               <ul className="space-y-2">
-                {zakazky.map((z) => (
+                {contracts.map((z) => (
                   <li key={z.id}>
                     <Link
-                      to={`/zakazky?selected=${z.id}`}
+                      to={`/contracts?selected=${z.id}`}
                       className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 hover:bg-accent"
                     >
                       <div className="min-w-0">
@@ -192,7 +192,7 @@ function RoleBadge({ role }: { role: string }) {
 function NoResults({ q }: { q: string }) {
   return (
     <p className="text-sm text-muted-foreground">
-      {sk.hladaj.noResults.replace('{q}', q)}
+      {sk.searchPage.noResults.replace('{q}', q)}
     </p>
   )
 }

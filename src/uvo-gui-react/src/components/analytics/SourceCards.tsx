@@ -25,17 +25,17 @@ export function SourceCards({ sources }: { sources: CoverageSource[] }) {
                 STATUS_STYLES[s.status] ?? STATUS_STYLES.unknown,
               )}
             >
-              {sk.analytics.pokrytie.status[s.status] ?? s.status}
+              {sk.analytics.coverage.status[s.status] ?? s.status}
             </span>
           </div>
           <dl className="mt-3 space-y-1.5 text-sm">
-            <Row label={sk.analytics.pokrytie.noticesTotal} value={formatNumber(s.notices_total)} />
-            <Row label={sk.analytics.pokrytie.contractAwards} value={formatNumber(s.contract_awards)} />
+            <Row label={sk.analytics.coverage.noticesTotal} value={formatNumber(s.notices_total)} />
+            <Row label={sk.analytics.coverage.contractAwards} value={formatNumber(s.contract_awards)} />
             <Row
-              label={sk.analytics.pokrytie.lastUpdate}
-              value={formatAge(s.age_seconds, sk.analytics.pokrytie.never)}
+              label={sk.analytics.coverage.lastUpdate}
+              value={formatAge(s.age_seconds, sk.analytics.coverage.never)}
             />
-            <Row label={sk.analytics.pokrytie.lastPublication} value={formatDate(s.last_publication_date)} />
+            <Row label={sk.analytics.coverage.lastPublication} value={formatDate(s.last_publication_date)} />
           </dl>
         </li>
       ))}

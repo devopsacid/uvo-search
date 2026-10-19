@@ -1,5 +1,5 @@
 import { useParams, useSearchParams, Link } from 'react-router-dom'
-import { useFirmaPartneri } from '@/api/queries/firma'
+import { useCompanyPartners } from '@/api/queries/companies'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/Table'
 import { SkeletonRow } from '@/components/ui/Skeleton'
 import { Pagination } from '@/components/ui/Pagination'
@@ -14,14 +14,14 @@ type Sort = 'value' | 'count'
 const PAGE_SIZE = 25
 
 const CHIPS: { role: Role; label: string }[] = [
-  { role: 'all', label: sk.firma.chipAll },
-  { role: 'supplier', label: sk.firma.chipAsSupplier },
-  { role: 'procurer', label: sk.firma.chipAsProcurer },
+  { role: 'all', label: sk.company.chipAll },
+  { role: 'supplier', label: sk.company.chipAsSupplier },
+  { role: 'procurer', label: sk.company.chipAsProcurer },
 ]
 
 const ROLE_LABELS: Record<string, string> = {
-  supplier: sk.firma.roleSupplier,
-  procurer: sk.firma.roleProcurer,
+  supplier: sk.company.roleSupplier,
+  procurer: sk.company.roleProcurer,
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -40,7 +40,7 @@ function RoleBadge({ role }: { role: string }) {
   )
 }
 
-export function FirmaPartneriTab() {
+export function CompanyPartnersTab() {
   const { ico } = useParams<{ ico: string }>()
   const safeIco = ico ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
@@ -94,7 +94,7 @@ export function FirmaPartneriTab() {
 
   const offset = (page - 1) * PAGE_SIZE
 
-  const { data, isLoading, isError } = useFirmaPartneri(safeIco, {
+  const { data, isLoading, isError } = useCompanyPartners(safeIco, {
     role,
     sort,
     limit: PAGE_SIZE,
@@ -137,7 +137,7 @@ export function FirmaPartneriTab() {
                 : 'border border-border text-muted-foreground hover:bg-accent',
             )}
           >
-            {sk.firma.sortByValue}
+            {sk.company.sortByValue}
           </button>
           <button
             onClick={() => setSort('count')}
@@ -148,7 +148,7 @@ export function FirmaPartneriTab() {
                 : 'border border-border text-muted-foreground hover:bg-accent',
             )}
           >
-            {sk.firma.sortByCount}
+            {sk.company.sortByCount}
           </button>
         </div>
       </div>
@@ -166,11 +166,11 @@ export function FirmaPartneriTab() {
           <Table>
             <TableHeader>
               <tr>
-                <TableHead>{sk.firma.colPartner}</TableHead>
-                <TableHead>{sk.firma.colRola}</TableHead>
-                <TableHead className="text-right">{sk.firma.colZakazky}</TableHead>
-                <TableHead className="text-right">{sk.firma.colHodnota}</TableHead>
-                <TableHead>{sk.firma.colPosledna}</TableHead>
+                <TableHead>{sk.company.colPartner}</TableHead>
+                <TableHead>{sk.company.colRole}</TableHead>
+                <TableHead className="text-right">{sk.company.colContracts}</TableHead>
+                <TableHead className="text-right">{sk.company.colValue}</TableHead>
+                <TableHead>{sk.company.colLast}</TableHead>
               </tr>
             </TableHeader>
             <TableBody>
@@ -181,17 +181,17 @@ export function FirmaPartneriTab() {
           </Table>
         </div>
       ) : items.length === 0 ? (
-        <EmptyState title={sk.firma.partneriEmpty} description={sk.firma.partneriEmptyHint} />
+        <EmptyState title={sk.company.partnersEmpty} description={sk.company.partnersEmptyHint} />
       ) : (
         <div className="rounded-lg border border-border bg-card">
           <Table>
             <TableHeader>
               <tr>
-                <TableHead>{sk.firma.colPartner}</TableHead>
-                <TableHead>{sk.firma.colRola}</TableHead>
-                <TableHead className="text-right">{sk.firma.colZakazky}</TableHead>
-                <TableHead className="text-right">{sk.firma.colHodnota}</TableHead>
-                <TableHead>{sk.firma.colPosledna}</TableHead>
+                <TableHead>{sk.company.colPartner}</TableHead>
+                <TableHead>{sk.company.colRole}</TableHead>
+                <TableHead className="text-right">{sk.company.colContracts}</TableHead>
+                <TableHead className="text-right">{sk.company.colValue}</TableHead>
+                <TableHead>{sk.company.colLast}</TableHead>
               </tr>
             </TableHeader>
             <TableBody>
@@ -200,7 +200,7 @@ export function FirmaPartneriTab() {
                   <TableCell className="max-w-xs">
                     {row.ico ? (
                       <Link
-                        to={`/firma/${row.ico}`}
+                        to={`/company/${row.ico}`}
                         className="text-primary hover:underline line-clamp-2"
                       >
                         {row.name ?? row.ico}

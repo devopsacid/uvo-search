@@ -4,9 +4,9 @@ import sk from '@/i18n/sk'
 import { GlobalSearch } from '@/components/search/GlobalSearch'
 
 const navItems = [
-  { to: '/analytika', label: sk.nav.analytics, end: false },
-  { to: '/firmy', label: sk.nav.firmy, end: false },
-  { to: '/zakazky', label: sk.nav.zakazky, end: false },
+  { to: '/analytics', label: sk.nav.analytics, end: false },
+  { to: '/companies', label: sk.nav.companies, end: false },
+  { to: '/contracts', label: sk.nav.contracts, end: false },
   { to: '/graph', label: sk.nav.graph, end: false },
   { to: '/ingestion', label: sk.nav.ingestion, end: false },
   { to: '/about', label: sk.nav.about, end: false },

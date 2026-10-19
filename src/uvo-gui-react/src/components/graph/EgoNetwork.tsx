@@ -42,8 +42,8 @@ export function EgoNetwork({ ico, hops = 2, height = '500px', onNodeClick }: Ego
   if (nodes.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-card p-8 text-center">
-        <p className="text-sm font-medium text-foreground">{sk.firma.sietNoData}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{sk.firma.sietNoDataHint}</p>
+        <p className="text-sm font-medium text-foreground">{sk.company.networkNoData}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{sk.company.networkNoDataHint}</p>
       </div>
     )
   }

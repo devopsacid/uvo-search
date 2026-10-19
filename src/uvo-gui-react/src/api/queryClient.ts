@@ -1,6 +1,6 @@
 import { QueryClient, type QueryClientConfig } from '@tanstack/react-query'
 import { dashboardKeys } from './queries/dashboard'
-import { firmaKeys } from './queries/firma'
+import { companyKeys } from './queries/companies'
 
 const MINUTE = 60 * 1000
 
@@ -33,7 +33,7 @@ export function createQueryClient(overrides: QueryDefaults = {}): QueryClient {
   // staleTime override (tests) applies everywhere.
   if (overrides?.staleTime === undefined) {
     client.setQueryDefaults(dashboardKeys.all, { staleTime: AGGREGATE_STALE_TIME })
-    client.setQueryDefaults(firmaKeys.all, { staleTime: AGGREGATE_STALE_TIME })
+    client.setQueryDefaults(companyKeys.all, { staleTime: AGGREGATE_STALE_TIME })
   }
   return client
 }
