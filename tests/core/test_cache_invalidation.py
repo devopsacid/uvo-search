@@ -1,5 +1,6 @@
 """Tests for the shared notices:written cache-invalidation subscriber (A14)."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -52,7 +53,7 @@ def test_clear_data_caches_covers_mcp_side_caches():
 
 @pytest.mark.asyncio
 async def test_debounces_burst_to_single_clear(monkeypatch):
-    """A burst of events within the debounce window clears the caches once."""
+    """A burst clears once immediately, plus one trailing flush (not one per event)."""
     calls, on_invalidate = _counter()
 
     async def fake_subscribe(redis, channel):
@@ -63,7 +64,7 @@ async def test_debounces_burst_to_single_clear(monkeypatch):
 
     await cache_invalidation.run_cache_invalidator(MagicMock(), on_invalidate)
 
-    assert calls["n"] == 1
+    assert calls["n"] == 2
 
 
 @pytest.mark.asyncio
@@ -118,3 +119,72 @@ async def test_redis_error_degrades_without_raising(monkeypatch):
     monkeypatch.setattr(cache_invalidation, "subscribe", failing_subscribe)
 
     await cache_invalidation.run_cache_invalidator(AsyncMock())  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_events_inside_window_get_one_trailing_clear(monkeypatch):
+    """Leading + trailing debounce: a burst yields an immediate clear and one trailing clear."""
+    calls, on_invalidate = _counter()
+
+    async def fake_subscribe(redis, channel):
+        for _ in range(10):
+            yield {"source": "crz", "count": 1}
+        await asyncio.sleep(0.2)  # outlive the trailing timer, as the real subscriber would
+
+    monkeypatch.setattr(cache_invalidation, "subscribe", fake_subscribe)
+
+    await cache_invalidation.run_cache_invalidator(MagicMock(), on_invalidate, debounce=0.05)
+
+    assert calls["n"] == 2  # leading + exactly one trailing
+
+
+@pytest.mark.asyncio
+async def test_no_trailing_clear_when_window_saw_one_event(monkeypatch):
+    calls, on_invalidate = _counter()
+
+    async def fake_subscribe(redis, channel):
+        yield {"source": "crz", "count": 1}
+        await asyncio.sleep(0.15)
+
+    monkeypatch.setattr(cache_invalidation, "subscribe", fake_subscribe)
+
+    await cache_invalidation.run_cache_invalidator(MagicMock(), on_invalidate, debounce=0.05)
+
+    assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_pending_trailing_clear_is_flushed_when_stream_ends(monkeypatch):
+    """Events seen but not yet applied must not be lost when the subscriber stops."""
+    calls, on_invalidate = _counter()
+
+    async def fake_subscribe(redis, channel):
+        yield {"source": "crz", "count": 1}
+        yield {"source": "crz", "count": 1}
+
+    monkeypatch.setattr(cache_invalidation, "subscribe", fake_subscribe)
+
+    await cache_invalidation.run_cache_invalidator(MagicMock(), on_invalidate, debounce=30.0)
+
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_after_clear_hook_runs_after_each_clear_and_failures_are_swallowed(monkeypatch):
+    order: list[str] = []
+
+    async def after_clear():
+        order.append("warm")
+        raise RuntimeError("warm-up blew up")
+
+    async def fake_subscribe(redis, channel):
+        yield {"source": "crz", "count": 1}
+        await asyncio.sleep(0.05)
+
+    monkeypatch.setattr(cache_invalidation, "subscribe", fake_subscribe)
+
+    await cache_invalidation.run_cache_invalidator(
+        MagicMock(), lambda: order.append("clear"), after_clear=after_clear
+    )
+
+    assert order == ["clear", "warm"]

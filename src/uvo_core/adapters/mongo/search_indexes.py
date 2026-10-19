@@ -7,8 +7,10 @@ Single owner of search-index bootstrap: both the MCP and the API lifespans call
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -146,9 +148,37 @@ def definition_is_current(desired: Any, live: Any) -> bool:
     return desired == live
 
 
-async def ensure_indexes(db) -> None:
+async def _ensure_collections(db) -> None:
+    """Create the indexed collections if absent.
+
+    Atlas Search refuses ``createSearchIndex`` on a collection that does not exist,
+    which is the state of a fresh database until the first ingest. Best effort and
+    race-safe: a concurrent creator (the ingestor) just makes ``create_collection`` fail.
+    """
+    try:
+        existing = set(await db.list_collection_names())
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("list_collection_names failed: %s", exc)
+        return
+    for coll in INDEX_DEFINITIONS:
+        if coll in existing:
+            continue
+        try:
+            await db.create_collection(coll)
+            logger.info("collection created for search index: %s", coll)
+        except Exception as exc:  # noqa: BLE001 - already exists / lost a race
+            logger.debug("create_collection skipped for %s: %s", coll, exc)
+
+
+async def ensure_indexes(db) -> bool:
     """Create each Atlas Search index if missing, or update it if the live
-    definition has drifted from the code. Idempotent."""
+    definition has drifted from the code. Idempotent.
+
+    Returns ``True`` when every collection was processed without error and
+    ``False`` otherwise (failures are logged at ERROR) so callers can retry.
+    """
+    ok = True
+    await _ensure_collections(db)
     for coll, spec in INDEX_DEFINITIONS.items():
         try:
             existing = [i async for i in db[coll].list_search_indexes()]
@@ -168,8 +198,44 @@ async def ensure_indexes(db) -> None:
                 spec["name"],
             )
         except Exception as exc:  # noqa: BLE001 - keep provisioning the other collections
+            ok = False
             logger.error("search index provisioning failed for %s: %s", coll, exc)
     await ensure_vector_indexes(db)
+    return ok
+
+
+async def retry_ensure_indexes(
+    db,
+    *,
+    ensure: Callable[[Any], Awaitable[Any]] | None = None,
+    interval: float = 30.0,
+    max_interval: float = 300.0,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> None:
+    """Re-run provisioning with exponential backoff until it succeeds.
+
+    Meant to run as a background task after a failed first attempt (fresh DB, mongot
+    still starting). Returns on the first success; cancel it on shutdown. Each failed
+    attempt is logged at WARNING.
+    """
+    run = ensure or ensure_indexes
+    delay = interval
+    while True:
+        await sleep(delay)
+        try:
+            ok = await run(db) is not False
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - keep retrying
+            logger.warning("search index provisioning retry failed: %s", exc)
+            ok = False
+        else:
+            if not ok:
+                logger.warning("search index provisioning incomplete; retrying in %.0fs", delay)
+        if ok:
+            logger.info("search index provisioning succeeded on retry")
+            return
+        delay = min(delay * 2, max_interval)
 
 
 async def ensure_vector_indexes(db) -> None:

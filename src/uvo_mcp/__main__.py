@@ -10,7 +10,17 @@ def main():
     if transport == "stdio":
         mcp.run(transport="stdio")
     else:
-        mcp.run(transport="streamable-http")
+        import uvicorn
+
+        from uvo_mcp.server import build_http_app
+
+        # Not mcp.run(): the app is wrapped so clients live for the whole process.
+        uvicorn.run(
+            build_http_app(),
+            host=mcp.settings.host,
+            port=mcp.settings.port,
+            log_level=mcp.settings.log_level.lower(),
+        )
 
 
 if __name__ == "__main__":

@@ -208,21 +208,11 @@ class TestReadiness:
         assert resp.status_code == 200
         assert resp.json()["status"] == "ready"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="DEFECT: API search-index provisioning is not retried after collections "
-        "appear on a fresh DB; /readyz stays 503 until the API restarts.",
-    )
     def test_api_readyz_recovers_without_restart(self, analytics_ready):
         if not analytics_ready["seed"].startswith("seeded") or analytics_ready["ready_before_seed"]:
             pytest.skip("API was not in a cold-start state (no fresh DB); nothing to recover from")
         assert analytics_ready["recovered_without_restart"] is True
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="DEFECT: MCP /readyz reports 'no MongoDB handle' unless an MCP client "
-        "session is open; the Mongo handle is set per session in app_lifespan.",
-    )
     def test_mcp_readyz_without_open_session(self, compose_stack):
         assert _get(f"{MCP}/readyz").status_code == 200
 
@@ -385,12 +375,6 @@ class TestTop:
         assert listing["pagination"]["total"] > 0
         assert len(listing["data"]) > 0
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="DEFECT: CPV division drill-down lands on an empty list. Analytics treats cpv as "
-        "a prefix (division 45 counts > 0) but /api/contracts?cpv=45 matches exact codes "
-        "(cpv_code $in) and returns 0.",
-    )
     def test_cpv_division_drill_down_has_notices(self, analytics_ready):
         """A CPV division counted on the CPV page must yield a non-empty /zakazky list."""
         window = {"date_from": DEFAULT_FROM, "date_to": DEFAULT_TO}

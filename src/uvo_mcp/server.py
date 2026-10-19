@@ -32,14 +32,22 @@ class AppContext:
     embedding_model: Any | None = field(default=None)  # fastembed TextEmbedding when loaded
 
 
-async def _bootstrap_search_indexes(mongo_db) -> None:
-    """Idempotently provision Atlas Search indexes; failure is logged at ERROR, never fatal."""
-    from uvo_core.adapters.mongo.search_indexes import ensure_indexes
+async def _bootstrap_search_indexes(mongo_db) -> asyncio.Task | None:
+    """Idempotently provision Atlas Search indexes; failure is logged at ERROR, never fatal.
 
+    Returns a background retry task when the first attempt did not fully succeed
+    (fresh DB: collections or mongot not there yet), else ``None``.
+    """
+    from uvo_core.adapters.mongo import search_indexes
+
+    ok = False
     try:
-        await ensure_indexes(mongo_db)
+        ok = await search_indexes.ensure_indexes(mongo_db) is not False
     except Exception:  # noqa: BLE001 - serve what we can; /readyz reports missing indexes
         logger.error("ensure_indexes failed; search may be degraded", exc_info=True)
+    if ok:
+        return None
+    return asyncio.create_task(search_indexes.retry_ensure_indexes(mongo_db), name="index-retry")
 
 
 async def _stop_task(task: asyncio.Task | None) -> None:
@@ -76,7 +84,8 @@ async def _ready_refresher() -> None:
 
 
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
+async def _open_runtime() -> AsyncIterator[AppContext]:
+    """Create every client once, publish the handles for ``/readyz``, close on exit."""
     from uvo_core.adapters.mongo.search_indexes import SearchIndexProbe
     from uvo_core.adapters.redis.cache_invalidation import run_cache_invalidator
     from uvo_core.infra.clients import (
@@ -90,6 +99,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
     mongo_db = None
     mongo_client = None
+    index_retry: asyncio.Task | None = None
     if settings.mongodb_uri:
         mongo_client = make_mongo_client(
             settings.mongodb_uri,
@@ -99,7 +109,7 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         )
         mongo_db = mongo_client[settings.mongodb_database]
         logger.info("MongoDB connected: %s", settings.mongodb_database)
-        await _bootstrap_search_indexes(mongo_db)
+        index_retry = await _bootstrap_search_indexes(mongo_db)
 
     neo4j_driver = None
     if settings.neo4j_uri and settings.neo4j_password:
@@ -147,12 +157,63 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
                 _runtime["index_probe"] = None
     finally:
         await _stop_task(ready_refresher)
+        await _stop_task(index_retry)
         await _stop_task(invalidator)
         await close_quietly("redis", redis_client.aclose)
         if mongo_client is not None:
             await close_quietly("mongo client", mongo_client.close)
         if neo4j_driver is not None:
             await close_quietly("neo4j driver", neo4j_driver.close)
+
+
+# Process-scoped, reference-counted runtime. FastMCP runs ``app_lifespan`` once per
+# client *session*, so tying the clients to it made ``/readyz`` fail ("no MongoDB
+# handle") until a client connected, and would rebuild the pools per session. The
+# HTTP app opens the runtime at process start (``build_http_app``); sessions (and
+# stdio, which has a single session) just take another reference to the same one.
+_shared: dict[str, Any] = {"refs": 0, "cm": None, "ctx": None}
+_shared_lock = asyncio.Lock()
+
+
+@asynccontextmanager
+async def process_runtime() -> AsyncIterator[AppContext]:
+    """Acquire the shared runtime, creating it on first use and closing it with the last user."""
+    async with _shared_lock:
+        if _shared["refs"] == 0:
+            cm = _open_runtime()
+            _shared["ctx"] = await cm.__aenter__()
+            _shared["cm"] = cm
+        _shared["refs"] += 1
+    try:
+        yield _shared["ctx"]
+    finally:
+        async with _shared_lock:
+            _shared["refs"] -= 1
+            if _shared["refs"] == 0:
+                cm, _shared["cm"], _shared["ctx"] = _shared["cm"], None, None
+                await cm.__aexit__(None, None, None)
+
+
+@asynccontextmanager
+async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
+    """Per-session lifespan: hands out the shared process runtime."""
+    async with process_runtime() as ctx:
+        yield ctx
+
+
+def build_http_app():
+    """The streamable-http ASGI app with the runtime opened at process start."""
+    app = mcp.streamable_http_app()
+    inner = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(a):
+        async with process_runtime():
+            async with inner(a) as state:
+                yield state
+
+    app.router.lifespan_context = lifespan
+    return app
 
 
 mcp = FastMCP(
