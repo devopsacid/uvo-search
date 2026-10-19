@@ -2,21 +2,28 @@
 
 Search and browse Slovak government procurement data. Shared MCP backend, single React frontend.
 
+This file describes what is live on `main`. If code and this file disagree, fix this file.
+
 ## Architecture
 
 Five Python packages under `src/` + one React frontend:
 
 | Package | Port | Entrypoint | Role |
 | ------- | ---- | ---------- | ---- |
-| `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` | FastMCP server — search, detail, graph tools |
-| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI delivery adapter; routers → `uvo_core.services` in-process; dashboard + ingestion + `/v1` |
+| `uvo_core` | — | (library) | Shared core: query services (`uvo_core.services`), domain models, infrastructure adapters (`uvo_core.adapters.{mongo,neo4j,redis}`), client factories (`uvo_core.infra.clients`). Imports none of the other packages. |
+| `uvo_api` | 8001 | `uv run python -m uvo_api` | FastAPI delivery adapter: `/api/*` for the SPA, `/v1/*` public API, `/health`, `/readyz` |
+| `uvo_mcp` | 8000 | `uv run python -m uvo_mcp` (`stdio` arg for stdio transport) | FastMCP server — external LLM tool surface over the same services |
+| `uvo_workers` | 8091–8096 | `uv run python -m uvo_workers.<service>` | Long-lived services: 4 extractors (`vestnik`, `crz`, `ted`, `itms`), `ingestor`, `dedup-worker`; Redis Streams |
+| `uvo_pipeline` | — | `uv run python -m uvo_pipeline [health]` | Source extractors and transformers (shared with the workers), `health` CLI, legacy one-shot backfill orchestrator |
 | `uvo-gui-react` | 8080 host / 5174 dev | `cd src/uvo-gui-react && npm run dev` | React 18 SPA public frontend (Slovak UI) |
-| `uvo_pipeline` | — | `uv run python -m uvo_pipeline` | Shared lib + one-shot backfill CLI (legacy; new long-lived services below) |
-| `uvo_workers` | 8091–8096 | `uv run python -m uvo_workers.<service>` | Long-lived microservices (4 extractors + ingestor + dedup-worker; Redis Streams) |
 
-**Storage:** MongoDB Atlas Local (27017, with `mongot` for Atlas Search) + Neo4j 5 with APOC (7474/7687). Both required for `uvo_mcp` to start.
+**Storage:** MongoDB Atlas Local (27017, with `mongot` for Atlas Search), Neo4j 5 with APOC (7474/7687), Redis 7 (streams, pub/sub, locks, ITMS cache). MCP starts without Mongo/Neo4j, but DB-backed tools return 503 and `/readyz` stays 503.
 
-**Frontend ↔ backend:** React → `uvo_api` (FastAPI) → **`uvo_core.services`** in-process (no HTTP hop). Routers call the shared query services directly; FastMCP (`uvo_mcp`) is a separate *external* delivery surface exposing the same services as LLM tools. Don't reintroduce an intra-cluster MCP HTTP call from `uvo_api`.
+**Frontend ↔ backend:** React → `uvo_api` (FastAPI) → **`uvo_core.services`** in-process (no HTTP hop). Routers call the typed service functions directly; there is no string dispatcher. Backend outages raise `uvo_core.errors.BackendUnavailable`, which one exception handler in `uvo_api` maps to 503. Clients are created in the app lifespan and owned there. FastMCP (`uvo_mcp`) is a separate *external* delivery surface exposing the same services as LLM tools. Don't reintroduce an intra-cluster MCP HTTP call from `uvo_api`.
+
+**Layering:** `uvo_core` imports none of the other packages. `uvo_core` and `uvo_pipeline` never import the entrypoint packages (`uvo_api`, `uvo_mcp`, `uvo_workers`), and the entrypoints don't import each other. CI enforces this with import-linter (`uv run lint-imports`; contracts in `pyproject.toml`).
+
+**Health:** `/health` is liveness only and never checks dependencies. `/readyz` on API and MCP does a bounded Mongo ping and checks that the required Atlas Search indexes exist; it returns 503 otherwise. Workers serve JSON snapshots on `/health` at their ports above.
 
 ## Dev commands
 
@@ -37,19 +44,22 @@ uv run pytest tests/ --ignore=tests/e2e -q  # the full unit suite (also covers t
 uv run pytest tests/e2e/ -v                 # requires docker compose up
 uv run pytest --cov=src -v
 
-# Lint
+# Lint (CI runs all three)
 uv run ruff check src/ tests/
-uv run ruff format src/ tests/
+uv run ruff format --check src/ tests/
+uv run lint-imports
 
-# React public GUI
-cd src/uvo-gui-react && npm install && npm test
+# React public GUI (CI runs lint, tsc, vitest and build)
+cd src/uvo-gui-react && npm ci && npm run lint && npx tsc -b && npm test -- --run && npm run build
 ```
 
 ## Docker (local deploy)
 
 > **Development only.** `docker-compose.yml` binds datastores to loopback and is not a production artifact. For production see **Production deployment** below.
 
-`docker compose up` starts **12** services. Two are behind opt-in profiles because both exit or are dev-only, and `up --wait` counts any exited container as a failure:
+**Images:** one multi-stage root `Dockerfile` builds every Python image; pick one with `--target mcp | api | workers | pipeline`. The GUI image is `src/uvo-gui-react/Dockerfile`. `docker-compose.yml` sets the targets.
+
+`docker compose up` starts **12** services: mcp-server, api, gui-react, mongo, neo4j, redis, the 4 extractors, ingestor and dedup-worker. Two are behind opt-in profiles because both exit or are dev-only, and `up --wait` counts any exited container as a failure:
 
 ```bash
 docker compose --profile legacy run --rm pipeline   # ad-hoc backfill (one-shot, exits)
@@ -58,7 +68,7 @@ docker compose --profile debug up -d mongo-express  # dev-only admin UI
 
 Credentials are required (`${VAR:?}`), so an empty `.env` aborts at interpolation — only `REDIS_PASSWORD` has a dev default.
 
-Full stack lives in `docker-compose.yml` (mcp-server, api, gui-react, mongo, neo4j, redis, 4 extractors, ingestor, dedup-worker; plus profiled mongo-express and pipeline). For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j/redis volume-init gotchas, service-name URIs, and nuclear-reset tiers. The `pipeline` service is now optional/legacy for ad-hoc backfills; the 6 new microservices (4 extractors + ingestor + dedup-worker) handle continuous ingestion via Redis Streams.
+Full stack lives in `docker-compose.yml`. For build/deploy/troubleshoot operations, use the `docker-troubleshoot` skill (`.claude/skills/docker-troubleshoot/`) or the `/docker` slash command. Don't reinvent — it already covers port conflicts, healthcheck debugging, mongo/neo4j/redis volume-init gotchas, service-name URIs, and nuclear-reset tiers. The `pipeline` service is optional/legacy for ad-hoc backfills; the 6 microservices (4 extractors + ingestor + dedup-worker) handle continuous ingestion via Redis Streams.
 
 **Docker runs in WSL, not Docker Desktop.** All `docker compose` commands must go through WSL:
 
@@ -89,11 +99,23 @@ Docker Desktop context (`desktop-linux`) will fail with "pipe not found" — tha
 
 ## React GUI notes
 
+- **API paths:** all SPA REST routes live under `/api/...` (for example `/api/contracts`, `/api/graph/ego/{ico}`); the public API is under `/v1/...`.
 - **URL-as-state:** Pagination, filters, sort, search live in URL query params (react-router) — enables bookmarking.
 - **i18n:** All Slovak strings in `src/i18n/sk.ts` only; use `t("key")` from context.
 - **Utilities:** `cn()` (Tailwind class merging) from `src/lib/utils.ts`.
-- **Data fetching:** TanStack Query v5, no Redux/Zustand state.
+- **Data fetching:** TanStack Query v5 (query client factory in `src/api/queryClient.ts`), no Redux/Zustand state.
 - **Graph chunk:** Cytoscape.js lazy-loaded as code-split chunk; `<Suspense>` wraps graph pages.
+
+## Workers (`uvo_workers`)
+
+- **Shared scaffolding:** `WorkerContext` owns the process's Mongo/Redis/Neo4j handles, built by `uvo_workers/clients.py` (`WorkerClients`). The four extractors are declared as `SourceSpec`s and run through one generic loop, `run_extract` (`uvo_workers/extract.py`). Settings derive from `WorkerSettings`; env var names are the field names, with no prefix.
+- **Ingestor reliability** (`uvo_workers/ingestor.py`):
+  - An entry is acked only after its notice is written to both Mongo and Neo4j. Failed entries stay pending.
+  - Pending entries are reclaimed on a timer (`INGESTOR_RECLAIM_INTERVAL_SECONDS`, cursor-paged XAUTOCLAIM), whether or not new traffic is flowing.
+  - After `INGESTOR_MAX_DELIVERIES` an entry is processed alone. If it still fails, it is copied to `notices:dead` and acked. If every over-limit entry fails in the same batch, that looks like an outage, so they stay pending instead of being dead-lettered.
+  - **Producer backpressure:** extractors pause while consumer-group lag + pending ≥ `STREAM_HIGH_WATER`, and fail the cycle after 15 minutes.
+  - **Trimming:** `XTRIM MINID` removes only fully acked entries. `STREAM_MAXLEN_APPROX` is a memory safety net, not the retention mechanism.
+- **Dead letters:** watch `XLEN notices:dead` and the `uvo_worker_dead_letter_length` metric. The `health` CLI and the `db-monitor` agent do not read `notices:dead` yet.
 
 ## Data integrity & pipeline status
 
@@ -110,6 +132,8 @@ uv run python -m uvo_pipeline health --json   # machine-readable
 - Registry entries and skip counts (skipped = unchanged hash, not re-upserted)
 - Cross-source deduplication: total canonical matches, notices linked by canonical_id
 - Latest pipeline run metadata
+
+**Redis streams:** `notices:{vestnik,crz,ted,itms}` (ingest queues, consumer group `ingestor`), `notices:dead` (dead letters), `notices:written` (pub/sub, triggers dedup and cache invalidation).
 
 **Mongo collections to inspect manually:**
 
@@ -134,20 +158,23 @@ uv run python scripts/enrich_itms_procurers.py --dry-run   # preview
 uv run python scripts/enrich_itms_procurers.py --limit 100 # run on first 100
 ```
 
-**Cross-source deduplication** runs automatically at the end of each pipeline run (two passes: ICO+CPV match, then title-slug + date ±7 days). Re-trigger manually by running the pipeline — dedup is idempotent.
+**Cross-source deduplication** runs in the `dedup-worker`: debounced on `notices:written`, with an hourly fallback poll, guarded by the `dedup:lock` Redis lock. Two passes: ICO+CPV match, then title-slug + date ±7 days. It is idempotent.
 
 ## CI & Docker image gotchas
 
-- **`uv sync` must run *after* `COPY src/`.** All four Dockerfiles sync before copying sources, which resolves third-party deps only — the first-party packages never land in the venv. `uv run` used to paper over this by re-syncing at container start, but `UV_NO_SYNC=1` (needed for a read-only rootfs) disables that. Every image then builds perfectly and dies with `ModuleNotFoundError` on start. A second `uv sync --frozen --no-dev` after the COPY is what makes them work. **A build that succeeds proves nothing about whether the app starts** — CI import-checks each image for exactly this reason.
-- **The E2E job is gated on `needs: [test, lint]`.** While Lint was red it was silently skipped for months, and assertions rotted behind it (`"data"` vs `"items"`, an English GUI title the Slovak UI had dropped) while two runtime-fatal image bugs shipped. It is the only check that runs the real system — keep it green, and treat a skipped E2E as a failed one.
+- **Pipeline (`.github/workflows/ci.yml`):** `test` (unit tests), `lint` (ruff + `lint-imports`), `frontend` (eslint, `tsc -b`, vitest, build), `images` (builds each image and imports its first-party packages on a read-only rootfs; nginx check for the GUI), `manifests` (kubeconform on `deploy/k8s`), and `docker-compose` (compose up + E2E).
+- **The E2E job needs `test`, `lint` and `frontend`.** While Lint was red it was silently skipped for months, and assertions rotted behind it (`"data"` vs `"items"`, an English GUI title the Slovak UI had dropped) while two runtime-fatal image bugs shipped. It is the only check that runs the real system — keep it green, and treat a skipped E2E as a failed one.
+- **Publishing (`docker-publish.yml`)** runs via `workflow_run`, and only after CI succeeds on a `push` to `main`. It builds the exact commit CI validated and pushes `ghcr.io/<repo>/uvo-{mcp,api,workers,gui,pipeline}` with tags `sha-<7-char>` and `latest`. Prod pins the `sha-` tag. Publishing never deploys, and the tag names are consumed downstream, so don't rename them.
+- **`uv sync` must run *after* `COPY src/`.** Each target stage in the root `Dockerfile` syncs third-party deps once in a shared `deps` stage, then copies only its own packages and runs `uv sync --frozen --no-dev` again. Without that second sync, the first-party packages never reach the venv and the container dies with `ModuleNotFoundError` on start. Runtime stages contain no `uv` binary; commands run `python -m …` straight from `/app/.venv` on PATH. **A build that succeeds proves nothing about whether the app starts** — that is why CI import-checks each image.
+- **fastembed model** is baked into the `mcp` image at `/opt/fastembed` (`FASTEMBED_CACHE_PATH`). Keep it outside `/tmp`: k8s mounts an emptyDir over `/tmp`, which would hide it.
 - Prefer assertions on structure (mount points, envelope keys, bundle paths) over copy. Every stale assertion found this way was pinned to a display string.
 
 ## Data / search gotchas
 
 - Mongo uses a custom `sk_folding` analyzer (standard tokenizer + `lowercase` + `icuFolding`) for case- and diacritic-insensitive Slovak search. Name fields carry an `autocomplete` (edgeGram) subfield powering the live dropdown.
-- Atlas Search indexes are created idempotently on `uvo_mcp` and `uvo_api` startup (`uvo_core.adapters.mongo.search_indexes`) — expect a cold-start lag on a fresh Mongo volume; both `/readyz` endpoints stay 503 until the required indexes exist. Failures are logged at ERROR.
+- Atlas Search indexes are created idempotently on `uvo_mcp` and `uvo_api` startup (`uvo_core.adapters.mongo.search_indexes`) — expect a cold-start lag on a fresh Mongo volume; both `/readyz` endpoints stay 503 until the required indexes exist. Failures are logged at ERROR. A drifted index definition is updated in place, which triggers an async rebuild: text search is empty or degraded until the index is READY again.
 - Legacy-data migration after Mongo image swap: `scripts/migrate_to_atlas_local.sh` (one-shot).
-- Graph page (`/graph`) depends on Neo4j + `graph_ego_network` / `graph_cpv_network` MCP tools; if Neo4j is down the page will error, not silently degrade.
+- Graph endpoints (`/api/graph/*`) and the MCP graph tools need Neo4j. If Neo4j is down or unset, they return an error or 503; they do not silently degrade.
 
 ## Production deployment — Kubernetes via ArgoCD
 
@@ -172,6 +199,8 @@ Cluster conventions (they are **not** what `deploy/k8s/` in this repo assumes):
 - **Traefik `IngressRoute`** (CRD), not ingress-nginx or Gateway API `HTTPRoute` — HTTPRoute can't express middlewares, and the public route needs auth + security headers
 - **External Secrets Operator + Vault**, not sealed-secrets
 - cert-manager: **always issue against `letsencrypt-staging` first**
+- **Probes:** liveness `/health`, readiness `/readyz` on both API and MCP.
+- **MCP Redis env:** MCP reads unprefixed `REDIS_URL` and `REDIS_PASSWORD` for the `notices:written` cache-invalidation subscriber. Without them it falls back to TTL-only caching and logs a warning. The stubarag-infra chart must pass both.
 
 > `deploy/k8s/` and `deploy/argocd/` in *this* repo are superseded. They were built against the wrong conventions and were never applied to any cluster. Harvest their hardening (securityContext, PDBs, NetworkPolicies, probes, resource limits) but don't deploy from them.
 
@@ -187,6 +216,4 @@ Production secrets live in Vault at `kv/app/uvo-search/dev` (four keys: `mongodb
 
 ### The `API_` prefix trap
 
-`ApiSettings` sets `env_prefix="API_"`, so it **cannot see any unprefixed variable** — and most of its fields default to a falsy value rather than raising. The API then starts *healthy* and fails at query time, which reads as a data bug, not a config one. Three separate variables were missed this way in one migration.
-
-Every one of these must be set explicitly, in addition to the unprefixed versions other services use: `API_MONGODB_URI`, `API_NEO4J_URI`, `API_NEO4J_USER`, `API_NEO4J_PASSWORD`, `API_REDIS_PASSWORD`. When adding a field to `ApiSettings`, prefer no default over a falsy one so a missing value fails loudly at startup.
+`ApiSettings` sets `env_prefix="API_"`, so it **cannot see any unprefixed variable**. `API_MONGODB_URI` has no default and fails startup when missing, which is intended. Most other `API_*` fields do have defaults, and a missing one fails late instead: an unset `API_NEO4J_URI` turns graph endpoints into 503s, and a missing `API_REDIS_PASSWORD` makes the `/v1` rate limiter fail closed on every request. Set these explicitly, in addition to the unprefixed versions other services use: `API_MONGODB_URI`, `API_NEO4J_URI`, `API_NEO4J_USER`, `API_NEO4J_PASSWORD`, `API_REDIS_PASSWORD`. When adding a field to `ApiSettings`, prefer no default over a falsy one so a missing value fails loudly at startup.
