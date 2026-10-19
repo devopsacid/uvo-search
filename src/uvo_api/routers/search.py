@@ -2,6 +2,7 @@
 """Unified entity search across suppliers and procurers."""
 
 import asyncio
+import logging
 import re
 
 from fastapi import APIRouter, Query
@@ -10,6 +11,8 @@ from pydantic import BaseModel
 from uvo_api._schema import contract_date, contract_value, year_from_date
 from uvo_api.services import run_query
 from uvo_core.domain.companies import merge_companies_by_ico
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -190,22 +193,29 @@ async def unified_search(
     contract_args = {"text_query": q.strip(), "limit": limit}
     vec_args = {"query": q.strip(), "limit": limit}
 
-    try:
-        (supp_result, proc_result, vec_result), contract_result = await asyncio.gather(
-            asyncio.gather(
-                run_query("find_supplier", entity_args),
-                run_query("find_procurer", entity_args),
-                run_query("search_companies_vector", vec_args),
-            ),
-            run_query("search_completed_procurements", contract_args),
-        )
-    except Exception:
-        (supp_result, proc_result, vec_result) = await asyncio.gather(
-            run_query("find_supplier", entity_args),
-            run_query("find_procurer", entity_args),
-            run_query("search_companies_vector", vec_args),
-        )
-        contract_result = {}
+    branches = {
+        "supplier": run_query("find_supplier", entity_args),
+        "procurer": run_query("find_procurer", entity_args),
+        "vector": run_query("search_companies_vector", vec_args),
+        "contracts": run_query("search_completed_procurements", contract_args),
+    }
+    outcomes = await asyncio.gather(*branches.values(), return_exceptions=True)
+
+    results: dict[str, dict] = {}
+    failures: list[BaseException] = []
+    for name, outcome in zip(branches, outcomes, strict=True):
+        if isinstance(outcome, BaseException):
+            # One slow/broken branch (e.g. vector search) must not blank the others.
+            logger.warning("unified search branch %r failed: %s", name, outcome, exc_info=outcome)
+            failures.append(outcome)
+            results[name] = {}
+        else:
+            results[name] = outcome
+    if len(failures) == len(branches):
+        raise failures[0]
+
+    supp_result, proc_result = results["supplier"], results["procurer"]
+    vec_result, contract_result = results["vector"], results["contracts"]
 
     vec_items = vec_result.get("items", []) if "error" not in vec_result else []
     firmy = _merge_firmy_with_vector(

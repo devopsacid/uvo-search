@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends
@@ -88,9 +89,24 @@ async def get_worker_status() -> WorkerStatusResponse:
             }
         },
     ]
-    rows: dict[str, dict] = {}
-    async for doc in db.ingestion_log.aggregate(pipeline):
-        rows[doc["_id"]] = doc
+    # Last event per component (one aggregation) and the 24h activity counts
+    # (one $group instead of one count_documents round-trip per component).
+    activity_pipeline = [
+        {
+            "$match": {
+                "component": {"$in": COMPONENTS},
+                "ts": {"$gte": cutoff_24h},
+                "event": {"$in": ["cycle_complete", "batch_written"]},
+            }
+        },
+        {"$group": {"_id": "$component", "count": {"$sum": 1}}},
+    ]
+    last_docs, activity_docs = await asyncio.gather(
+        db.ingestion_log.aggregate(pipeline).to_list(None),
+        db.ingestion_log.aggregate(activity_pipeline).to_list(None),
+    )
+    rows: dict[str, dict] = {doc["_id"]: doc for doc in last_docs}
+    events_by_component: dict[str, int] = {doc["_id"]: int(doc["count"]) for doc in activity_docs}
 
     workers: list[WorkerStatus] = []
     for component in COMPONENTS:
@@ -108,14 +124,7 @@ async def get_worker_status() -> WorkerStatusResponse:
             last_message = doc.get("last_message")
 
         status, age_seconds = _derive_status(last_event, last_level, last_ts, component)
-
-        events_24h = await db.ingestion_log.count_documents(
-            {
-                "component": component,
-                "ts": {"$gte": cutoff_24h},
-                "event": {"$in": ["cycle_complete", "batch_written"]},
-            }
-        )
+        events_24h = events_by_component.get(component, 0)
 
         workers.append(
             WorkerStatus(

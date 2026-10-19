@@ -202,3 +202,61 @@ def test_unified_respects_limit(client):
         response = client.get("/api/search/unified?q=firm&limit=5")
     assert response.status_code == 200
     assert len(response.json()["firmy"]) <= 5
+
+
+# ---------------------------------------------------------------------------
+# Per-branch failure isolation (B20)
+# ---------------------------------------------------------------------------
+
+
+def _branch_router(failing: set[str]):
+    """run_query stand-in that raises for the named tools and answers the rest."""
+    answers = {
+        "find_supplier": SUPPLIER_RESULT,
+        "find_procurer": PROCURER_RESULT,
+        "search_companies_vector": EMPTY_RESULT,
+        "search_completed_procurements": CONTRACT_RESULT,
+    }
+
+    async def _run(tool, args):
+        if tool in failing:
+            raise RuntimeError(f"{tool} exploded")
+        return answers[tool]
+
+    return _run
+
+
+def test_unified_contract_branch_failure_keeps_firmy_and_logs(client, caplog):
+    with patch(
+        "uvo_api.routers.search.run_query", new=_branch_router({"search_completed_procurements"})
+    ):
+        with caplog.at_level("WARNING", logger="uvo_api.routers.search"):
+            response = client.get("/api/search/unified?q=acme")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["firmy"]) == 2
+    assert body["zakazky"] == []
+    record = next(r for r in caplog.records if "contracts" in r.getMessage())
+    assert record.levelname == "WARNING"
+    assert record.exc_info is not None
+
+
+def test_unified_vector_branch_failure_keeps_contracts(client):
+    with patch("uvo_api.routers.search.run_query", new=_branch_router({"search_companies_vector"})):
+        response = client.get("/api/search/unified?q=acme")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["firmy"]) == 2
+    assert len(body["zakazky"]) >= 1
+
+
+def test_unified_all_branches_failing_propagates(client):
+    failing = {
+        "find_supplier",
+        "find_procurer",
+        "search_companies_vector",
+        "search_completed_procurements",
+    }
+    with patch("uvo_api.routers.search.run_query", new=_branch_router(failing)):
+        with pytest.raises(RuntimeError, match="exploded"):
+            client.get("/api/search/unified?q=acme")

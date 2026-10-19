@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
@@ -45,10 +46,13 @@ async def get_ingestion_log(
     if component:
         query["component"] = component
 
-    total = await db.ingestion_log.count_documents(query)
-    cursor = db.ingestion_log.find(query).sort("ts", -1).skip(offset).limit(limit)
+    # The page and the total are independent reads; issue them together.
+    total, docs = await asyncio.gather(
+        db.ingestion_log.count_documents(query),
+        db.ingestion_log.find(query).sort("ts", -1).skip(offset).limit(limit).to_list(limit),
+    )
     items: list[IngestionLogItem] = []
-    async for doc in cursor:
+    for doc in docs:
         items.append(
             IngestionLogItem(
                 ts=_to_iso_z(doc.get("ts")),
